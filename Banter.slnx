@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Banter.Protocol/Banter.Protocol.csproj" />
+    <Project Path="src/Banter.Core/Banter.Core.csproj" />
+    <Project Path="src/Banter.Server/Banter.Server.csproj" />
+    <Project Path="src/Banter.Client.Core/Banter.Client.Core.csproj" />
+    <Project Path="src/Banter.Voice/Banter.Voice.csproj" />
+    <Project Path="src/Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
+    <Project Path="src/Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
+    <Project Path="src/Banter.Agents.Sdk/Banter.Agents.Sdk.csproj" />
+    <Project Path="src/Banter.Agents.Acp/Banter.Agents.Acp.csproj" />
+    <Project Path="src/Banter.Warden/Banter.Warden.csproj" />
+    <Project Path="src/Banter.App/Banter.App.csproj" />
+    <Project Path="src/Banter.Cli/Banter.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Banter.Protocol.Tests/Banter.Protocol.Tests.csproj" />
+    <Project Path="tests/Banter.Server.Tests/Banter.Server.Tests.csproj" />
+    <Project Path="tests/Banter.Voice.Tests/Banter.Voice.Tests.csproj" />
+    <Project Path="tests/Banter.Integration.Tests/Banter.Integration.Tests.csproj" />
+  </Folder>
+</Solution>
