@@ -215,6 +215,26 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HelloNegotiatesTheCoreRevision()
+    {
+        await using var alice = await ConnectAsync("alice", "pw-a");
+        Assert.Equal(1, alice.NegotiatedCoreVersion);
+    }
+
+    [Fact]
+    public async Task FutureOnlyClientIsRefusedAtHello()
+    {
+        var codec = new BanterCodec();
+        await using var raw = await _transport.ConnectAsync(_server.Endpoint);
+        await SendAsync(raw, codec, new HelloPayload("time-traveller", "99.0", [], [new CapabilityRangePayload("banter.core", 7, 9)]));
+        var reply = await ReceiveAsync(raw, codec);
+        var error = Assert.IsType<ErrorPayload>(reply);
+        Assert.Equal("VERSION_MISMATCH", error.Code);
+        // The server hangs up after refusing.
+        Assert.Null(await raw.ReceiveFrameAsync().AsTask().WaitAsync(Timeout));
+    }
+
+    [Fact]
     public async Task UnauthenticatedRoomVerbsAreRefused()
     {
         var codec = new BanterCodec();

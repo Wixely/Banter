@@ -51,6 +51,8 @@ public sealed class BanterClient : IAsyncDisposable
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
     public string SessionId { get; private set; } = "";
+    /// <summary>The banter.core ordinal agreed with the server during HELLO (CupriMark).</summary>
+    public ushort NegotiatedCoreVersion { get; private set; } = 1;
     public bool IsConnected => _connection is not null;
 
     public event Action<MsgPayload>? MessageReceived;
@@ -204,8 +206,23 @@ public sealed class BanterClient : IAsyncDisposable
         try
         {
             var version = typeof(BanterClient).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
-            await RawRequestAsync(connection, new HelloPayload(_options.ClientName, version, ["banter.core"]), cancellationToken)
-                .ConfigureAwait(false);
+            var helloReply = await RawRequestAsync(
+                connection,
+                new HelloPayload(_options.ClientName, version, ["banter.core"], BanterCatalog.LocalRanges()),
+                cancellationToken).ConfigureAwait(false);
+            switch (helloReply)
+            {
+                case HelloPayload serverHello when BanterCatalog.TryNegotiateCore(serverHello.Ranges, out var negotiated):
+                    NegotiatedCoreVersion = negotiated;
+                    break;
+                case HelloPayload:
+                    throw new BanterClientException(
+                        $"No mutually supported {BanterCatalog.CoreComponent} revision (this client speaks {BanterCatalog.SupportedCore}).");
+                case ErrorPayload error:
+                    throw new BanterClientException($"Server refused HELLO: {error.Code}: {error.Message}");
+                default:
+                    throw new BanterClientException($"Unexpected HELLO reply: {helloReply?.GetType().Name ?? "null"}.");
+            }
 
             var reply = await RawRequestAsync(connection, new AuthPayload(_username, _secret, IsAgentToken: false), cancellationToken)
                 .ConfigureAwait(false);

@@ -21,7 +21,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Room-scoped file storage (§5a: chunked transfer, hash dedup, grants, quotas, announcements) | implemented, tested |
 | `Banter.Cli` interactive client | implemented, smoke-tested |
 | `Banter.Transport.CupriNet` (Conjoin → Consecrate → Conduit frames behind `IBanterTransport`) | spiked green: chat runs over the mesh; Android on-device pending |
-| CupriMark `banter.core` catalogue | next |
+| CupriMark `banter.core` catalogue + HELLO range negotiation | implemented, tested |
+| DaggerAgent spike (needs an OpenAI-compatible endpoint) | pending |
 
 ## Building
 

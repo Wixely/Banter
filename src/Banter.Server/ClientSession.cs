@@ -22,6 +22,8 @@ internal sealed class ClientSession(
 
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
+    /// <summary>The banter.core ordinal agreed with this peer during HELLO (CupriMark).</summary>
+    public ushort NegotiatedCoreVersion { get; private set; } = 1;
     private bool Authenticated => Nick.Length > 0;
 
     public void Send<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull =>
@@ -71,8 +73,22 @@ internal sealed class ClientSession(
             var payload = codec.DecodePayload(envelope);
             switch (payload)
             {
-                case HelloPayload:
-                    Send(new HelloPayload("Banter.Server", typeof(ClientSession).Assembly.GetName().Version?.ToString(3) ?? "0.0.0", ["banter.core"]),
+                case HelloPayload hello:
+                    if (!BanterCatalog.TryNegotiateCore(hello.Ranges, out var negotiated))
+                    {
+                        Send(new ErrorPayload(
+                            "VERSION_MISMATCH",
+                            $"No mutually supported {BanterCatalog.CoreComponent} revision (server speaks {BanterCatalog.SupportedCore})."),
+                            replyTo: envelope.MsgId);
+                        return; // no common protocol revision — nothing further to say
+                    }
+
+                    NegotiatedCoreVersion = negotiated;
+                    Send(new HelloPayload(
+                        "Banter.Server",
+                        typeof(ClientSession).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
+                        ["banter.core"],
+                        BanterCatalog.LocalRanges()),
                         replyTo: envelope.MsgId);
                     break;
 

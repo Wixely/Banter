@@ -8,13 +8,22 @@ namespace Banter.Protocol;
 
 // ---- Session ----
 
-/// <summary>First message on a channel, both directions. Carries the CupriMark negotiation
-/// payload once catalogues are adopted; until then <see cref="Capabilities"/> is a free-form list.</summary>
+/// <summary>First message on a channel, both directions, carrying the CupriMark negotiation
+/// payload: per-component supported ordinal ranges (only ordinals travel; meanings resolve
+/// against each side's own catalogue). <see cref="Capabilities"/> remains a free-form hint list.</summary>
 [MessagePackObject]
 public sealed record HelloPayload(
     [property: Key(0)] string ClientName,
     [property: Key(1)] string ClientVersion,
-    [property: Key(2)] IReadOnlyList<string> Capabilities);
+    [property: Key(2)] IReadOnlyList<string> Capabilities,
+    [property: Key(3)] IReadOnlyList<CapabilityRangePayload>? Ranges = null);
+
+/// <summary>A CupriMark supported-ordinal range for one catalogue component.</summary>
+[MessagePackObject]
+public sealed record CapabilityRangePayload(
+    [property: Key(0)] string Component,
+    [property: Key(1)] ushort Low,
+    [property: Key(2)] ushort High);
 
 [MessagePackObject]
 public sealed record AuthPayload(

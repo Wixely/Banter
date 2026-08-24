@@ -8,6 +8,7 @@ public sealed class CodecTests
     public static TheoryData<object> AllPayloads() => new()
     {
         new HelloPayload("Banter.Cli", "0.1.0", ["banter.core"]),
+        new HelloPayload("Banter.Cli", "0.1.0", ["banter.core"], [new CapabilityRangePayload("banter.core", 1, 1)]),
         new AuthPayload("alice", "s3cret", IsAgentToken: false),
         new AuthOkPayload("session-1", "alice", IsAgent: false),
         new AuthFailPayload("bad credentials"),
