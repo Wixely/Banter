@@ -94,9 +94,14 @@ How Banter maps onto CupriNet's API:
 - Client/agent connect: `ConjoinAsync(serverUri)` to pair, then `ConsecrateAsync(watchword)` to open
   the authenticated channel. The **watchword** acts as the server password / invite secret; per-user
   credentials ride inside BanterProtocol's `AUTH` message after the channel is up.
-- One multiplexed channel per client carries all BanterProtocol frames (CupriNet does stream
-  multiplexing over TCP with length-prefixed framing; we add one more framing layer only if the
-  channel API is stream-oriented rather than message-oriented — decide during the spike).
+- One multiplexed channel per client carries all BanterProtocol frames. **Spike answer
+  (2026-08-24): the channel API is message-oriented** — Arcanum sessions expose Conduits
+  (protocol-tagged data frames), so BanterProtocol envelopes ride Conduit frames directly with
+  no extra framing layer. `Banter.Transport.CupriNet` implements the `IBanterTransport` seam
+  this way (Conjoin against the server's intonation link → Consecrate with the watchword →
+  frames over Conduits); the integration suite runs real chat through it, a wrong watchword
+  cannot consecrate, and Windows↔Windows loopback is proven. On-device Android remains the
+  open spike item.
 - CupriNet extras we get for free and should keep enabled: Noise XX/IK end-to-end encryption, LAN
   discovery + NAT-PMP + UDP hole punching (lets a home server work without port forwarding),
   warm-start peer caches (fast reconnect on mobile).

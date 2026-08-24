@@ -20,7 +20,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Persistence: Dapper + migration manifest — SQLite (default) / PostgreSQL (hosted) | implemented, tested (SQLite; Postgres untested pending a server) |
 | Room-scoped file storage (§5a: chunked transfer, hash dedup, grants, quotas, announcements) | implemented, tested |
 | `Banter.Cli` interactive client | implemented, smoke-tested |
-| CupriMark catalogue + CupriNet transport | pending (needs Wixely feed PAT) |
+| `Banter.Transport.CupriNet` (Conjoin → Consecrate → Conduit frames behind `IBanterTransport`) | spiked green: chat runs over the mesh; Android on-device pending |
+| CupriMark `banter.core` catalogue | next |
 
 ## Building
 

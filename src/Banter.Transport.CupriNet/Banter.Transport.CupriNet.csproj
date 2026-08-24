@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CupriNet.Hosting" Version="0.3.4" />
+    <PackageReference Include="CupriNet.Arcanum" Version="0.3.4" />
+    <PackageReference Include="CupriNet.Core" Version="0.3.4" />
+    <PackageReference Include="CupriNet.Rites" Version="0.3.4" />
+    <PackageReference Include="CupriNet.Persistence" Version="0.3.4" />
+    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.3.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Banter.Protocol/Banter.Protocol.csproj" />
+  </ItemGroup>
+</Project>

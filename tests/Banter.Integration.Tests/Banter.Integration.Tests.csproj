@@ -13,5 +13,6 @@
     <ProjectReference Include="../../src/Banter.Core/Banter.Core.csproj" />
     <ProjectReference Include="../../src/Banter.Protocol/Banter.Protocol.csproj" />
     <ProjectReference Include="../../src/Banter.Server/Banter.Server.csproj" />
+    <ProjectReference Include="../../src/Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
   </ItemGroup>
 </Project>
