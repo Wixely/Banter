@@ -178,9 +178,11 @@ these are repeatable gates in CI, not one-off eyeball checks. Ratios are the ass
 messages are variable height, so the timeline cannot simply drop into it. Options for Phase 2,
 in preference order: (1) fixed-height rows — one line per message with overflow elided, and an
 expand affordance; (2) **window the timeline ourselves** — exactly the fallback PLAN §7 already
-anticipated, and cheap given `HISTORY_REQ` paging exists; (3) raise variable-height
-virtualization upstream (it is our library). Decide when the timeline UI is built; the
-measurement says either path performs.
+anticipated, and cheap given `HISTORY_REQ` paging exists; (3) variable-height virtualization
+upstream — **raised as [Wixely/CupriFace#66](https://github.com/Wixely/CupriFace/issues/66)**
+(2026-08-25), asking for `item-height="auto"` measurement, a model-supplied per-item height, or
+a measurement hook. Not blocking: decide between (1) and (2) when the timeline UI is built, and
+adopt (3) if it lands. The measurement says either path performs.
 
 Still outstanding from this list: WASM host round-trip, and everything on-device Android
 (scrollback feel, soft-keyboard IME, GL/foreground-service endurance).
