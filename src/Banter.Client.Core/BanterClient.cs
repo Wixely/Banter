@@ -120,6 +120,73 @@ public sealed class BanterClient : IAsyncDisposable
     public Task<RoomMembersPayload> GetMembersAsync(string room, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomMembersPayload>(new RoomMembersPayload(room, []), cancellationToken);
 
+    // ---- Files (room-scoped storage) ----
+
+    private const int UploadChunkBytes = 64 * 1024;
+
+    /// <summary>Uploads content to a room. Deduplicated server-side by hash — a second upload
+    /// of identical bytes completes without sending chunks. Unless <paramref name="quiet"/>,
+    /// the server announces the file in the room as a message carrying the file reference.</summary>
+    public async Task<FileInfoPayload> UploadFileAsync(
+        string room,
+        string name,
+        ReadOnlyMemory<byte> content,
+        string mimeType,
+        string? description = null,
+        bool quiet = false,
+        CancellationToken cancellationToken = default)
+    {
+        var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(content.Span));
+        var start = await RequestAsync<FileInfoPayload>(
+            new FilePutStartPayload(room, name, mimeType, content.Length, sha, description, quiet), cancellationToken)
+            .ConfigureAwait(false);
+        if (start.Complete)
+        {
+            return start;
+        }
+
+        for (var offset = 0; offset < content.Length; offset += UploadChunkBytes)
+        {
+            var slice = content[offset..Math.Min(offset + UploadChunkBytes, content.Length)];
+            await RequestAsync<OkPayload>(new FilePutChunkPayload(start.FileId, offset, slice.ToArray()), cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await RequestAsync<FileInfoPayload>(new FilePutEndPayload(start.FileId), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<byte[]> DownloadFileAsync(string fileId, CancellationToken cancellationToken = default)
+    {
+        using var buffer = new MemoryStream();
+        long offset = 0;
+        while (true)
+        {
+            var chunk = await RequestAsync<FileChunkPayload>(
+                new FileGetPayload(fileId, offset, UploadChunkBytes), cancellationToken).ConfigureAwait(false);
+            buffer.Write(chunk.Data);
+            offset += chunk.Data.Length;
+            if (chunk.Eof)
+            {
+                return buffer.ToArray();
+            }
+        }
+    }
+
+    public Task<FileListPayload> ListFilesAsync(string room, CancellationToken cancellationToken = default) =>
+        RequestAsync<FileListPayload>(new FileListPayload(room, []), cancellationToken);
+
+    public Task<FileInfoPayload> GetFileInfoAsync(string fileId, CancellationToken cancellationToken = default) =>
+        RequestAsync<FileInfoPayload>(FileInfoPayload.Request(fileId), cancellationToken);
+
+    public Task GrantFileAsync(string fileId, string room, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new FileGrantPayload(fileId, room), cancellationToken);
+
+    public Task RevokeFileAsync(string fileId, string room, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new FileRevokePayload(fileId, room), cancellationToken);
+
+    public Task DeleteFileAsync(string fileId, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new FileDeletePayload(fileId), cancellationToken);
+
     public async Task<TimeSpan> PingAsync(CancellationToken cancellationToken = default)
     {
         var sent = DateTimeOffset.UtcNow;

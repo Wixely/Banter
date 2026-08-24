@@ -28,6 +28,16 @@ public sealed class CodecTests
         new TypingPayload("#main", "alice"),
         new HistoryReqPayload("#main", null, 50),
         new HistoryChunkPayload("#main", [new MsgPayload("#main", "alice", "hi", 1, null)], "cursor-2"),
+        new FilePutStartPayload("#main", "cat.png", "image/png", 4, "abc123", "a cat", Quiet: false),
+        new FilePutChunkPayload("file-1", 0, [1, 2, 3, 4]),
+        new FilePutEndPayload("file-1"),
+        new FileGetPayload("file-1", 0, 65536),
+        new FileChunkPayload("file-1", 0, [1, 2, 3, 4], Eof: true),
+        new FileListPayload("#main", [FileInfoPayload.Request("file-1")]),
+        new FileInfoPayload("file-1", "cat.png", "image/png", 4, "abc123", "alice", 1234567890, null, ["#main"], true),
+        new FileGrantPayload("file-1", "#other"),
+        new FileRevokePayload("file-1", "#other"),
+        new FileDeletePayload("file-1"),
         new MsgStreamStartPayload("#main", "dagger", "stream-1"),
         new MsgStreamDeltaPayload("stream-1", "tok"),
         new MsgStreamEndPayload("stream-1", "tokens joined", 1234567890),
@@ -79,8 +89,7 @@ public sealed class CodecTests
     [Fact]
     public void ReservedMessageTypesAreLegalWithoutContracts()
     {
-        // Files/agent/task areas are enum-reserved but contract-less until their phases.
-        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.FilePutStart));
+        // Agent/task areas are enum-reserved but contract-less until their phases.
         Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.TaskPost));
         Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentMove));
     }

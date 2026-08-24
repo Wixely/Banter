@@ -19,15 +19,20 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         .AddUser("bob", "pw-b")
         .AddUser("dagger", "pw-d", isAgent: true);
     private string _dbPath = null!;
+    private string _dataDir = null!;
     private BanterDatabase _database = null!;
+    private Banter.Server.Files.FileStore _files = null!;
     private BanterServer _server = null!;
 
     public async Task InitializeAsync()
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"banter-it-{Guid.NewGuid():N}.db");
+        var id = Guid.NewGuid().ToString("N");
+        _dbPath = Path.Combine(Path.GetTempPath(), $"banter-it-{id}.db");
+        _dataDir = Path.Combine(Path.GetTempPath(), $"banter-it-files-{id}");
         _database = new BanterDatabase(BanterStorageOptions.DefaultSqlite(_dbPath));
         await _database.InitializeAsync();
-        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database));
+        _files = new Banter.Server.Files.FileStore(_database, new Banter.Server.Files.FileStoreOptions { DataDirectory = _dataDir });
+        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
         await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
     }
 
@@ -36,6 +41,10 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         await _server.DisposeAsync();
         BanterDatabase.ClearSqlitePools();
         File.Delete(_dbPath);
+        if (Directory.Exists(_dataDir))
+        {
+            Directory.Delete(_dataDir, recursive: true);
+        }
     }
 
     [Fact]
@@ -54,7 +63,7 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         await disconnected.Task.WaitAsync(Timeout);
 
         // Bring a new server up on the same port; the client should redial, re-auth, rejoin.
-        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database));
+        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
         await StartOnPortWithRetryAsync(_server, port);
         await reconnected.Task.WaitAsync(Timeout);
 
@@ -96,7 +105,7 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         await _server.DisposeAsync();
 
         // A new server process over the same database.
-        _server = new BanterServer(_transport, new InMemoryAccountStore().AddUser("bob", "pw-b"), new DbServerStore(_database));
+        _server = new BanterServer(_transport, new InMemoryAccountStore().AddUser("bob", "pw-b"), new DbServerStore(_database), _files);
         await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
 
         await using var bob = await ConnectAsync("bob", "pw-b");

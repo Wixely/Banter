@@ -13,7 +13,8 @@ namespace Banter.Server;
 public sealed class BanterServer(
     IBanterServerTransport transport,
     IAccountStore accounts,
-    Persistence.IServerStore store) : IAsyncDisposable
+    Persistence.IServerStore store,
+    Files.FileStore files) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
     private readonly RoomEngine _engine = new(store);
@@ -52,7 +53,7 @@ public sealed class BanterServer(
                 return;
             }
 
-            var session = new ClientSession(connection, _codec, accounts, _engine);
+            var session = new ClientSession(connection, _codec, accounts, _engine, files);
             var run = session.RunAsync(_stopping.Token);
             _sessionTasks.TryAdd(run, 0);
             _ = run.ContinueWith(t => _sessionTasks.TryRemove(t, out _), TaskScheduler.Default);

@@ -163,5 +163,56 @@ public static class SchemaManifest
 
             CREATE INDEX ix_messages_room_seq ON messages (room, seq);
             """),
+        new(
+            2,
+            "room-scoped-file-storage",
+            SqliteSql:
+            """
+            CREATE TABLE files (
+                file_id TEXT NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL,
+                mime TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                uploader TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                description TEXT NULL,
+                complete INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX ix_files_sha256 ON files (sha256);
+
+            CREATE TABLE file_grants (
+                file_id TEXT NOT NULL,
+                room TEXT NOT NULL,
+                PRIMARY KEY (file_id, room)
+            );
+
+            CREATE INDEX ix_file_grants_room ON file_grants (room);
+            """,
+            PostgresSql:
+            """
+            CREATE TABLE files (
+                file_id TEXT NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL,
+                mime TEXT NOT NULL,
+                size BIGINT NOT NULL,
+                sha256 TEXT NOT NULL,
+                uploader TEXT NOT NULL,
+                created_at BIGINT NOT NULL,
+                description TEXT NULL,
+                complete BOOLEAN NOT NULL DEFAULT FALSE
+            );
+
+            CREATE INDEX ix_files_sha256 ON files (sha256);
+
+            CREATE TABLE file_grants (
+                file_id TEXT NOT NULL,
+                room TEXT NOT NULL,
+                PRIMARY KEY (file_id, room)
+            );
+
+            CREATE INDEX ix_file_grants_room ON file_grants (room);
+            """),
     ];
 }

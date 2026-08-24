@@ -76,6 +76,51 @@ internal sealed class RoomEngine(IServerStore store)
             return ValueTask.CompletedTask;
         });
 
+    /// <summary>Membership check for session-side handlers (file transfer), answered inside the
+    /// single-writer loop so it can't race a join/part.</summary>
+    public async ValueTask<bool> IsMemberAsync(ClientSession session, string room)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await _commands.Writer.WriteAsync(() =>
+        {
+            tcs.TrySetResult(_rooms.TryGetValue(room, out var r) && r.Members.Contains(session));
+            return ValueTask.CompletedTask;
+        }).ConfigureAwait(false);
+        return await tcs.Task.ConfigureAwait(false);
+    }
+
+    public async ValueTask<string[]> GetMemberRoomsAsync(ClientSession session)
+    {
+        var tcs = new TaskCompletionSource<string[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await _commands.Writer.WriteAsync(() =>
+        {
+            tcs.TrySetResult(_rooms.Values.Where(r => r.Members.Contains(session)).Select(r => r.Name).ToArray());
+            return ValueTask.CompletedTask;
+        }).ConfigureAwait(false);
+        return await tcs.Task.ConfigureAwait(false);
+    }
+
+    /// <summary>Emits the room message that announces an uploaded file, with the file reference
+    /// clients render inline (§5a). Persisted + broadcast like any other message.</summary>
+    public ValueTask AnnounceFileAsync(ClientSession session, string room, string fileId, string name) =>
+        _commands.Writer.WriteAsync(async () =>
+        {
+            if (!_rooms.TryGetValue(room, out var target) || !target.Members.Contains(session))
+            {
+                return;
+            }
+
+            var announcement = new MsgPayload(
+                room, session.Nick, name,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                fileId,
+                Guid.NewGuid().ToString("N"));
+            await store.AppendMessageAsync(new ChatMessage(
+                announcement.MessageId!, room, announcement.Sender, announcement.Text,
+                announcement.Timestamp, fileId)).ConfigureAwait(false);
+            Broadcast(target, announcement);
+        });
+
     public ValueTask DisconnectAsync(ClientSession session) =>
         _commands.Writer.WriteAsync(() =>
         {

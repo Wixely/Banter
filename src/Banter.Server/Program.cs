@@ -1,5 +1,6 @@
 using Banter.Protocol.Transport;
 using Banter.Server;
+using Banter.Server.Files;
 using Banter.Server.Persistence;
 
 var endpoint = new Uri(Arg("--endpoint") ?? "tcp://127.0.0.1:7770");
@@ -31,7 +32,10 @@ if (await accounts.CountAsync() == 0)
     await accounts.CreateUserAsync("dagger", "banter", isAgent: true);
 }
 
-await using var server = new BanterServer(new TcpBanterTransport(), accounts, new DbServerStore(database));
+var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA") ?? "banter-data";
+var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = dataDir });
+
+await using var server = new BanterServer(new TcpBanterTransport(), accounts, new DbServerStore(database), fileStore);
 await server.StartAsync(endpoint);
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");

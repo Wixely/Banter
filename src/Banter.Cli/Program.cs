@@ -140,13 +140,33 @@ async Task<bool> HandleAsync(string line)
             await client.SendPrivateMessageAsync(to, text);
             Print($"[pm -> {to}] {text}");
             return true;
+        case "/files" when (argument ?? currentRoom) is { } filesRoom:
+            var files = await client.ListFilesAsync(filesRoom);
+            foreach (var f in files.Files)
+            {
+                Print($"  {f.FileId}  {f.Name} ({f.Size} bytes, {f.MimeType}) by {f.Uploader}");
+            }
+
+            return true;
+        case "/upload" when currentRoom is not null && argument is not null:
+            var path = argument.Trim('"');
+            var uploaded = await client.UploadFileAsync(
+                currentRoom, Path.GetFileName(path), await File.ReadAllBytesAsync(path), "application/octet-stream");
+            Print($"* uploaded {uploaded.Name} as {uploaded.FileId}");
+            return true;
+        case "/download" when argument is not null && argument.Split(' ', 2) is [var dlId, .. var rest]:
+            var bytes = await client.DownloadFileAsync(dlId);
+            var savePath = rest is [var dest] ? dest.Trim('"') : (await client.GetFileInfoAsync(dlId)).Name;
+            await File.WriteAllBytesAsync(savePath, bytes);
+            Print($"* downloaded {bytes.Length} bytes to {savePath}");
+            return true;
         case "/ping":
             Print($"* pong in {(await client.PingAsync()).TotalMilliseconds:F0} ms");
             return true;
         case "/quit":
             return false;
         case "/help":
-            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /ping | /quit -- anything else is said in the current room");
+            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /files [#room] | /upload <path> | /download <id> [path] | /ping | /quit -- anything else is said in the current room");
             return true;
         default:
             Print("! unknown or incomplete command -- /help");

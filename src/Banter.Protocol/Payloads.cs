@@ -165,6 +165,83 @@ public sealed record MsgStreamEndPayload(
     [property: Key(1)] string FinalText,
     [property: Key(2)] long Timestamp);
 
+// ---- Files (room-scoped storage, §5a) ----
+
+/// <summary>Starts an upload. Server replies with <see cref="FileInfoPayload"/>: when
+/// <c>Complete</c> is already true the content was deduplicated by hash and no chunks are
+/// needed. <see cref="Quiet"/> suppresses the room announcement message.</summary>
+[MessagePackObject]
+public sealed record FilePutStartPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string Name,
+    [property: Key(2)] string MimeType,
+    [property: Key(3)] long Size,
+    [property: Key(4)] string Sha256,
+    [property: Key(5)] string? Description,
+    [property: Key(6)] bool Quiet);
+
+/// <summary>One sequential upload chunk; <see cref="Offset"/> must equal bytes received so far.</summary>
+[MessagePackObject]
+public sealed record FilePutChunkPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] long Offset,
+    [property: Key(2)] byte[] Data);
+
+[MessagePackObject]
+public sealed record FilePutEndPayload([property: Key(0)] string FileId);
+
+/// <summary>Requests up to <see cref="MaxBytes"/> from <see cref="Offset"/>; reply is a
+/// <see cref="FileChunkPayload"/>. Loop until <c>Eof</c>.</summary>
+[MessagePackObject]
+public sealed record FileGetPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] long Offset,
+    [property: Key(2)] int MaxBytes);
+
+[MessagePackObject]
+public sealed record FileChunkPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] long Offset,
+    [property: Key(2)] byte[] Data,
+    [property: Key(3)] bool Eof);
+
+/// <summary>Request: room + empty list (like ROOM_LIST). Reply: the room's visible files.</summary>
+[MessagePackObject]
+public sealed record FileListPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] IReadOnlyList<FileInfoPayload> Files);
+
+/// <summary>File metadata. As a request, only <see cref="FileId"/> matters — use
+/// <see cref="Request"/>.</summary>
+[MessagePackObject]
+public sealed record FileInfoPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] string Name,
+    [property: Key(2)] string MimeType,
+    [property: Key(3)] long Size,
+    [property: Key(4)] string Sha256,
+    [property: Key(5)] string Uploader,
+    [property: Key(6)] long CreatedAt,
+    [property: Key(7)] string? Description,
+    [property: Key(8)] IReadOnlyList<string> Rooms,
+    [property: Key(9)] bool Complete)
+{
+    public static FileInfoPayload Request(string fileId) => new(fileId, "", "", 0, "", "", 0, null, [], false);
+}
+
+[MessagePackObject]
+public sealed record FileGrantPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] string Room);
+
+[MessagePackObject]
+public sealed record FileRevokePayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] string Room);
+
+[MessagePackObject]
+public sealed record FileDeletePayload([property: Key(0)] string FileId);
+
 // ---- Generic ----
 
 [MessagePackObject]

@@ -18,6 +18,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
 | CI (`dotnet build` / `test`) | in place |
 | Persistence: Dapper + migration manifest — SQLite (default) / PostgreSQL (hosted) | implemented, tested (SQLite; Postgres untested pending a server) |
+| Room-scoped file storage (§5a: chunked transfer, hash dedup, grants, quotas, announcements) | implemented, tested |
 | `Banter.Cli` interactive client | implemented, smoke-tested |
 | CupriMark catalogue + CupriNet transport | pending (needs Wixely feed PAT) |
 
