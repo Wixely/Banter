@@ -436,6 +436,41 @@ this problem, and *neither* treats "run the CLI and read stdout" as the integrat
   notifications projected into Hermes' own message format), and drives Claude Code headlessly
   with `-p --output-format stream-json`, capturing `session_id` for resumption.
 
+**Correction (2026-08-25): DaggerAgent already ships third-party CLI support — Path C is further
+off than the spike first suggested.** `EndpointConfig.Provider` accepts `ClaudeCli` / `CodexCli` /
+`CopilotCli` as first-class endpoints reusing each CLI's own auth (with permission-mode, allowed-
+tools, sandbox and approval knobs), and `Tools/CliDelegationTools.cs` exposes
+`delegate_to_claude` / `delegate_to_codex` / `delegate_to_copilot` which parse `--output-format
+json` and auto-resume via a `(jobId, cli, cwd) → session_id` store. The initial spike used
+`exec_shell` only because it was driven by hand.
+
+**Two context-ownership models, and DaggerAgent already distinguishes them.** `ContextCompressor`
+skips compression when the endpoint is a CLI provider because it "manages its own context". That
+is exactly the split Banter needs:
+
+| Agent kind | Who owns the conversation | Resume handle |
+|---|---|---|
+| Local model (LM Studio/Ollama, stateless `/v1/chat/completions`) | **DaggerAgent** — `ConversationState.History` in SQLite | DaggerAgent job id (`dagger run --resume <id>`) |
+| Third-party CLI (Claude Code, Codex, Copilot) | **the CLI** — its own transcript store | that CLI's session id |
+
+So Banter persists **one opaque resume handle per (agent instance, room)** and does not care which
+kind it is. Both fit `AGENT_MOVE` park/resume; neither needs a long-lived process.
+
+**Context budget for local models is configurable, and verified working (2026-08-25).**
+`Endpoints[].MaxContextTokens` sizes the compression trigger per endpoint, scaled by the global
+threshold:max ratio (0.75 default), with `MaxOutputTokens` reserving reply space. Proven by
+setting a 1,200-token window and watching compression fire at ~932 and ~984 tokens, folding prior
+summaries. **Caveat, documented in `EndpointConfig`: the budget covers conversation *history*
+only — tool schemas are a separate per-request cost it does not trim.** Measured: a trivial prompt
+with ten tools cost 3,316 input tokens before any conversation, so small-context endpoints need
+their MCP tool set trimmed. Also point `Agent:SummariserModel` at something larger than the chat
+model — compression summarises using the LLM itself, and a 1.2B writing the summary loses a lot.
+
+**The one gap that bites us:** the CLI session store is in-memory, so a Warden restart would
+silently drop every room's delegated-CLI context while the job itself resumes fine. Raised as
+[Wixely/DaggerAgent#6](https://github.com/Wixely/DaggerAgent/issues/6); until fixed, treat
+third-party-CLI room context as non-durable across restarts.
+
 **The cheap intermediate we should take first.** Claude Code's headless mode
 ([docs](https://code.claude.com/docs/en/headless)) already gives most of what ACP would, without
 a protocol bridge: `--output-format stream-json --verbose --include-partial-messages` emits NDJSON
