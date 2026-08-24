@@ -417,6 +417,34 @@ notifications → `MSG_STREAM_*`, and surface permission requests to room ops. *
 driving those CLIs through DaggerAgent's process tools proves too lossy (no streaming, no
 permission prompts) and we want them as first-class room users. Keep it in the solution layout as
 a placeholder; implement in Phase 6 at the earliest.
+[Wixely/acp-csharp](https://github.com/Wixely/acp-csharp) already exists as a C# ACP SDK, so the
+build cost here is lower than "write a protocol client".
+
+**Prior art, surveyed 2026-08-25 — worth knowing before Phase 6.** Two projects solve exactly
+this problem, and *neither* treats "run the CLI and read stdout" as the integration surface:
+
+- **[block/buzz](https://github.com/block/buzz)** — coding agents as members of a group chat,
+  i.e. Banter's shape almost exactly. It integrates Goose/Codex/Claude Code through `buzz-acp`,
+  an **ACP harness**, so agents are chat members with their own identity and keys rather than
+  command invocations, and long-running context is grounded in the relay's signed event log
+  rather than in agent-side session state. This is the strongest evidence that *if* we ever want
+  third-party CLIs as first-class room users, ACP is the answer and Path B-over-process-tools
+  is not. It does not change the v1 decision (wrapped CLIs are tools), but it means Path C is a
+  known-good destination rather than a speculative one.
+- **[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)** — drives Codex
+  over its **app-server** JSON-RPC-over-stdio runtime (`thread/start`, `turn/start`, `item/*`
+  notifications projected into Hermes' own message format), and drives Claude Code headlessly
+  with `-p --output-format stream-json`, capturing `session_id` for resumption.
+
+**The cheap intermediate we should take first.** Claude Code's headless mode
+([docs](https://code.claude.com/docs/en/headless)) already gives most of what ACP would, without
+a protocol bridge: `--output-format stream-json --verbose --include-partial-messages` emits NDJSON
+per line including `tool_use`/`tool_result` blocks and a final `result` carrying `session_id`;
+`--resume <session-id>` then continues that conversation from a *separate one-shot invocation*.
+That last point is the important one — **long-running context does not require a long-lived
+process**. Per-room agent context can be (room → session-id) persisted server-side and resumed,
+which fits Banter's existing `AGENT_MOVE` park/resume design and survives Warden restarts. Raised
+on the DaggerAgent side as [Wixely/DaggerAgent#3](https://github.com/Wixely/DaggerAgent/issues/3).
 
 **`Banter.Warden`** is the supervisor daemon for whatever agents run: starts DaggerAgent
 instances and `LlmChatAgent`s from config, restarts with backoff, applies per-room throttles
