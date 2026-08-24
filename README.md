@@ -6,15 +6,20 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 - **Architecture & build plan:** [PLAN.md](PLAN.md)
 - **Client UI decision (CupriFace):** [CUPRIFACE-PLAN.md](CUPRIFACE-PLAN.md)
 
-## Status — Phase 0
+## Status — Phase 0 → 1
 
 | Piece | State |
 |---|---|
 | Solution layout (`Banter.slnx`, per PLAN §2) | scaffolded |
 | `Banter.Protocol` v1 (envelope, payloads, MessagePack + JSON debug codec, framing) | implemented, tested |
+| `IBanterTransport` seam + plain-TCP fallback | implemented, tested |
+| `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
+| `Banter.Client.Core` (`BanterClient`: handshake, requests, push events) | implemented, tested |
+| End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
 | CI (`dotnet build` / `test`) | in place |
-| CupriMark `banter.core` catalogue | pending (needs Wixely feed PAT) |
-| CupriNet / CupriFace / DaggerAgent spikes | pending |
+| SQLite persistence (accounts, history) | next |
+| `Banter.Cli` interactive client | next |
+| CupriMark catalogue + CupriNet transport | pending (needs Wixely feed PAT) |
 
 ## Building
 

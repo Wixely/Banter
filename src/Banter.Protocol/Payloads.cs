@@ -46,13 +46,20 @@ public sealed record ByePayload([property: Key(0)] string? Reason);
 [MessagePackObject]
 public sealed record NickPayload([property: Key(0)] string Nick);
 
+/// <summary>Client→server: join a room (<see cref="Nick"/> ignored). Server→room: announce a
+/// join, with <see cref="Nick"/> set to who joined.</summary>
 [MessagePackObject]
-public sealed record JoinPayload([property: Key(0)] string Room);
+public sealed record JoinPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string? Nick = null);
 
+/// <summary>Client→server: leave a room. Server→room: announce a part, with
+/// <see cref="Nick"/> set to who left.</summary>
 [MessagePackObject]
 public sealed record PartPayload(
     [property: Key(0)] string Room,
-    [property: Key(1)] string? Reason);
+    [property: Key(1)] string? Reason,
+    [property: Key(2)] string? Nick = null);
 
 [MessagePackObject]
 public sealed record RoomListPayload(
@@ -100,14 +107,17 @@ public sealed record WhoisPayload([property: Key(0)] string Nick);
 // ---- Chat ----
 
 /// <summary>A room message. <see cref="FileId"/> optionally references a stored file (§5a)
-/// which clients render inline.</summary>
+/// which clients render inline. <see cref="Sender"/>, <see cref="Timestamp"/>, and
+/// <see cref="MessageId"/> are authoritative from the server — values a client sends are
+/// overwritten on relay.</summary>
 [MessagePackObject]
 public sealed record MsgPayload(
     [property: Key(0)] string Room,
     [property: Key(1)] string Sender,
     [property: Key(2)] string Text,
     [property: Key(3)] long Timestamp,
-    [property: Key(4)] string? FileId);
+    [property: Key(4)] string? FileId,
+    [property: Key(5)] string? MessageId = null);
 
 [MessagePackObject]
 public sealed record PrivMsgPayload(
