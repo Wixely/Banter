@@ -17,7 +17,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
 | CI (`dotnet build` / `test`) | in place |
-| SQLite persistence (accounts, history) | next |
+| Persistence: Dapper + migration manifest — SQLite (default) / PostgreSQL (hosted) | implemented, tested (SQLite; Postgres untested pending a server) |
 | `Banter.Cli` interactive client | next |
 | CupriMark catalogue + CupriNet transport | pending (needs Wixely feed PAT) |
 

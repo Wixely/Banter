@@ -1,18 +1,39 @@
-using Banter.Core;
 using Banter.Protocol.Transport;
 using Banter.Server;
+using Banter.Server.Persistence;
 
-var endpoint = new Uri(args.Length > 0 ? args[0] : "tcp://127.0.0.1:7770");
+var endpoint = new Uri(Arg("--endpoint") ?? "tcp://127.0.0.1:7770");
+BanterStorageOptions storage;
+try
+{
+    storage = BanterStorageOptions.Parse(
+        Arg("--db") ?? Environment.GetEnvironmentVariable("BANTER_DB"),
+        Arg("--connection") ?? Environment.GetEnvironmentVariable("BANTER_CONNECTION"));
+}
+catch (ArgumentException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    Console.Error.WriteLine("usage: banter-server [--endpoint tcp://host:port] [--db sqlite|postgres] [--connection <connection-string>]");
+    return 1;
+}
 
-// Development accounts until the SQLite store lands (Phase 1 follow-up).
-var accounts = new InMemoryAccountStore()
-    .AddUser("alice", "banter")
-    .AddUser("bob", "banter")
-    .AddUser("dagger", "banter", isAgent: true);
+var database = new BanterDatabase(storage);
+await database.InitializeAsync();
+var accounts = new DbAccountStore(database);
 
-await using var server = new BanterServer(new TcpBanterTransport(), accounts);
+if (await accounts.CountAsync() == 0)
+{
+    // First run against an empty database: seed development users so the suite is usable
+    // immediately. Real deployments create accounts via admin tooling (Banter.Cli, later).
+    Console.WriteLine("No accounts found - seeding development users alice/bob/dagger (password: banter).");
+    await accounts.CreateUserAsync("alice", "banter");
+    await accounts.CreateUserAsync("bob", "banter");
+    await accounts.CreateUserAsync("dagger", "banter", isAgent: true);
+}
+
+await using var server = new BanterServer(new TcpBanterTransport(), accounts, new DbServerStore(database));
 await server.StartAsync(endpoint);
-Console.WriteLine($"Banter.Server listening on {server.Endpoint}");
+Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 var stop = new TaskCompletionSource();
@@ -22,3 +43,10 @@ Console.CancelKeyPress += (_, e) =>
     stop.TrySetResult();
 };
 await stop.Task;
+return 0;
+
+string? Arg(string name)
+{
+    var index = Array.IndexOf(args, name);
+    return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+}

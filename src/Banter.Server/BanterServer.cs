@@ -10,14 +10,18 @@ namespace Banter.Server;
 /// <see cref="ClientSession"/> per peer over a shared <see cref="RoomEngine"/>. Hostable
 /// in-process for tests and from Program for real.
 /// </summary>
-public sealed class BanterServer(IBanterServerTransport transport, IAccountStore accounts) : IAsyncDisposable
+public sealed class BanterServer(
+    IBanterServerTransport transport,
+    IAccountStore accounts,
+    Persistence.IServerStore store) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
-    private readonly RoomEngine _engine = new();
+    private readonly RoomEngine _engine = new(store);
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, byte> _sessionTasks = new();
     private IBanterListener? _listener;
     private Task? _acceptLoop;
+    private bool _disposed;
 
     public Uri Endpoint => _listener?.LocalEndpoint
         ?? throw new InvalidOperationException("The server has not been started.");
@@ -30,7 +34,7 @@ public sealed class BanterServer(IBanterServerTransport transport, IAccountStore
         }
 
         _listener = await transport.ListenAsync(endpoint, cancellationToken).ConfigureAwait(false);
-        _engine.Start();
+        await _engine.StartAsync(cancellationToken).ConfigureAwait(false);
         _acceptLoop = Task.Run(AcceptLoopAsync, CancellationToken.None);
     }
 
@@ -57,6 +61,12 @@ public sealed class BanterServer(IBanterServerTransport transport, IAccountStore
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         await _stopping.CancelAsync().ConfigureAwait(false);
         if (_listener is not null)
         {

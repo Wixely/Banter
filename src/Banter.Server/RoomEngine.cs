@@ -1,45 +1,52 @@
 using System.Threading.Channels;
 using Banter.Core;
 using Banter.Protocol;
+using Banter.Server.Persistence;
 
 namespace Banter.Server;
 
 /// <summary>
 /// The authoritative room state machine. All mutations flow through one command channel with a
-/// single consumer, so ordering is deterministic and state needs no locks (PLAN §5). Fan-out is
-/// non-blocking: sessions own outbound queues.
+/// single consumer, so ordering is deterministic and live state needs no locks (PLAN §5).
+/// Messages, rooms, and topics persist through <see cref="IServerStore"/>; store awaits happen
+/// inside the single-writer loop, which keeps history ordering identical to fan-out ordering.
 /// </summary>
-internal sealed class RoomEngine
+internal sealed class RoomEngine(IServerStore store)
 {
-    private const int HistoryCapPerRoom = 1_000;
-
-    private readonly Channel<Action> _commands = Channel.CreateUnbounded<Action>(
+    private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(
         new UnboundedChannelOptions { SingleReader = true });
     private readonly Dictionary<string, Room> _rooms = new(StringComparer.OrdinalIgnoreCase);
     private Task? _loop;
 
-    private sealed class Room(string name)
+    private sealed class Room(string name, string? topic)
     {
         public string Name { get; } = name;
-        public string? Topic { get; set; }
+        public string? Topic { get; set; } = topic;
         public HashSet<ClientSession> Members { get; } = [];
-        public List<MsgPayload> History { get; } = [];
     }
 
-    public void Start() => _loop = Task.Run(async () =>
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        await foreach (var command in _commands.Reader.ReadAllAsync().ConfigureAwait(false))
+        foreach (var persisted in await store.GetRoomsAsync(cancellationToken).ConfigureAwait(false))
         {
-            try
-            {
-                command();
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"RoomEngine command failed: {ex}");
-            }
+            _rooms[persisted.Name] = new Room(persisted.Name, persisted.Topic);
         }
-    });
+
+        _loop = Task.Run(async () =>
+        {
+            await foreach (var command in _commands.Reader.ReadAllAsync().ConfigureAwait(false))
+            {
+                try
+                {
+                    await command().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"RoomEngine command failed: {ex}");
+                }
+            }
+        }, CancellationToken.None);
+    }
 
     public async ValueTask StopAsync()
     {
@@ -51,29 +58,33 @@ internal sealed class RoomEngine
     }
 
     public ValueTask DispatchAsync(ClientSession session, BanterEnvelope envelope, object payload) =>
-        _commands.Writer.WriteAsync(() => Handle(session, envelope, payload));
+        _commands.Writer.WriteAsync(() => HandleAsync(session, envelope, payload));
 
     public ValueTask DisconnectAsync(ClientSession session) =>
-        _commands.Writer.WriteAsync(() => RemoveFromAllRooms(session, "disconnected"));
+        _commands.Writer.WriteAsync(() =>
+        {
+            RemoveFromAllRooms(session, "disconnected");
+            return ValueTask.CompletedTask;
+        });
 
-    private void Handle(ClientSession session, BanterEnvelope envelope, object payload)
+    private async ValueTask HandleAsync(ClientSession session, BanterEnvelope envelope, object payload)
     {
         switch (payload)
         {
             case JoinPayload join:
-                HandleJoin(session, envelope, join);
+                await HandleJoinAsync(session, envelope, join).ConfigureAwait(false);
                 break;
             case PartPayload part:
                 HandlePart(session, envelope, part);
                 break;
             case MsgPayload msg:
-                HandleMsg(session, envelope, msg);
+                await HandleMsgAsync(session, envelope, msg).ConfigureAwait(false);
                 break;
             case TopicPayload topic:
-                HandleTopic(session, envelope, topic);
+                await HandleTopicAsync(session, envelope, topic).ConfigureAwait(false);
                 break;
             case HistoryReqPayload history:
-                HandleHistory(session, envelope, history);
+                await HandleHistoryAsync(session, envelope, history).ConfigureAwait(false);
                 break;
             case RoomListPayload:
                 session.Send(new RoomListPayload(
@@ -89,7 +100,7 @@ internal sealed class RoomEngine
         }
     }
 
-    private void HandleJoin(ClientSession session, BanterEnvelope envelope, JoinPayload join)
+    private async ValueTask HandleJoinAsync(ClientSession session, BanterEnvelope envelope, JoinPayload join)
     {
         if (!RoomName.IsValid(join.Room))
         {
@@ -99,8 +110,9 @@ internal sealed class RoomEngine
 
         if (!_rooms.TryGetValue(join.Room, out var room))
         {
-            room = new Room(join.Room);
+            room = new Room(join.Room, topic: null);
             _rooms[room.Name] = room;
+            await store.UpsertRoomAsync(room.Name, null).ConfigureAwait(false);
         }
 
         if (room.Members.Add(session))
@@ -122,7 +134,7 @@ internal sealed class RoomEngine
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
-    private void HandleMsg(ClientSession session, BanterEnvelope envelope, MsgPayload msg)
+    private async ValueTask HandleMsgAsync(ClientSession session, BanterEnvelope envelope, MsgPayload msg)
     {
         if (!TryGetJoinedRoom(session, envelope, msg.Room, out var room))
         {
@@ -136,18 +148,20 @@ internal sealed class RoomEngine
             MessageId = Guid.NewGuid().ToString("N"),
         };
 
-        room.History.Add(authoritative);
-        if (room.History.Count > HistoryCapPerRoom)
-        {
-            room.History.RemoveAt(0);
-        }
+        await store.AppendMessageAsync(new ChatMessage(
+            authoritative.MessageId!,
+            authoritative.Room,
+            authoritative.Sender,
+            authoritative.Text,
+            authoritative.Timestamp,
+            authoritative.FileId)).ConfigureAwait(false);
 
         // Echo to every member including the sender — the echo carries the authoritative
         // id/timestamp and doubles as delivery confirmation.
         Broadcast(room, authoritative);
     }
 
-    private void HandleTopic(ClientSession session, BanterEnvelope envelope, TopicPayload topic)
+    private async ValueTask HandleTopicAsync(ClientSession session, BanterEnvelope envelope, TopicPayload topic)
     {
         if (!TryGetJoinedRoom(session, envelope, topic.Room, out var room))
         {
@@ -155,10 +169,11 @@ internal sealed class RoomEngine
         }
 
         room.Topic = topic.Topic;
+        await store.UpsertRoomAsync(room.Name, topic.Topic).ConfigureAwait(false);
         Broadcast(room, topic);
     }
 
-    private void HandleHistory(ClientSession session, BanterEnvelope envelope, HistoryReqPayload request)
+    private async ValueTask HandleHistoryAsync(ClientSession session, BanterEnvelope envelope, HistoryReqPayload request)
     {
         if (!TryGetJoinedRoom(session, envelope, request.Room, out var room))
         {
@@ -166,21 +181,17 @@ internal sealed class RoomEngine
         }
 
         var limit = Math.Clamp(request.Limit, 1, 500);
-        var end = room.History.Count;
-        if (request.BeforeMessageId is not null)
+        var page = await store.GetHistoryPageAsync(room.Name, request.BeforeMessageId, limit).ConfigureAwait(false);
+        if (page is null)
         {
-            end = room.History.FindIndex(m => m.MessageId == request.BeforeMessageId);
-            if (end < 0)
-            {
-                session.Send(new ErrorPayload("BAD_CURSOR", "Unknown history cursor."), replyTo: envelope.MsgId);
-                return;
-            }
+            session.Send(new ErrorPayload("BAD_CURSOR", "Unknown history cursor."), replyTo: envelope.MsgId);
+            return;
         }
 
-        var start = Math.Max(0, end - limit);
-        var page = room.History[start..end];
-        var nextCursor = start > 0 ? page[0].MessageId : null;
-        session.Send(new HistoryChunkPayload(room.Name, page, nextCursor), replyTo: envelope.MsgId);
+        var messages = page.Messages
+            .Select(m => new MsgPayload(m.Room, m.Sender, m.Text, m.Timestamp, m.FileId, m.MessageId))
+            .ToArray();
+        session.Send(new HistoryChunkPayload(room.Name, messages, page.NextCursor), replyTo: envelope.MsgId);
     }
 
     private void HandleMembers(ClientSession session, BanterEnvelope envelope, RoomMembersPayload request)

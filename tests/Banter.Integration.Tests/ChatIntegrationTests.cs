@@ -3,28 +3,69 @@ using Banter.Core;
 using Banter.Protocol;
 using Banter.Protocol.Transport;
 using Banter.Server;
+using Banter.Server.Persistence;
 using Xunit;
 
 namespace Banter.Integration.Tests;
 
-/// <summary>In-proc server + real clients over loopback TCP — the PLAN Phase 1 exit criteria.</summary>
+/// <summary>In-proc server + real clients over loopback TCP, on a real SQLite database —
+/// the PLAN Phase 1 exit criteria.</summary>
 public sealed class ChatIntegrationTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private readonly TcpBanterTransport _transport = new();
+    private string _dbPath = null!;
+    private BanterDatabase _database = null!;
     private BanterServer _server = null!;
 
     public async Task InitializeAsync()
     {
+        _dbPath = Path.Combine(Path.GetTempPath(), $"banter-it-{Guid.NewGuid():N}.db");
+        _database = new BanterDatabase(BanterStorageOptions.DefaultSqlite(_dbPath));
+        await _database.InitializeAsync();
         var accounts = new InMemoryAccountStore()
             .AddUser("alice", "pw-a")
             .AddUser("bob", "pw-b")
             .AddUser("dagger", "pw-d", isAgent: true);
-        _server = new BanterServer(_transport, accounts);
+        _server = new BanterServer(_transport, accounts, new DbServerStore(_database));
         await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
     }
 
-    public async Task DisposeAsync() => await _server.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await _server.DisposeAsync();
+        BanterDatabase.ClearSqlitePools();
+        File.Delete(_dbPath);
+    }
+
+    [Fact]
+    public async Task HistoryAndTopicSurviveAServerRestart()
+    {
+        await using (var alice = await ConnectAsync("alice", "pw-a"))
+        {
+            await alice.JoinAsync("#durable");
+            await alice.SetTopicAsync("#durable", "here to stay");
+            await alice.SendMessageAsync("#durable", "before the restart");
+            await WaitForHistoryCountAsync(alice, "#durable", 1);
+        }
+
+        await _server.DisposeAsync();
+
+        // A new server process over the same database.
+        _server = new BanterServer(_transport, new InMemoryAccountStore().AddUser("bob", "pw-b"), new DbServerStore(_database));
+        await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
+
+        await using var bob = await ConnectAsync("bob", "pw-b");
+        var rooms = await bob.ListRoomsAsync();
+        var durable = Assert.Single(rooms.Rooms, r => r.Name == "#durable");
+        Assert.Equal("here to stay", durable.Topic);
+
+        await bob.JoinAsync("#durable");
+        var history = await bob.GetHistoryAsync("#durable");
+        var survivor = Assert.Single(history.Messages);
+        Assert.Equal("before the restart", survivor.Text);
+        Assert.Equal("alice", survivor.Sender);
+    }
 
     private Task<BanterClient> ConnectAsync(string user, string secret) =>
         BanterClient.ConnectAsync(_transport, _server.Endpoint, user, secret);

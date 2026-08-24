@@ -195,7 +195,11 @@ per-area catalogues and turn on signing + lockfile gates when Phase 5 makes thir
 - **Room engine:** in-memory authoritative state (rooms, membership, modes), single writer per room
   (`System.Threading.Channels` actor-ish loop) so ordering is deterministic. Fan-out to member
   connections.
-- **Persistence:** SQLite via EF Core (fully managed provider) for accounts, room definitions, and
+- **Persistence:** Dapper over ADO (no ORM) with a hand-rolled migration manifest (ordered
+  per-dialect SQL migrations recorded in a `schema_manifest` table, applied transactionally at
+  startup). **SQLite is the default** (zero-setup, fully managed provider); **hosted PostgreSQL
+  is a first-class option** via Npgsql — same stores and manifest, per-provider SQL only where
+  dialects differ. Covers accounts (PBKDF2-hashed credentials), room definitions/topics, and
   message history. History replay via `HISTORY_REQ` with cursor paging.
 - **Rules for agent-filled rooms:** per-room throttle (max agent messages/minute) and a
   turn-taking guard (an agent isn't re-prompted by its own output; loop-breaker if two agents
