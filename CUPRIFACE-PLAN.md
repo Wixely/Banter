@@ -159,6 +159,32 @@ way.
   audio glue). **MAUI leaves the plan entirely**; PLAN.md §7's platform-specifics section
   survives almost intact — it was always about OS APIs (WASAPI, AudioRecord, `RegisterHotKey`,
   foreground services), not MAUI.
+### 5a. Spike results (2026-08-24, CupriFace 0.3.0, headless)
+
+Run as automated tests in `tests/Banter.App.Spikes` — CupriFace's engine package renders without
+a window (`CupriApp.CreateDocument()` → `BuildDisplayList` / `Render` / `RenderToPixels`), so
+these are repeatable gates in CI, not one-off eyeball checks. Ratios are the assertions
+(CupriFace's own perf-test guidance); wall-clock is CPU raster on this dev machine.
+
+| Spike | Result | Verdict |
+|---|---|---|
+| **Virtualized scrollback** — layout cost, 100 vs 10,000 messages | **×1.00** (0.148 ms → 0.148 ms) | **Pass, decisively.** `<cupri-virtual>` windows to a screenful; history size is free. |
+| Same timeline **without** virtualization (control) | ×443 (0.594 ms → 263 ms) | Confirms the above is real, and that virtualization is mandatory, not a nicety. |
+| **Full frame at chat scale** — 10,000-message room | layout 0.136 ms, full CPU paint 2.14 ms | Pass. GPU path only improves on this. |
+| **Streaming-delta render rate** — per-token rebind + layout in a 2,000-message room | **0.899 ms** | Pass with ~20× headroom against a 50 tokens/s stream, even though `Refresh()` is a full re-bind (there is no property-level invalidation). |
+| **Composer** — click, type, two-way write-back | model updated (`'hi'`) | Pass headlessly. Feel/IME on a real Android device still outstanding. |
+
+**The one real constraint found: `<cupri-virtual>` requires a fixed `item-height`.** Chat
+messages are variable height, so the timeline cannot simply drop into it. Options for Phase 2,
+in preference order: (1) fixed-height rows — one line per message with overflow elided, and an
+expand affordance; (2) **window the timeline ourselves** — exactly the fallback PLAN §7 already
+anticipated, and cheap given `HISTORY_REQ` paging exists; (3) raise variable-height
+virtualization upstream (it is our library). Decide when the timeline UI is built; the
+measurement says either path performs.
+
+Still outstanding from this list: WASM host round-trip, and everything on-device Android
+(scrollback feel, soft-keyboard IME, GL/foreground-service endurance).
+
 - **Phase 0 spikes (all against real CupriFace):**
   1. 10k-message virtualized/windowed scrollback perf — desktop **and** a mid-range Android
      phone;

@@ -508,8 +508,10 @@ room-scoped server objects (like files, §5a) so "the main channel" doubles as a
 solution layout, CI (`dotnet build`/`test`), `Banter.Protocol` v1 contracts + serialization tests
 + initial CupriMark `banter.core` catalogue (unsigned, loose ranges);
 **CupriNet spike** (pair/channel/reconnect Windows↔Windows and Android↔Windows); **CupriFace
-spikes** (CUPRIFACE-PLAN §5: 10k-message scrollback perf and composer/IME feel on desktop + a
-real Android device, streaming-delta render rate, WASM host round-trip, Android endurance);
+spikes** — desktop half **done and green** (CUPRIFACE-PLAN §5a: 10k-message scrollback is ×1.00
+with `<cupri-virtual>`, full frame 2.1 ms, per-token rebind 0.9 ms, composer write-back works;
+run headlessly as tests in `tests/Banter.App.Spikes`). Outstanding: WASM host round-trip and
+the on-device Android set (scrollback feel, IME, endurance);
 **DaggerAgent spike** (run it against an OpenAI-compatible endpoint, exercise `spawn_subagent`
 and driving one external agent CLI through its process tools — confirms Path C/ACP can stay
 deferred).

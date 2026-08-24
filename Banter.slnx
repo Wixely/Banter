@@ -19,5 +19,6 @@
     <Project Path="tests/Banter.Server.Tests/Banter.Server.Tests.csproj" />
     <Project Path="tests/Banter.Voice.Tests/Banter.Voice.Tests.csproj" />
     <Project Path="tests/Banter.Integration.Tests/Banter.Integration.Tests.csproj" />
+    <Project Path="tests/Banter.App.Spikes/Banter.App.Spikes.csproj" />
   </Folder>
 </Solution>

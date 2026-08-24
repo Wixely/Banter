@@ -22,6 +22,9 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Cli` interactive client | implemented, smoke-tested |
 | `Banter.Transport.CupriNet` (Conjoin → Consecrate → Conduit frames behind `IBanterTransport`) | spiked green: chat runs over the mesh; Android on-device pending |
 | CupriMark `banter.core` catalogue + HELLO range negotiation | implemented, tested |
+| Streamed messages (`MSG_STREAM_*` relay, persisted as one history message) | implemented, tested |
+| Agent guardrails (per-room rate limit + loop-breaker, on by default) | implemented, tested |
+| CupriFace spikes — virtualized scrollback, frame budget, streaming rebind, composer | green (headless, `tests/Banter.App.Spikes`); Android/WASM outstanding |
 | DaggerAgent spike (needs an OpenAI-compatible endpoint) | pending |
 
 ## Building
