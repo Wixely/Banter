@@ -66,6 +66,10 @@ public sealed class BanterClient : IAsyncDisposable
     /// <summary>A streamed message finished. <c>FinalText</c> is authoritative — replace the
     /// accumulated deltas with it — and <c>MessageId</c> matches the persisted history entry.</summary>
     public event Action<MsgStreamEndPayload>? MessageStreamEnded;
+    /// <summary>An error that answers no outstanding request — typically a refusal of a
+    /// fire-and-forget send (throttled, loop-broken, not in room). Agents watch this to learn
+    /// they are being rate-limited; without it the refusal would be invisible.</summary>
+    public event Action<ErrorPayload>? ServerError;
     public event Action? Disconnected;
     /// <summary>Raised before each redial attempt (1-based attempt number).</summary>
     public event Action<int>? Reconnecting;
@@ -434,6 +438,9 @@ public sealed class BanterClient : IAsyncDisposable
                         break;
                     case MsgStreamEndPayload streamEnd:
                         MessageStreamEnded?.Invoke(streamEnd);
+                        break;
+                    case ErrorPayload serverError:
+                        ServerError?.Invoke(serverError);
                         break;
                 }
             }

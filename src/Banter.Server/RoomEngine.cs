@@ -11,8 +11,10 @@ namespace Banter.Server;
 /// Messages, rooms, and topics persist through <see cref="IServerStore"/>; store awaits happen
 /// inside the single-writer loop, which keeps history ordering identical to fan-out ordering.
 /// </summary>
-internal sealed class RoomEngine(IServerStore store)
+internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails = null)
 {
+    private readonly AgentGuardrails _guardrails = guardrails ?? AgentGuardrails.Default;
+
     private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(
         new UnboundedChannelOptions { SingleReader = true });
     private readonly Dictionary<string, Room> _rooms = new(StringComparer.OrdinalIgnoreCase);
@@ -35,6 +37,15 @@ internal sealed class RoomEngine(IServerStore store)
         public string Name { get; } = name;
         public string? Topic { get; set; } = topic;
         public HashSet<ClientSession> Members { get; } = [];
+
+        /// <summary>Timestamps of recent agent messages, for the sliding-window rate limit.</summary>
+        public Queue<long> AgentMessageTimes { get; } = new();
+
+        /// <summary>Agent messages since the last human message — the loop-breaker's counter.</summary>
+        public int ConsecutiveAgentMessages { get; set; }
+
+        /// <summary>True once the loop-breaker tripped; cleared when a human speaks.</summary>
+        public bool LoopBroken { get; set; }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -174,7 +185,7 @@ internal sealed class RoomEngine(IServerStore store)
                 HandlePrivMsg(session, envelope, priv);
                 break;
             case MsgStreamStartPayload start:
-                HandleStreamStart(session, envelope, start);
+                await HandleStreamStartAsync(session, envelope, start).ConfigureAwait(false);
                 break;
             case MsgStreamDeltaPayload delta:
                 HandleStreamDelta(session, envelope, delta);
@@ -243,6 +254,13 @@ internal sealed class RoomEngine(IServerStore store)
             return;
         }
 
+        var verdict = await CheckGuardrailsAsync(room, session).ConfigureAwait(false);
+        if (verdict != GuardrailVerdict.Allowed)
+        {
+            session.Send(GuardrailError(verdict), replyTo: envelope.MsgId);
+            return;
+        }
+
         var authoritative = msg with
         {
             Sender = session.Nick,
@@ -296,12 +314,103 @@ internal sealed class RoomEngine(IServerStore store)
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
+    // ---- Agent guardrails (§5) ----
+
+    /// <summary>
+    /// Decides whether a room will relay this sender's message. Humans always pass, and a human
+    /// message is what clears a tripped loop-breaker. Agents are rate-limited over a sliding
+    /// minute and cut off entirely once they have talked among themselves for too long.
+    /// </summary>
+    private async ValueTask<GuardrailVerdict> CheckGuardrailsAsync(Room room, ClientSession session)
+    {
+        if (!_guardrails.Enabled)
+        {
+            return GuardrailVerdict.Allowed;
+        }
+
+        if (!session.IsAgent)
+        {
+            room.ConsecutiveAgentMessages = 0;
+            if (room.LoopBroken)
+            {
+                room.LoopBroken = false;
+                await AnnounceSystemAsync(room, "Loop-breaker cleared: a human spoke, agents may reply again.")
+                    .ConfigureAwait(false);
+            }
+
+            return GuardrailVerdict.Allowed;
+        }
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        while (room.AgentMessageTimes.Count > 0 && now - room.AgentMessageTimes.Peek() > 60_000)
+        {
+            room.AgentMessageTimes.Dequeue();
+        }
+
+        if (room.LoopBroken)
+        {
+            return GuardrailVerdict.LoopBroken;
+        }
+
+        if (room.AgentMessageTimes.Count >= _guardrails.MaxAgentMessagesPerMinute)
+        {
+            return GuardrailVerdict.RateLimited;
+        }
+
+        if (room.ConsecutiveAgentMessages >= _guardrails.MaxConsecutiveAgentMessages)
+        {
+            room.LoopBroken = true;
+            await AnnounceSystemAsync(
+                room,
+                $"Loop-breaker tripped: {_guardrails.MaxConsecutiveAgentMessages} agent messages with no human input. " +
+                "Agents are muted in this room until a human speaks.").ConfigureAwait(false);
+            return GuardrailVerdict.LoopBroken;
+        }
+
+        room.AgentMessageTimes.Enqueue(now);
+        room.ConsecutiveAgentMessages++;
+        return GuardrailVerdict.Allowed;
+    }
+
+    private static ErrorPayload GuardrailError(GuardrailVerdict verdict) => verdict switch
+    {
+        GuardrailVerdict.RateLimited => new ErrorPayload("THROTTLED", "This room's agent message rate limit is exceeded; retry shortly."),
+        GuardrailVerdict.LoopBroken => new ErrorPayload("LOOP_BROKEN", "This room's loop-breaker is active; a human must speak before agents resume."),
+        _ => new ErrorPayload("REFUSED", "The room refused the message."),
+    };
+
+    /// <summary>Posts a message attributed to the system nick — persisted like any other, so
+    /// the timeline explains why the agents went quiet.</summary>
+    private async ValueTask AnnounceSystemAsync(Room room, string text)
+    {
+        var announcement = new MsgPayload(
+            room.Name,
+            AgentGuardrails.SystemNick,
+            text,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            null,
+            Guid.NewGuid().ToString("N"));
+        await store.AppendMessageAsync(new ChatMessage(
+            announcement.MessageId!, room.Name, announcement.Sender, announcement.Text,
+            announcement.Timestamp, null)).ConfigureAwait(false);
+        Broadcast(room, announcement);
+    }
+
     // ---- Streamed messages (agent token streams, §4) ----
 
-    private void HandleStreamStart(ClientSession session, BanterEnvelope envelope, MsgStreamStartPayload start)
+    private async ValueTask HandleStreamStartAsync(ClientSession session, BanterEnvelope envelope, MsgStreamStartPayload start)
     {
         if (!TryGetJoinedRoom(session, envelope, start.Room, out var room))
         {
+            return;
+        }
+
+        // A stream is one message, so it costs one message against the guardrails — charged at
+        // START, before any tokens flow.
+        var verdict = await CheckGuardrailsAsync(room, session).ConfigureAwait(false);
+        if (verdict != GuardrailVerdict.Allowed)
+        {
+            session.Send(GuardrailError(verdict), replyTo: envelope.MsgId);
             return;
         }
 

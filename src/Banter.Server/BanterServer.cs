@@ -14,10 +14,11 @@ public sealed class BanterServer(
     IBanterServerTransport transport,
     IAccountStore accounts,
     Persistence.IServerStore store,
-    Files.FileStore files) : IAsyncDisposable
+    Files.FileStore files,
+    AgentGuardrails? guardrails = null) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
-    private readonly RoomEngine _engine = new(store);
+    private readonly RoomEngine _engine = new(store, guardrails);
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, byte> _sessionTasks = new();
     private IBanterListener? _listener;
