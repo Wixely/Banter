@@ -17,7 +17,18 @@ internal sealed class RoomEngine(IServerStore store)
         new UnboundedChannelOptions { SingleReader = true });
     private readonly Dictionary<string, Room> _rooms = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HashSet<ClientSession>> _sessionsByNick = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ActiveStream> _streams = new(StringComparer.Ordinal);
     private Task? _loop;
+
+    /// <summary>An in-flight streamed message. Deltas accumulate so a sender that vanishes
+    /// mid-stream still leaves a complete message in the room rather than a dangling one.</summary>
+    private sealed class ActiveStream(string streamId, string room, ClientSession owner)
+    {
+        public string StreamId { get; } = streamId;
+        public string Room { get; } = room;
+        public ClientSession Owner { get; } = owner;
+        public System.Text.StringBuilder Accumulated { get; } = new();
+    }
 
     private sealed class Room(string name, string? topic)
     {
@@ -122,8 +133,19 @@ internal sealed class RoomEngine(IServerStore store)
         });
 
     public ValueTask DisconnectAsync(ClientSession session) =>
-        _commands.Writer.WriteAsync(() =>
+        _commands.Writer.WriteAsync(async () =>
         {
+            // Close any stream this session left open, so the room never sees a half-written
+            // message with no end — the accumulated deltas become the final text.
+            foreach (var orphan in _streams.Values.Where(s => ReferenceEquals(s.Owner, session)).ToArray())
+            {
+                _streams.Remove(orphan.StreamId);
+                if (orphan.Accumulated.Length > 0)
+                {
+                    await CompleteStreamAsync(orphan, orphan.Accumulated.ToString()).ConfigureAwait(false);
+                }
+            }
+
             RemoveFromAllRooms(session, "disconnected");
             if (_sessionsByNick.TryGetValue(session.Nick, out var sessions))
             {
@@ -133,8 +155,6 @@ internal sealed class RoomEngine(IServerStore store)
                     _sessionsByNick.Remove(session.Nick);
                 }
             }
-
-            return ValueTask.CompletedTask;
         });
 
     private async ValueTask HandleAsync(ClientSession session, BanterEnvelope envelope, object payload)
@@ -152,6 +172,15 @@ internal sealed class RoomEngine(IServerStore store)
                 break;
             case PrivMsgPayload priv:
                 HandlePrivMsg(session, envelope, priv);
+                break;
+            case MsgStreamStartPayload start:
+                HandleStreamStart(session, envelope, start);
+                break;
+            case MsgStreamDeltaPayload delta:
+                HandleStreamDelta(session, envelope, delta);
+                break;
+            case MsgStreamEndPayload end:
+                await HandleStreamEndAsync(session, envelope, end).ConfigureAwait(false);
                 break;
             case TopicPayload topic:
                 await HandleTopicAsync(session, envelope, topic).ConfigureAwait(false);
@@ -265,6 +294,78 @@ internal sealed class RoomEngine(IServerStore store)
         }
 
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    // ---- Streamed messages (agent token streams, §4) ----
+
+    private void HandleStreamStart(ClientSession session, BanterEnvelope envelope, MsgStreamStartPayload start)
+    {
+        if (!TryGetJoinedRoom(session, envelope, start.Room, out var room))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(start.StreamId) || _streams.ContainsKey(start.StreamId))
+        {
+            session.Send(new ErrorPayload("BAD_STREAM_ID", "Stream id is missing or already in use."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        _streams[start.StreamId] = new ActiveStream(start.StreamId, room.Name, session);
+        Broadcast(room, new MsgStreamStartPayload(room.Name, session.Nick, start.StreamId));
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    private void HandleStreamDelta(ClientSession session, BanterEnvelope envelope, MsgStreamDeltaPayload delta)
+    {
+        if (!TryGetOwnedStream(session, envelope, delta.StreamId, out var stream))
+        {
+            return;
+        }
+
+        stream.Accumulated.Append(delta.Delta);
+        if (_rooms.TryGetValue(stream.Room, out var room))
+        {
+            Broadcast(room, delta);
+        }
+    }
+
+    private async ValueTask HandleStreamEndAsync(ClientSession session, BanterEnvelope envelope, MsgStreamEndPayload end)
+    {
+        if (!TryGetOwnedStream(session, envelope, end.StreamId, out var stream))
+        {
+            return;
+        }
+
+        _streams.Remove(stream.StreamId);
+        await CompleteStreamAsync(stream, end.FinalText).ConfigureAwait(false);
+    }
+
+    /// <summary>Persists the streamed message and relays the authoritative END. Shared by the
+    /// normal path and the sender-vanished path.</summary>
+    private async ValueTask CompleteStreamAsync(ActiveStream stream, string finalText)
+    {
+        if (!_rooms.TryGetValue(stream.Room, out var room))
+        {
+            return;
+        }
+
+        var messageId = Guid.NewGuid().ToString("N");
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await store.AppendMessageAsync(new ChatMessage(
+            messageId, stream.Room, stream.Owner.Nick, finalText, timestamp, null)).ConfigureAwait(false);
+        Broadcast(room, new MsgStreamEndPayload(stream.StreamId, finalText, timestamp, messageId));
+    }
+
+    private bool TryGetOwnedStream(ClientSession session, BanterEnvelope envelope, string streamId, out ActiveStream stream)
+    {
+        if (_streams.TryGetValue(streamId, out stream!) && ReferenceEquals(stream.Owner, session))
+        {
+            return true;
+        }
+
+        session.Send(new ErrorPayload("NO_SUCH_STREAM", "No stream with that id belongs to you."), replyTo: envelope.MsgId);
+        return false;
     }
 
     private async ValueTask HandleTopicAsync(ClientSession session, BanterEnvelope envelope, TopicPayload topic)

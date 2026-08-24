@@ -17,7 +17,8 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
     private readonly InMemoryAccountStore _accounts = new InMemoryAccountStore()
         .AddUser("alice", "pw-a")
         .AddUser("bob", "pw-b")
-        .AddUser("dagger", "pw-d", isAgent: true);
+        .AddUser("dagger", "pw-d", isAgent: true)
+        .AddUser("mallory", "pw-m");
     private string _dbPath = null!;
     private string _dataDir = null!;
     private BanterDatabase _database = null!;
@@ -284,6 +285,100 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         await bob.DisposeAsync();
         var part = await partSeen.Task.WaitAsync(Timeout);
         Assert.Equal("#door", part.Room);
+    }
+
+    [Fact]
+    public async Task StreamedMessageRendersLiveThenLandsInHistoryAsOneMessage()
+    {
+        await using var alice = await ConnectAsync("alice", "pw-a");
+        await using var bob = await ConnectAsync("bob", "pw-b");
+        await alice.JoinAsync("#stream");
+        await bob.JoinAsync("#stream");
+
+        var started = new TaskCompletionSource<MsgStreamStartPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ended = new TaskCompletionSource<MsgStreamEndPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deltas = new List<string>();
+        bob.MessageStreamStarted += s => started.TrySetResult(s);
+        bob.MessageStreamDelta += d => { lock (deltas) { deltas.Add(d.Delta); } };
+        bob.MessageStreamEnded += e => ended.TrySetResult(e);
+
+        await using (var stream = await alice.StartMessageStreamAsync("#stream"))
+        {
+            foreach (var token in new[] { "Hel", "lo, ", "room" })
+            {
+                await stream.AppendAsync(token);
+            }
+
+            await stream.CompleteAsync();
+        }
+
+        var start = await started.Task.WaitAsync(Timeout);
+        Assert.Equal("alice", start.Sender);
+        Assert.Equal("#stream", start.Room);
+
+        var end = await ended.Task.WaitAsync(Timeout);
+        Assert.Equal("Hello, room", end.FinalText);
+        Assert.Equal(start.StreamId, end.StreamId);
+        Assert.False(string.IsNullOrEmpty(end.MessageId));
+        Assert.True(end.Timestamp > 0);
+
+        lock (deltas)
+        {
+            Assert.Equal(["Hel", "lo, ", "room"], deltas);
+        }
+
+        // One message in history, matching the END's id — deltas are not persisted separately.
+        var history = await bob.GetHistoryAsync("#stream");
+        var persisted = Assert.Single(history.Messages, m => m.MessageId == end.MessageId);
+        Assert.Equal("Hello, room", persisted.Text);
+        Assert.Equal("alice", persisted.Sender);
+    }
+
+    [Fact]
+    public async Task StreamFromAVanishedSenderStillCompletes()
+    {
+        await using var bob = await ConnectAsync("bob", "pw-b");
+        await bob.JoinAsync("#abandoned");
+
+        var ended = new TaskCompletionSource<MsgStreamEndPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bob.MessageStreamEnded += e => ended.TrySetResult(e);
+
+        var alice = await ConnectAsync("alice", "pw-a");
+        await alice.JoinAsync("#abandoned");
+        var stream = await alice.StartMessageStreamAsync("#abandoned");
+        await stream.AppendAsync("half a thou");
+        await alice.DisposeAsync(); // sender vanishes mid-stream
+
+        var end = await ended.Task.WaitAsync(Timeout);
+        Assert.Equal("half a thou", end.FinalText);
+        Assert.False(string.IsNullOrEmpty(end.MessageId));
+    }
+
+    [Fact]
+    public async Task DeltasIntoAnotherSendersStreamAreRefused()
+    {
+        await using var alice = await ConnectAsync("alice", "pw-a");
+        await using var mallory = await ConnectAsync("mallory", "pw-m");
+        await alice.JoinAsync("#hijack");
+        await mallory.JoinAsync("#hijack");
+
+        await using var stream = await alice.StartMessageStreamAsync("#hijack");
+        await stream.AppendAsync("mine");
+
+        // Mallory knows the stream id (it was broadcast) but does not own it.
+        var codec = new BanterCodec();
+        await using var raw = await _transport.ConnectAsync(_server.Endpoint);
+        await SendAsync(raw, codec, new HelloPayload("raw", "0", [], BanterCatalog.LocalRanges()));
+        Assert.NotNull(await ReceiveAsync(raw, codec));
+        await SendAsync(raw, codec, new AuthPayload("mallory", "pw-m", false));
+        Assert.IsType<AuthOkPayload>(await ReceiveAsync(raw, codec));
+        await SendAsync(raw, codec, new JoinPayload("#hijack"));
+        Assert.IsType<OkPayload>(await ReceiveAsync(raw, codec));
+        await SendAsync(raw, codec, new MsgStreamDeltaPayload(stream.StreamId, " and now mallory's"));
+
+        var reply = await ReceiveAsync(raw, codec);
+        var error = Assert.IsType<ErrorPayload>(reply);
+        Assert.Equal("NO_SUCH_STREAM", error.Code);
     }
 
     [Fact]

@@ -60,6 +60,12 @@ public sealed class BanterClient : IAsyncDisposable
     public event Action<JoinPayload>? MemberJoined;
     public event Action<PartPayload>? MemberParted;
     public event Action<TopicPayload>? TopicChanged;
+    /// <summary>A sender began a streamed message in a room (typically an agent's token stream).</summary>
+    public event Action<MsgStreamStartPayload>? MessageStreamStarted;
+    public event Action<MsgStreamDeltaPayload>? MessageStreamDelta;
+    /// <summary>A streamed message finished. <c>FinalText</c> is authoritative — replace the
+    /// accumulated deltas with it — and <c>MessageId</c> matches the persisted history entry.</summary>
+    public event Action<MsgStreamEndPayload>? MessageStreamEnded;
     public event Action? Disconnected;
     /// <summary>Raised before each redial attempt (1-based attempt number).</summary>
     public event Action<int>? Reconnecting;
@@ -121,6 +127,25 @@ public sealed class BanterClient : IAsyncDisposable
 
     public Task<RoomMembersPayload> GetMembersAsync(string room, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomMembersPayload>(new RoomMembersPayload(room, []), cancellationToken);
+
+    /// <summary>
+    /// Opens a streamed message in a room: deltas render live in every member's client and the
+    /// completed text lands in history as one message. This is the path agent token streams take
+    /// (PLAN §4). Dispose without completing and the server still closes the stream from the
+    /// deltas it received.
+    /// </summary>
+    public async Task<BanterMessageStream> StartMessageStreamAsync(string room, CancellationToken cancellationToken = default)
+    {
+        var streamId = Guid.NewGuid().ToString("N");
+        await RequestAsync<OkPayload>(new MsgStreamStartPayload(room, Nick, streamId), cancellationToken).ConfigureAwait(false);
+        return new BanterMessageStream(this, streamId);
+    }
+
+    internal ValueTask SendStreamDeltaAsync(string streamId, string delta, CancellationToken cancellationToken) =>
+        SendAsync(_codec.CreateEnvelope(new MsgStreamDeltaPayload(streamId, delta)), cancellationToken);
+
+    internal ValueTask SendStreamEndAsync(string streamId, string finalText, CancellationToken cancellationToken) =>
+        SendAsync(_codec.CreateEnvelope(new MsgStreamEndPayload(streamId, finalText, 0)), cancellationToken);
 
     // ---- Files (room-scoped storage) ----
 
@@ -400,6 +425,15 @@ public sealed class BanterClient : IAsyncDisposable
                         break;
                     case TopicPayload topic:
                         TopicChanged?.Invoke(topic);
+                        break;
+                    case MsgStreamStartPayload streamStart:
+                        MessageStreamStarted?.Invoke(streamStart);
+                        break;
+                    case MsgStreamDeltaPayload streamDelta:
+                        MessageStreamDelta?.Invoke(streamDelta);
+                        break;
+                    case MsgStreamEndPayload streamEnd:
+                        MessageStreamEnded?.Invoke(streamEnd);
                         break;
                 }
             }

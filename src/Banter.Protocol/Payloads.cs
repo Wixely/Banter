@@ -167,12 +167,15 @@ public sealed record MsgStreamDeltaPayload(
     [property: Key(1)] string Delta);
 
 /// <summary>Ends a stream. <see cref="FinalText"/> is authoritative — clients replace the
-/// accumulated deltas with it so a dropped delta cannot corrupt the message.</summary>
+/// accumulated deltas with it so a dropped delta cannot corrupt the message. The server stamps
+/// <see cref="MessageId"/> on the relayed END; it matches the message persisted to history, so
+/// clients reconcile a streamed message with backscroll.</summary>
 [MessagePackObject]
 public sealed record MsgStreamEndPayload(
     [property: Key(0)] string StreamId,
     [property: Key(1)] string FinalText,
-    [property: Key(2)] long Timestamp);
+    [property: Key(2)] long Timestamp,
+    [property: Key(3)] string? MessageId = null);
 
 // ---- Files (room-scoped storage, §5a) ----
 
