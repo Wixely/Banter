@@ -427,9 +427,16 @@ endpoint with namespaced tools (`azdo_*`, `gh_*`, …). Rather than each DaggerA
 carrying its own MCP server list, agents get **one MCP endpoint: MCPHub**, co-located with the
 Banter server. Modifications to MCPHub (we control the repo):
 
-1. **Headless/service mode.** Factor the proxy core out of the desktop shell so it runs as a
-   Generic Host service alongside `Banter.Server` (same box or same process-family; the desktop
-   UI remains as a management front-end for it).
+1. **Embeddable packages (plan handed to the MCPHub repo:
+   [MCPHUB-SPLIT-PLAN.md](https://github.com/Wixely/MCPHub/blob/main/MCPHUB-SPLIT-PLAN.md)).**
+   MCPHub's layering already separates proxy core (`MCPHub.Proxy`: upstream registry +
+   namespaced aggregated catalog), in-proc Kestrel host (`ProxyHost`), and process supervision
+   from the desktop shell. Those ship as NuGet packages (`MCPHub.Proxy`, `MCPHub.Hosting`,
+   `MCPHub.Processes`) on the Wixely feed, and Banter **embeds the aggregated `/mcp` endpoint
+   in-process** (in `Banter.Server` or Warden) rather than running a separate service; the
+   desktop app remains as a management front-end and dogfoods the same packages. The split
+   plan also adds the tenancy seam (per-tenant tool visibility/authorization + audit sink with
+   args-digest-only rule) that items 2–4 below build on.
 2. **Multi-tenancy.** Today it is single-user desktop-shaped. Add tenant identities where a
    *tenant = a Banter agent account*:
    - Each agent's MCPHub token is minted by the Banter server when the agent account is created
