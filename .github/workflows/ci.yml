@@ -23,10 +23,9 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+      - name: Add Wixely feed credentials
+        run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password ${{ github.token }} --store-password-in-clear-text --configfile NuGet.config
       - name: Restore
-        env:
-          CUPRIFACE_GITHUB_USER: ${{ github.actor }}
-          CUPRIFACE_GITHUB_TOKEN: ${{ github.token }}
         run: dotnet restore Banter.slnx
       - name: Build
         run: dotnet build Banter.slnx --no-restore --configuration Release
