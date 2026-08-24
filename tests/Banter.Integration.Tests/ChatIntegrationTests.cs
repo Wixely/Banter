@@ -258,6 +258,34 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PrivateMessagesRouteToEverySessionOfTheRecipient()
+    {
+        await using var alice = await ConnectAsync("alice", "pw-a");
+        await using var bobPhone = await ConnectAsync("bob", "pw-b");
+        await using var bobDesktop = await ConnectAsync("bob", "pw-b");
+
+        var phoneSees = Expect<PrivMsgPayload>(handler => bobPhone.PrivateMessageReceived += handler);
+        var desktopSees = Expect<PrivMsgPayload>(handler => bobDesktop.PrivateMessageReceived += handler);
+
+        await alice.SendPrivateMessageAsync("bob", "psst");
+
+        foreach (var seen in new[] { await phoneSees.Task.WaitAsync(Timeout), await desktopSees.Task.WaitAsync(Timeout) })
+        {
+            Assert.Equal("alice", seen.Sender);
+            Assert.Equal("psst", seen.Text);
+            Assert.True(seen.Timestamp > 0);
+        }
+    }
+
+    [Fact]
+    public async Task PrivateMessageToOfflineUserErrors()
+    {
+        await using var alice = await ConnectAsync("alice", "pw-a");
+        var ex = await Assert.ThrowsAsync<BanterErrorException>(() => alice.SendPrivateMessageAsync("dagger", "anyone home?"));
+        Assert.Equal("NO_SUCH_USER", ex.Code);
+    }
+
+    [Fact]
     public async Task InvalidRoomNameIsRejected()
     {
         await using var alice = await ConnectAsync("alice", "pw-a");

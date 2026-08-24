@@ -116,6 +116,7 @@ internal sealed class ClientSession(
 
         Nick = account.Username;
         IsAgent = account.IsAgent;
+        await engine.RegisterAsync(this).ConfigureAwait(false);
         Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent), replyTo: envelope.MsgId);
     }
 

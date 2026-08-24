@@ -101,6 +101,12 @@ public sealed class BanterClient : IAsyncDisposable
     public ValueTask SendMessageAsync(string room, string text, CancellationToken cancellationToken = default) =>
         SendAsync(_codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null)), cancellationToken);
 
+    /// <summary>Sends a user-to-user message. Completes on the server's Ok (delivered to at
+    /// least one of the recipient's sessions); throws <see cref="BanterErrorException"/> with
+    /// code NO_SUCH_USER when the recipient has no live session.</summary>
+    public Task SendPrivateMessageAsync(string recipient, string text, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new PrivMsgPayload(Nick, recipient, text, 0), cancellationToken);
+
     public ValueTask SetTopicAsync(string room, string topic, CancellationToken cancellationToken = default) =>
         SendAsync(_codec.CreateEnvelope(new TopicPayload(room, topic)), cancellationToken);
 

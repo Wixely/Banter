@@ -136,13 +136,17 @@ async Task<bool> HandleAsync(string line)
             }
 
             return true;
+        case "/msg" when argument is not null && argument.Split(' ', 2) is [var to, var text]:
+            await client.SendPrivateMessageAsync(to, text);
+            Print($"[pm -> {to}] {text}");
+            return true;
         case "/ping":
             Print($"* pong in {(await client.PingAsync()).TotalMilliseconds:F0} ms");
             return true;
         case "/quit":
             return false;
         case "/help":
-            Print("commands: /join #room | /part [#room] | /topic <text> | /rooms | /members [#room] | /ping | /quit -- anything else is said in the current room");
+            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /ping | /quit -- anything else is said in the current room");
             return true;
         default:
             Print("! unknown or incomplete command -- /help");

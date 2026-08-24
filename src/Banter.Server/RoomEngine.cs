@@ -16,6 +16,7 @@ internal sealed class RoomEngine(IServerStore store)
     private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(
         new UnboundedChannelOptions { SingleReader = true });
     private readonly Dictionary<string, Room> _rooms = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<ClientSession>> _sessionsByNick = new(StringComparer.OrdinalIgnoreCase);
     private Task? _loop;
 
     private sealed class Room(string name, string? topic)
@@ -60,10 +61,34 @@ internal sealed class RoomEngine(IServerStore store)
     public ValueTask DispatchAsync(ClientSession session, BanterEnvelope envelope, object payload) =>
         _commands.Writer.WriteAsync(() => HandleAsync(session, envelope, payload));
 
+    /// <summary>Registers an authenticated session in the nick directory (multi-device: one
+    /// nick may have several live sessions; all receive private messages).</summary>
+    public ValueTask RegisterAsync(ClientSession session) =>
+        _commands.Writer.WriteAsync(() =>
+        {
+            if (!_sessionsByNick.TryGetValue(session.Nick, out var sessions))
+            {
+                sessions = [];
+                _sessionsByNick[session.Nick] = sessions;
+            }
+
+            sessions.Add(session);
+            return ValueTask.CompletedTask;
+        });
+
     public ValueTask DisconnectAsync(ClientSession session) =>
         _commands.Writer.WriteAsync(() =>
         {
             RemoveFromAllRooms(session, "disconnected");
+            if (_sessionsByNick.TryGetValue(session.Nick, out var sessions))
+            {
+                sessions.Remove(session);
+                if (sessions.Count == 0)
+                {
+                    _sessionsByNick.Remove(session.Nick);
+                }
+            }
+
             return ValueTask.CompletedTask;
         });
 
@@ -79,6 +104,9 @@ internal sealed class RoomEngine(IServerStore store)
                 break;
             case MsgPayload msg:
                 await HandleMsgAsync(session, envelope, msg).ConfigureAwait(false);
+                break;
+            case PrivMsgPayload priv:
+                HandlePrivMsg(session, envelope, priv);
                 break;
             case TopicPayload topic:
                 await HandleTopicAsync(session, envelope, topic).ConfigureAwait(false);
@@ -159,6 +187,39 @@ internal sealed class RoomEngine(IServerStore store)
         // Echo to every member including the sender — the echo carries the authoritative
         // id/timestamp and doubles as delivery confirmation.
         Broadcast(room, authoritative);
+    }
+
+    private void HandlePrivMsg(ClientSession session, BanterEnvelope envelope, PrivMsgPayload priv)
+    {
+        if (!_sessionsByNick.TryGetValue(priv.Recipient, out var recipients))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_USER", $"{priv.Recipient} is not online."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        // Sender and timestamp are authoritative; not persisted (room history is room-scoped).
+        var authoritative = priv with
+        {
+            Sender = session.Nick,
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+        };
+
+        foreach (var recipient in recipients)
+        {
+            recipient.Send(authoritative);
+        }
+
+        // Echo to the sender's other sessions (multi-device), not the sending one — its
+        // confirmation is the Ok reply.
+        if (_sessionsByNick.TryGetValue(session.Nick, out var senders))
+        {
+            foreach (var other in senders.Where(s => !ReferenceEquals(s, session)))
+            {
+                other.Send(authoritative);
+            }
+        }
+
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
     private async ValueTask HandleTopicAsync(ClientSession session, BanterEnvelope envelope, TopicPayload topic)
