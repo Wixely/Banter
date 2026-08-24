@@ -25,7 +25,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Streamed messages (`MSG_STREAM_*` relay, persisted as one history message) | implemented, tested |
 | Agent guardrails (per-room rate limit + loop-breaker, on by default) | implemented, tested |
 | CupriFace spikes — virtualized scrollback, frame budget, streaming rebind, composer | green (headless, `tests/Banter.App.Spikes`); Android/WASM outstanding |
-| DaggerAgent spike (needs an OpenAI-compatible endpoint) | pending |
+| DaggerAgent spike (LM Studio endpoint: turns, tool calls, `spawn_subagent`, driving an external agent CLI) | green — Path C/ACP stays deferred (PLAN Phase 0) |
 
 ## Building
 

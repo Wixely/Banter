@@ -512,9 +512,27 @@ spikes** — desktop half **done and green** (CUPRIFACE-PLAN §5a: 10k-message s
 with `<cupri-virtual>`, full frame 2.1 ms, per-token rebind 0.9 ms, composer write-back works;
 run headlessly as tests in `tests/Banter.App.Spikes`). Outstanding: WASM host round-trip and
 the on-device Android set (scrollback feel, IME, endurance);
-**DaggerAgent spike** (run it against an OpenAI-compatible endpoint, exercise `spawn_subagent`
-and driving one external agent CLI through its process tools — confirms Path C/ACP can stay
-deferred).
+**DaggerAgent spike** — **done and green (2026-08-25)**, run against LM Studio
+(`http://localhost:1234/v1`) on `liquid/lfm2.5-1.2b`, a deliberately weak 1.2B model so that
+anything that worked proves the *plumbing*, not the model:
+
+| Check | Result |
+|---|---|
+| Basic turn against an OpenAI-compatible endpoint | pass |
+| Built-in tool call (`read_file`) | pass — verified with an unguessable nonce, not vibes |
+| `spawn_subagent` | pass — child job at `depth=1`, isolated context, result returned to parent |
+| Driving an external agent CLI (`claude.exe -p`) via `exec_shell` | pass — child process ran, output returned verbatim |
+
+Two findings worth carrying forward. (1) DaggerAgent's "turn" is one *user message*, not one
+HTTP call: `RunTurnAsync` hands the tool loop to MEAI's `FunctionInvokingChatClient`, so
+call→result→answer iterations happen inside a single logged turn. `AGENT_STATUS` therefore
+cannot be driven off turn boundaries — it needs the tool-call events, not the turn counter.
+(2) `exec_shell` is `ReadToEndAsync` + `WaitForExitAsync`: **fully buffered, no streaming, and
+a timeout returns an error string that discards whatever the child already printed.** So a
+wrapped CLI is one atomic tool call to a room — confirming Path C/ACP stays deferred on the
+stated terms (wrapped CLIs are tools, not room users), and confirming the §12 risk entry is
+real rather than theoretical. If we later want a long-running CLI as a room participant, that
+buffering — not the protocol — is what forces the ACP bridge.
 *Exit: green CI; go/no-go on CupriNet as primary transport (fallback transport decision);
 CupriFace spikes green or fallback ladder invoked (§7).*
 
