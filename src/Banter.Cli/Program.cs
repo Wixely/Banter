@@ -31,11 +31,9 @@ client.PrivateMessageReceived += m => Print($"[pm] <{m.Sender}> {m.Text}");
 client.MemberJoined += j => Print($"[{j.Room}] * {j.Nick} joined");
 client.MemberParted += p => Print($"[{p.Room}] * {p.Nick} left{(p.Reason is null ? "" : $" ({p.Reason})")}");
 client.TopicChanged += t => Print($"[{t.Room}] * topic: {t.Topic}");
-client.Disconnected += () =>
-{
-    Print("* disconnected from server");
-    done.TrySetResult();
-};
+client.Disconnected += () => Print("* connection lost - reconnecting in the background (/quit to exit)");
+client.Reconnecting += attempt => Print($"* reconnect attempt {attempt}...");
+client.Reconnected += () => Print("* reconnected");
 
 Print($"connected to {server} as {client.Nick} -- /join #room to start, /help for commands");
 

@@ -4,26 +4,54 @@ using Banter.Protocol.Transport;
 
 namespace Banter.Client.Core;
 
+public sealed record BanterClientOptions
+{
+    public string ClientName { get; init; } = "Banter.Client";
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>When the connection drops, redial + re-auth + rejoin rooms automatically.
+    /// Initial connection failures still throw — reconnect only guards an established session.</summary>
+    public bool AutoReconnect { get; init; } = true;
+
+    public TimeSpan ReconnectInitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
+    public TimeSpan ReconnectMaxDelay { get; init; } = TimeSpan.FromSeconds(10);
+}
+
 /// <summary>
 /// The client runtime: connect + handshake + auth, request/response correlation over
-/// <c>msgId</c>/<c>replyTo</c>, and server pushes surfaced as events. UI layers (CLI, CupriFace
-/// app) and the agent SDK all sit on this.
+/// <c>msgId</c>/<c>replyTo</c>, server pushes surfaced as events, and automatic reconnect with
+/// exponential backoff and room rejoin. UI layers (CLI, CupriFace app) and the agent SDK all
+/// sit on this.
 /// </summary>
 public sealed class BanterClient : IAsyncDisposable
 {
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
-
-    private readonly IBanterConnection _connection;
+    private readonly IBanterClientTransport _transport;
+    private readonly Uri _endpoint;
+    private readonly string _username;
+    private readonly string _secret;
+    private readonly BanterClientOptions _options;
     private readonly BanterCodec _codec = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<object?>> _pending = new();
-    private Task? _receiveLoop;
+    private readonly HashSet<string> _joinedRooms = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _roomsLock = new();
+    private readonly CancellationTokenSource _lifecycle = new();
+    private volatile IBanterConnection? _connection;
+    private Task? _sessionLoop;
     private bool _disposed;
 
-    private BanterClient(IBanterConnection connection) => _connection = connection;
+    private BanterClient(IBanterClientTransport transport, Uri endpoint, string username, string secret, BanterClientOptions options)
+    {
+        _transport = transport;
+        _endpoint = endpoint;
+        _username = username;
+        _secret = secret;
+        _options = options;
+    }
 
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
     public string SessionId { get; private set; } = "";
+    public bool IsConnected => _connection is not null;
 
     public event Action<MsgPayload>? MessageReceived;
     public event Action<PrivMsgPayload>? PrivateMessageReceived;
@@ -31,50 +59,42 @@ public sealed class BanterClient : IAsyncDisposable
     public event Action<PartPayload>? MemberParted;
     public event Action<TopicPayload>? TopicChanged;
     public event Action? Disconnected;
+    /// <summary>Raised before each redial attempt (1-based attempt number).</summary>
+    public event Action<int>? Reconnecting;
+    /// <summary>Raised after a successful redial once tracked rooms have been rejoined.</summary>
+    public event Action? Reconnected;
 
     public static async Task<BanterClient> ConnectAsync(
         IBanterClientTransport transport,
         Uri endpoint,
         string username,
         string secret,
+        BanterClientOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var connection = await transport.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
-        var client = new BanterClient(connection);
-        client._receiveLoop = Task.Run(client.ReceiveLoopAsync, CancellationToken.None);
-        try
-        {
-            await client.RequestAsync<HelloPayload>(
-                new HelloPayload("Banter.Client", typeof(BanterClient).Assembly.GetName().Version?.ToString(3) ?? "0.0.0", ["banter.core"]),
-                cancellationToken).ConfigureAwait(false);
+        var client = new BanterClient(transport, endpoint, username, secret, options ?? new BanterClientOptions());
+        client._connection = await client.DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
+        client._sessionLoop = Task.Run(client.RunSessionsAsync, CancellationToken.None);
+        return client;
+    }
 
-            var reply = await client.RequestRawAsync(new AuthPayload(username, secret, IsAgentToken: false), cancellationToken)
-                .ConfigureAwait(false);
-            switch (reply)
-            {
-                case AuthOkPayload ok:
-                    client.Nick = ok.Nick;
-                    client.IsAgent = ok.IsAgent;
-                    client.SessionId = ok.SessionId;
-                    return client;
-                case AuthFailPayload fail:
-                    throw new BanterAuthException(fail.Reason);
-                default:
-                    throw new BanterClientException($"Unexpected AUTH reply: {reply?.GetType().Name ?? "null"}.");
-            }
-        }
-        catch
+    public async Task JoinAsync(string room, CancellationToken cancellationToken = default)
+    {
+        await RequestAsync<OkPayload>(new JoinPayload(room), cancellationToken).ConfigureAwait(false);
+        lock (_roomsLock)
         {
-            await client.DisposeAsync().ConfigureAwait(false);
-            throw;
+            _joinedRooms.Add(room);
         }
     }
 
-    public Task JoinAsync(string room, CancellationToken cancellationToken = default) =>
-        RequestAsync<OkPayload>(new JoinPayload(room), cancellationToken);
-
-    public Task PartAsync(string room, string? reason = null, CancellationToken cancellationToken = default) =>
-        RequestAsync<OkPayload>(new PartPayload(room, reason), cancellationToken);
+    public async Task PartAsync(string room, string? reason = null, CancellationToken cancellationToken = default)
+    {
+        await RequestAsync<OkPayload>(new PartPayload(room, reason), cancellationToken).ConfigureAwait(false);
+        lock (_roomsLock)
+        {
+            _joinedRooms.Remove(room);
+        }
+    }
 
     /// <summary>Fire-and-forget send; the authoritative message (id, timestamp) comes back as a
     /// <see cref="MessageReceived"/> echo to every member including this sender.</summary>
@@ -101,48 +121,168 @@ public sealed class BanterClient : IAsyncDisposable
         return DateTimeOffset.UtcNow - sent;
     }
 
-    private async Task<TReply> RequestAsync<TReply>(object payload, CancellationToken cancellationToken)
-        where TReply : class
-    {
-        var reply = await RequestRawAsync(payload, cancellationToken).ConfigureAwait(false);
-        return reply switch
-        {
-            TReply typed => typed,
-            ErrorPayload error => throw new BanterErrorException(error),
-            _ => throw new BanterClientException(
-                $"Expected {typeof(TReply).Name} in reply to {payload.GetType().Name}, got {reply?.GetType().Name ?? "null"}."),
-        };
-    }
+    // ---- Connection lifecycle ----
 
-    private async Task<object?> RequestRawAsync(object payload, CancellationToken cancellationToken)
+    /// <summary>Dials and completes HELLO + AUTH over the raw connection (no receive loop yet),
+    /// so the same path serves both the first connection and every reconnect.</summary>
+    private async Task<IBanterConnection> DialAndHandshakeAsync(CancellationToken cancellationToken)
     {
-        var envelope = _codec.CreateEnvelope(payload);
-        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[envelope.MsgId] = tcs;
+        var connection = await _transport.ConnectAsync(_endpoint, cancellationToken).ConfigureAwait(false);
         try
         {
-            await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
-            return await tcs.Task.WaitAsync(RequestTimeout, cancellationToken).ConfigureAwait(false);
+            var version = typeof(BanterClient).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+            await RawRequestAsync(connection, new HelloPayload(_options.ClientName, version, ["banter.core"]), cancellationToken)
+                .ConfigureAwait(false);
+
+            var reply = await RawRequestAsync(connection, new AuthPayload(_username, _secret, IsAgentToken: false), cancellationToken)
+                .ConfigureAwait(false);
+            switch (reply)
+            {
+                case AuthOkPayload ok:
+                    Nick = ok.Nick;
+                    IsAgent = ok.IsAgent;
+                    SessionId = ok.SessionId;
+                    return connection;
+                case AuthFailPayload fail:
+                    throw new BanterAuthException(fail.Reason);
+                default:
+                    throw new BanterClientException($"Unexpected AUTH reply: {reply?.GetType().Name ?? "null"}.");
+            }
         }
-        finally
+        catch
         {
-            _pending.TryRemove(envelope.MsgId, out _);
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
     }
 
-    private ValueTask SendAsync(BanterEnvelope envelope, CancellationToken cancellationToken) =>
-        _connection.SendFrameAsync(_codec.EncodeEnvelope(envelope), cancellationToken);
+    /// <summary>Request/response over a raw connection, skipping pushes. Used only during the
+    /// handshake, before the receive loop owns the connection.</summary>
+    private async Task<object?> RawRequestAsync(IBanterConnection connection, object payload, CancellationToken cancellationToken)
+    {
+        var envelope = _codec.CreateEnvelope(payload);
+        await connection.SendFrameAsync(_codec.EncodeEnvelope(envelope), cancellationToken).ConfigureAwait(false);
+        var deadline = DateTimeOffset.UtcNow + _options.RequestTimeout;
+        while (true)
+        {
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                throw new TimeoutException($"No reply to {payload.GetType().Name} within {_options.RequestTimeout}.");
+            }
 
-    private async Task ReceiveLoopAsync()
+            var frame = await connection.ReceiveFrameAsync(cancellationToken).AsTask().WaitAsync(remaining, cancellationToken)
+                .ConfigureAwait(false);
+            if (frame is null)
+            {
+                throw new BanterDisconnectedException();
+            }
+
+            var received = _codec.DecodeEnvelope(frame);
+            if (received.ReplyTo == envelope.MsgId)
+            {
+                return _codec.DecodePayload(received);
+            }
+        }
+    }
+
+    private async Task RunSessionsAsync()
+    {
+        var cancellationToken = _lifecycle.Token;
+        while (true)
+        {
+            await ReceiveUntilClosedAsync(_connection!, cancellationToken).ConfigureAwait(false);
+            _connection = null;
+            FailPending();
+            if (_disposed || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            Disconnected?.Invoke();
+            if (!_options.AutoReconnect)
+            {
+                return;
+            }
+
+            var next = await RedialWithBackoffAsync(cancellationToken).ConfigureAwait(false);
+            if (next is null)
+            {
+                return;
+            }
+
+            _connection = next;
+            _ = Task.Run(() => RejoinAsync(cancellationToken), CancellationToken.None);
+        }
+    }
+
+    private async Task<IBanterConnection?> RedialWithBackoffAsync(CancellationToken cancellationToken)
+    {
+        var attempt = 0;
+        var delay = _options.ReconnectInitialDelay;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            attempt++;
+            Reconnecting?.Invoke(attempt);
+            try
+            {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                return await DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            catch (BanterAuthException)
+            {
+                // Credentials no longer valid — retrying cannot help.
+                return null;
+            }
+            catch
+            {
+                delay = delay >= _options.ReconnectMaxDelay
+                    ? _options.ReconnectMaxDelay
+                    : TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, _options.ReconnectMaxDelay.Ticks));
+            }
+        }
+
+        return null;
+    }
+
+    private async Task RejoinAsync(CancellationToken cancellationToken)
+    {
+        string[] rooms;
+        lock (_roomsLock)
+        {
+            rooms = [.. _joinedRooms];
+        }
+
+        foreach (var room in rooms)
+        {
+            try
+            {
+                await RequestAsync<OkPayload>(new JoinPayload(room), cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // A failed rejoin (room deleted, connection dropped again) shouldn't kill the
+                // others; the next disconnect cycle retries.
+            }
+        }
+
+        Reconnected?.Invoke();
+    }
+
+    private async Task ReceiveUntilClosedAsync(IBanterConnection connection, CancellationToken cancellationToken)
     {
         try
         {
             while (true)
             {
-                var frame = await _connection.ReceiveFrameAsync().ConfigureAwait(false);
+                var frame = await connection.ReceiveFrameAsync(cancellationToken).ConfigureAwait(false);
                 if (frame is null)
                 {
-                    break;
+                    return;
                 }
 
                 var envelope = _codec.DecodeEnvelope(frame);
@@ -177,18 +317,62 @@ public sealed class BanterClient : IAsyncDisposable
         catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException
             or ObjectDisposedException or OperationCanceledException or MessagePack.MessagePackSerializationException)
         {
-            // Fall through to disconnect handling.
+            // Treated as a disconnect; the session loop decides what happens next.
         }
-
-        foreach (var pending in _pending)
+        finally
         {
-            if (_pending.TryRemove(pending.Key, out var tcs))
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    // ---- Requests ----
+
+    private async Task<TReply> RequestAsync<TReply>(object payload, CancellationToken cancellationToken)
+        where TReply : class
+    {
+        var envelope = _codec.CreateEnvelope(payload);
+        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pending[envelope.MsgId] = tcs;
+        try
+        {
+            await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
+            var reply = await tcs.Task.WaitAsync(_options.RequestTimeout, cancellationToken).ConfigureAwait(false);
+            return reply switch
+            {
+                TReply typed => typed,
+                ErrorPayload error => throw new BanterErrorException(error),
+                _ => throw new BanterClientException(
+                    $"Expected {typeof(TReply).Name} in reply to {payload.GetType().Name}, got {reply?.GetType().Name ?? "null"}."),
+            };
+        }
+        finally
+        {
+            _pending.TryRemove(envelope.MsgId, out _);
+        }
+    }
+
+    private async ValueTask SendAsync(BanterEnvelope envelope, CancellationToken cancellationToken)
+    {
+        var connection = _connection ?? throw new BanterDisconnectedException();
+        try
+        {
+            await connection.SendFrameAsync(_codec.EncodeEnvelope(envelope), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            throw new BanterDisconnectedException();
+        }
+    }
+
+    private void FailPending()
+    {
+        foreach (var key in _pending.Keys)
+        {
+            if (_pending.TryRemove(key, out var tcs))
             {
                 tcs.TrySetException(new BanterDisconnectedException());
             }
         }
-
-        Disconnected?.Invoke();
     }
 
     public async ValueTask DisposeAsync()
@@ -199,20 +383,29 @@ public sealed class BanterClient : IAsyncDisposable
         }
 
         _disposed = true;
-        try
+        await _lifecycle.CancelAsync().ConfigureAwait(false);
+        var connection = _connection;
+        if (connection is not null)
         {
-            await SendAsync(_codec.CreateEnvelope(new ByePayload(null)), CancellationToken.None)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-        }
-        catch
-        {
-            // Best-effort goodbye.
+            try
+            {
+                var bye = _codec.CreateEnvelope(new ByePayload(null));
+                await connection.SendFrameAsync(_codec.EncodeEnvelope(bye), CancellationToken.None)
+                    .AsTask().WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best-effort goodbye.
+            }
+
+            await connection.DisposeAsync().ConfigureAwait(false);
         }
 
-        await _connection.DisposeAsync().ConfigureAwait(false);
-        if (_receiveLoop is not null)
+        if (_sessionLoop is not null)
         {
-            await _receiveLoop.ConfigureAwait(false);
+            await _sessionLoop.ConfigureAwait(false);
         }
+
+        _lifecycle.Dispose();
     }
 }

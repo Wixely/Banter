@@ -14,6 +14,10 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private readonly TcpBanterTransport _transport = new();
+    private readonly InMemoryAccountStore _accounts = new InMemoryAccountStore()
+        .AddUser("alice", "pw-a")
+        .AddUser("bob", "pw-b")
+        .AddUser("dagger", "pw-d", isAgent: true);
     private string _dbPath = null!;
     private BanterDatabase _database = null!;
     private BanterServer _server = null!;
@@ -23,11 +27,7 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         _dbPath = Path.Combine(Path.GetTempPath(), $"banter-it-{Guid.NewGuid():N}.db");
         _database = new BanterDatabase(BanterStorageOptions.DefaultSqlite(_dbPath));
         await _database.InitializeAsync();
-        var accounts = new InMemoryAccountStore()
-            .AddUser("alice", "pw-a")
-            .AddUser("bob", "pw-b")
-            .AddUser("dagger", "pw-d", isAgent: true);
-        _server = new BanterServer(_transport, accounts, new DbServerStore(_database));
+        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database));
         await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
     }
 
@@ -36,6 +36,50 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         await _server.DisposeAsync();
         BanterDatabase.ClearSqlitePools();
         File.Delete(_dbPath);
+    }
+
+    [Fact]
+    public async Task ClientReconnectsAndRejoinsAfterServerRestart()
+    {
+        var port = _server.Endpoint.Port;
+        await using var alice = await ConnectAsync("alice", "pw-a");
+        await alice.JoinAsync("#comeback");
+
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        alice.Disconnected += () => disconnected.TrySetResult();
+        alice.Reconnected += () => reconnected.TrySetResult();
+
+        await _server.DisposeAsync();
+        await disconnected.Task.WaitAsync(Timeout);
+
+        // Bring a new server up on the same port; the client should redial, re-auth, rejoin.
+        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database));
+        await StartOnPortWithRetryAsync(_server, port);
+        await reconnected.Task.WaitAsync(Timeout);
+
+        // Prove the rejoin is real on the server side: a message reaches alice in #comeback.
+        var aliceSees = Expect<MsgPayload>(handler => alice.MessageReceived += handler);
+        await using var bob = await ConnectAsync("bob", "pw-b");
+        await bob.JoinAsync("#comeback");
+        await bob.SendMessageAsync("#comeback", "welcome back");
+        Assert.Equal("welcome back", (await aliceSees.Task.WaitAsync(Timeout)).Text);
+    }
+
+    private static async Task StartOnPortWithRetryAsync(BanterServer server, int port)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await server.StartAsync(new Uri($"tcp://127.0.0.1:{port}"));
+                return;
+            }
+            catch (System.Net.Sockets.SocketException) when (attempt < 20)
+            {
+                await Task.Delay(100);
+            }
+        }
     }
 
     [Fact]

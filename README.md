@@ -14,11 +14,11 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Protocol` v1 (envelope, payloads, MessagePack + JSON debug codec, framing) | implemented, tested |
 | `IBanterTransport` seam + plain-TCP fallback | implemented, tested |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
-| `Banter.Client.Core` (`BanterClient`: handshake, requests, push events) | implemented, tested |
+| `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
 | CI (`dotnet build` / `test`) | in place |
 | Persistence: Dapper + migration manifest — SQLite (default) / PostgreSQL (hosted) | implemented, tested (SQLite; Postgres untested pending a server) |
-| `Banter.Cli` interactive client | next |
+| `Banter.Cli` interactive client | implemented, smoke-tested |
 | CupriMark catalogue + CupriNet transport | pending (needs Wixely feed PAT) |
 
 ## Building
