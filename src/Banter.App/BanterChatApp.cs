@@ -67,6 +67,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="header">
               <span class="room-name">{{ActiveRoom}}</span>
               <span class="topic">{{Topic}}</span>
+              <span class="dispatch">{{DispatchMode}} &#183; {{Delegator}}</span>
             </div>
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
@@ -78,6 +79,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="composer-row">
               <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
               <cupri-button class="send">Send</cupri-button>
+            </div>
+          </div>
+          <div class="roster">
+            <div class="roster-title">Agents</div>
+            <div class="{{RowClass}}" data-repeat="Agents">
+              <div class="agent-line"><span class="agent-nick">{{Nick}}</span><span class="agent-role">{{Role}}</span></div>
+              <div class="agent-meta">{{Locality}}</div>
+              <div class="agent-meta">{{Skills}}</div>
             </div>
           </div>
         </div>
@@ -120,6 +129,26 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .attach { color: #7fa7ff; background: #1f2530; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
         .attach.hidden { display: none; }
+
+        .dispatch { flex: 1; text-align: right; color: #8b93a1; font-size: 12px; }
+
+        .roster { width: 190px; background: #1b1e24; padding: 12px; }
+        .roster-title { font-weight: bold; font-size: 12px; color: #8b93a1; padding-bottom: 8px; }
+        .agent { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #232833; }
+        /* Frontier agents are marked, not merely listed: whether a third party is in the room is
+           the thing a human most needs to be able to see at a glance. */
+        .agent.frontier { background: #33261a; }
+        .agent.delegator { background: #16301c; }
+        .agent-line { display: flex; flex-direction: row; }
+        .agent-nick { flex: 1; font-size: 13px; }
+        .agent-role { color: #7fd88f; font-size: 11px; }
+        .agent.frontier .agent-meta { color: #e0a56a; }
+        .agent-meta { color: #8b93a1; font-size: 11px; }
+
+        /* An egress notice must not read like ordinary chatter. */
+        .line.egress { background: #33261a; }
+        .line.egress .text { color: #e0a56a; }
+        .line.egress .sender { color: #e0a56a; }
 
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         .composer { flex: 1; min-height: 44px; max-height: 120px; }

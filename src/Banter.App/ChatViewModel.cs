@@ -143,6 +143,7 @@ public sealed class ChatViewModel
         // to the room we just left and would misalign this room's scroll anchor.
         _prepended = 0;
         RefreshLoadOlderVisibility();
+        ShowAgentsFor(room);
     }
 
     public void SetTopic(string room, string topic)
@@ -163,7 +164,11 @@ public sealed class ChatViewModel
             Sender = sender,
             Text = text,
             Time = FormatTime(timestamp),
-            RowClass = sender == Model.Nick && rowClass == "line" ? "line own" : rowClass,
+            // An egress announcement is the one message in a room that must never be skimmed
+            // past, so it is styled apart from ordinary agent chatter.
+            RowClass = text.StartsWith("[egress]", StringComparison.Ordinal)
+                ? "line egress"
+                : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass,
             FileId = fileId,
             // Metadata arrives on a separate round-trip, so show the row immediately with a
             // placeholder rather than withholding it until the name and size are known.
@@ -334,6 +339,64 @@ public sealed class ChatViewModel
         row.Text = finalText;
         row.Time = FormatTime(timestamp);
         row.RowClass = row.RowClass.Replace(" streaming", "");
+    }
+
+    // ── Agent roster (PLAN §8a) ──────────────────────────────────────────────────────────────
+
+    /// <summary>Roster per room, so switching rooms shows that room's agents.</summary>
+    private readonly Dictionary<string, List<AgentRow>> _agents = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Replace a room's agent roster. <paramref name="delegator"/> is highlighted, and frontier
+    /// agents are marked — a human should be able to see at a glance whether anything in this room
+    /// is a third party, without having to remember which nick is which.
+    /// </summary>
+    public void SetAgents(string room, IEnumerable<(string Nick, bool IsLocal, string Skills, bool IsDelegator)> agents)
+    {
+        var rows = agents.Select(a => new AgentRow
+        {
+            Nick = a.Nick,
+            Locality = a.IsLocal ? "local" : "frontier",
+            Skills = a.Skills,
+            Role = a.IsDelegator ? "delegator" : "",
+            RowClass = a.IsDelegator ? "agent delegator" : a.IsLocal ? "agent" : "agent frontier",
+        }).ToList();
+
+        _agents[room] = rows;
+        if (room == Model.ActiveRoom)
+        {
+            ShowAgentsFor(room);
+        }
+    }
+
+    public void SetDelegator(string room, string? nick)
+    {
+        if (room != Model.ActiveRoom)
+        {
+            return;
+        }
+
+        Model.Delegator = nick is { Length: > 0 } ? nick : "no delegator";
+    }
+
+    public void SetDispatchMode(string room, string mode)
+    {
+        if (room == Model.ActiveRoom)
+        {
+            Model.DispatchMode = mode;
+        }
+    }
+
+    private void ShowAgentsFor(string room)
+    {
+        Model.Agents.Clear();
+        if (_agents.TryGetValue(room, out var rows))
+        {
+            Model.Agents.AddRange(rows);
+        }
+
+        var delegatorRow = Model.Agents.FirstOrDefault(a => a.Role.Length > 0);
+        Model.Delegator = delegatorRow?.Nick ?? "no delegator";
     }
 
     /// <summary>Rows currently held for a room — the backlog, not just what is on screen.</summary>

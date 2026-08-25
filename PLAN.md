@@ -131,8 +131,8 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Agent SDK: connect, join, stream replies, per-room context | – | – | – | – | – | – | ✅ |
 | `LlmChatAgent` against any OpenAI-compatible endpoint | – | – | – | – | – | – | ✅ |
 | Agent guardrails: rate limit + loop-breaker | – | ✅ | – | – | – | – | ✅ |
-| Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
-| Classification + routing + announced egress (§8a) | ✅ | – | – | ⬜ | ⬜ | ⬜ | ✅ |
+| Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
+| Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ⬜ | ⬜ | ✅ |
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | 🔨 |

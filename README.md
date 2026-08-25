@@ -40,6 +40,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: paged scrollback (anchored history prepend, id dedup) | implemented, tested |
 | App: persisted settings (no secrets on disk) | implemented, tested |
 | App: file transfer (attachment chips, `/upload`, `/files`, download) | implemented, tested |
+| App: agent roster panel, delegator/mode header, egress styling (§8a made visible) | implemented, tested |
 | `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented, needs a manual run against a live server |
 
 ## Building

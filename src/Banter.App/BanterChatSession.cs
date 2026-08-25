@@ -44,6 +44,8 @@ public sealed class BanterChatSession : IDisposable
         _vm = viewModel;
 
         _client.MessageReceived += OnMessage;
+        _client.DelegatorChanged += OnDelegatorChanged;
+        _client.RoomModeChanged += OnRoomModeChanged;
         _client.MemberJoined += OnJoined;
         _client.MemberParted += OnParted;
         _client.TopicChanged += OnTopic;
@@ -79,7 +81,42 @@ public sealed class BanterChatSession : IDisposable
 
             _vm.SetHistoryCursor(room, page.NextCursor);
         });
+
+        await RefreshAgentsAsync(room, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Re-read who is in the room. Called on join and whenever membership or the delegator
+    /// changes, because a roster that only reflects the moment you joined would quietly stop
+    /// telling the truth — including about whether a third-party agent is present.
+    /// </summary>
+    public async Task RefreshAgentsAsync(string room, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var roster = await _client.GetAgentsAsync(room, cancellationToken).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetAgents(
+                room,
+                roster.Agents.Select(a => (
+                    a.Nick,
+                    IsLocal: a.Locality == Protocol.AgentLocality.Local,
+                    Skills: string.Join(", ", a.Skills),
+                    a.IsDelegator))));
+        }
+        catch (Exception)
+        {
+            // Best effort: a stale roster is a display issue, not a correctness one.
+        }
+    }
+
+    private void OnDelegatorChanged(Protocol.RoomDelegatorPayload p)
+    {
+        _vm.Post(() => _vm.SetDelegator(p.Room, p.Nick));
+        _ = RefreshAgentsAsync(p.Room);
+    }
+
+    private void OnRoomModeChanged(Protocol.RoomModePayload p) =>
+        _vm.Post(() => _vm.SetDispatchMode(p.Room, p.Mode.ToString().ToLowerInvariant()));
 
     /// <summary>
     /// Fetch the next page of older history and splice it above what is shown. Re-entrancy is
@@ -343,11 +380,17 @@ public sealed class BanterChatSession : IDisposable
         }
     }
 
-    private void OnJoined(Protocol.JoinPayload j) =>
+    private void OnJoined(Protocol.JoinPayload j)
+    {
         _vm.Post(() => _vm.System(j.Room, $"{j.Nick} joined"));
+        _ = RefreshAgentsAsync(j.Room);
+    }
 
-    private void OnParted(Protocol.PartPayload p) =>
+    private void OnParted(Protocol.PartPayload p)
+    {
         _vm.Post(() => _vm.System(p.Room, p.Reason is { Length: > 0 } r ? $"{p.Nick} left ({r})" : $"{p.Nick} left"));
+        _ = RefreshAgentsAsync(p.Room);
+    }
 
     private void OnTopic(Protocol.TopicPayload t) =>
         _vm.Post(() =>
@@ -391,6 +434,8 @@ public sealed class BanterChatSession : IDisposable
 
         _disposed = true;
         _client.MessageReceived -= OnMessage;
+        _client.DelegatorChanged -= OnDelegatorChanged;
+        _client.RoomModeChanged -= OnRoomModeChanged;
         _client.MemberJoined -= OnJoined;
         _client.MemberParted -= OnParted;
         _client.TopicChanged -= OnTopic;
