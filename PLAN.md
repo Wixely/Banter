@@ -85,6 +85,70 @@ Banter.sln
 All projects target **.NET 10** (CupriNet and CupriFace require it; the Android head is plain
 `net10.0-android`).
 
+### 2a. Where the work lands
+
+Which component owns each capability, and how far along it is.
+**✅ done · 🔨 partial · ⬜ not started · – not applicable**
+
+Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
+**Agents** = `Banter.Agents.Sdk` + `Banter.Warden`.
+
+| Capability | Shared | Server | CLI | Desktop | Android | Web | Agents |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **Foundations** |
+| Protocol v1: envelope, payloads, codec, framing | ✅ | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
+| CupriMark capability negotiation | ✅ | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
+| Transport seam + plain-TCP fallback | ✅ | ✅ | ✅ | ✅ | ⬜ | – | ✅ |
+| CupriNet mesh transport | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ⬜ |
+| Persistence: Dapper + migrations (SQLite / Postgres) | – | ✅ | – | – | – | – | – |
+| **Phase 1 — text chat** |
+| Accounts, auth, hashed credentials | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
+| Rooms: join/part/topic/presence/members | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
+| Messages + history with cursor paging | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
+| Reconnect with backoff + room rejoin | ✅ | – | ✅ | ✅ | ⬜ | ⬜ | ✅ |
+| Streamed messages (`MSG_STREAM_*`) | ✅ | ✅ | 🔨 | ✅ | ⬜ | ⬜ | ✅ |
+| **Phase 2 — app + storage** |
+| Room-scoped file storage: chunks, dedup, grants, quotas | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | – |
+| Timeline: virtualized scrollback, wrapping rows | – | – | – | ✅ | ⬜ | ⬜ | – |
+| Paged scrollback (anchored prepend) | – | ✅ | – | ✅ | ⬜ | ⬜ | – |
+| Composer, unread badges, room switching | – | – | 🔨 | ✅ | ⬜ | ⬜ | – |
+| Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ⬜ | ⬜ | – |
+| Inline image rendering | – | – | – | ⬜ | ⬜ | ⬜ | – |
+| QR / mesh-magnet server join | – | ✅ | – | 🔨 | ⬜ | ⬜ | – |
+| **Host heads** |
+| Desktop head (Win/Linux/macOS) | – | – | – | ✅ | – | – | – |
+| Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | ⬜ | – | – |
+| Web head (WASM over CupriNet.WebRtc) — Phase 2.5 | – | ⬜ | – | – | – | ⬜ | – |
+| **Phase 3/4 — voice** |
+| `ITranscriptionEngine` / `ITextToSpeech` abstractions | ⬜ | – | – | – | – | – | – |
+| OpenAI-compatible speech provider | ⬜ | – | – | – | – | – | – |
+| Wyoming provider (Whisper/Piper) | ⬜ | – | – | – | – | – | – |
+| Local STT (Whisper.net, from Bantz) | ⬜ | – | – | ⬜ | ⬜ | – | – |
+| Global push-to-talk hotkey | – | – | – | ⬜ | – | – | – |
+| Always-listening + wake word | – | – | – | ⬜ | ⬜ | ⬜ | – |
+| TTS playback of incoming messages | – | – | – | ⬜ | ⬜ | ⬜ | – |
+| **Phase 5 — agents** |
+| Agent SDK: connect, join, stream replies, per-room context | – | – | – | – | – | – | ✅ |
+| `LlmChatAgent` against any OpenAI-compatible endpoint | – | – | – | – | – | – | ✅ |
+| Agent guardrails: rate limit + loop-breaker | – | ✅ | – | – | – | – | ✅ |
+| Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
+| Classification + routing + announced egress (§8a) | ✅ | – | – | ⬜ | ⬜ | ⬜ | ✅ |
+| Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
+| Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | 🔨 |
+| DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
+| MCP access via embedded MCPHub | – | ⬜ | – | – | – | – | ⬜ |
+| ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
+| **Phase 6 — hardening** |
+| Ops/admin tooling, account management | – | ⬜ | ⬜ | ⬜ | – | – | – |
+| Voice notes as attachments | – | ⬜ | – | ⬜ | ⬜ | ⬜ | – |
+
+**Reading the gaps.** Almost every ⬜ in the client columns is the same two missing things: the
+**Android and web heads do not exist yet**, so every capability they would carry is unstarted by
+definition. The other clusters are **voice** (three empty projects — the whole of Phases 3–4) and
+**agent-facing UI** (the server tracks tasks, delegators and rosters, but no client shows them).
+The CLI's ⬜s are mostly deliberate: it is a smoke-test tool, not a product surface.
+
 ## 3. Transport: CupriNet
 
 How Banter maps onto CupriNet's API:
