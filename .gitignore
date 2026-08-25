@@ -4,3 +4,7 @@ artifacts/
 *.user
 .vs/
 .idea/
+
+# Local debug profile: settings, mesh identity and SQLite db written by the VS Code
+# launch configs, kept out of the real profile at %APPDATA%/Banter.
+.banter-dev/

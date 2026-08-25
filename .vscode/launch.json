@@ -1,0 +1,120 @@
+{
+  // Debug configurations for the Banter suite.
+  //
+  // The credentials below are the development accounts Banter.Server seeds into an empty
+  // database on first run (it prints them at startup): alice / bob / dagger, password "banter".
+  // They are not secrets, which is why they can live in a committed file - a real deployment
+  // creates accounts with admin tooling and supplies the password via --pass or BANTER_PASS.
+  //
+  // Each client writes its settings under .banter-dev/ so debugging never touches the real
+  // profile at %APPDATA%/Banter.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Server",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Server/bin/Debug/net10.0/Banter.Server.dll",
+      "args": ["--endpoint", "tcp://127.0.0.1:7770"],
+      "cwd": "${workspaceFolder}/.banter-dev",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Desktop app (alice)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.App.Desktop/bin/Debug/net10.0/banter.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "alice",
+        "--pass", "banter",
+        "--room", "#main",
+        "--settings", "${workspaceFolder}/.banter-dev/alice.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Desktop app (bob)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.App.Desktop/bin/Debug/net10.0/banter.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "bob",
+        "--pass", "banter",
+        "--room", "#main",
+        "--settings", "${workspaceFolder}/.banter-dev/bob.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Desktop app (prompt for server/user/password)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.App.Desktop/bin/Debug/net10.0/banter.dll",
+      "args": [
+        "--server", "${input:server}",
+        "--user", "${input:user}",
+        "--pass", "${input:password}",
+        "--room", "${input:room}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "CLI client (bob)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Cli/bin/Debug/net10.0/Banter.Cli.dll",
+      "args": ["--server", "tcp://127.0.0.1:7770", "--user", "bob", "--pass", "banter"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Attach to process",
+      "type": "coreclr",
+      "request": "attach"
+    }
+  ],
+  "compounds": [
+    {
+      // The one to pick for a first smoke test: server plus two clients in one room.
+      "name": "Server + alice + bob",
+      "configurations": ["Server", "Desktop app (alice)", "Desktop app (bob)"],
+      "stopAll": true
+    },
+    {
+      "name": "Server + alice",
+      "configurations": ["Server", "Desktop app (alice)"],
+      "stopAll": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "server",
+      "type": "promptString",
+      "description": "Server URI (tcp://host:port, or a cupri:// mesh link)",
+      "default": "tcp://127.0.0.1:7770"
+    },
+    { "id": "user", "type": "promptString", "description": "Username", "default": "alice" },
+    {
+      "id": "password",
+      "type": "promptString",
+      "description": "Password (not stored)",
+      "password": true
+    },
+    { "id": "room", "type": "promptString", "description": "Room to join", "default": "#main" }
+  ]
+}

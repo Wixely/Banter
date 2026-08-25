@@ -67,17 +67,45 @@ IBanterClientTransport transport = server.Scheme == "tcp"
 var vm = new ChatViewModel { RoomScrollback = settings.Scrollback };
 vm.SetStatus("Connecting...", connected: false);
 
-BanterClient client;
-try
+// BanterClient reconnects an *established* session but lets the first connect throw, which is
+// right for the library and wrong for a desktop app: the server may simply not be up yet (a
+// debugger launching both at once, a machine still booting). So retry briefly here, and keep
+// failing fast on a rejected credential, which no amount of waiting will fix.
+var client = await ConnectWithRetryAsync();
+if (client is null)
 {
-    client = await BanterClient.ConnectAsync(transport, server, settings.User, pass);
-}
-catch (Exception ex)
-{
-    // Fail here rather than opening a window that can only show an error: the user is at a
-    // terminal, and a bad password or unreachable server is worth an exit code.
-    Console.Error.WriteLine($"error: could not connect to {server}: {ex.Message}");
     return 1;
+}
+
+async Task<BanterClient?> ConnectWithRetryAsync()
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+    var delay = TimeSpan.FromMilliseconds(250);
+    while (true)
+    {
+        try
+        {
+            return await BanterClient.ConnectAsync(transport, server, settings.User, pass);
+        }
+        catch (BanterAuthException ex)
+        {
+            Console.Error.WriteLine($"error: {server} rejected the credentials for '{settings.User}': {ex.Message}");
+            return null;
+        }
+        catch (Exception ex) when (DateTimeOffset.UtcNow < deadline)
+        {
+            Console.Error.WriteLine($"waiting for {server}: {ex.Message}");
+            await Task.Delay(delay);
+            delay = TimeSpan.FromMilliseconds(Math.Min(delay.TotalMilliseconds * 2, 2_000));
+        }
+        catch (Exception ex)
+        {
+            // Fail rather than opening a window that can only show an error: the user is at a
+            // terminal, and an unreachable server is worth a non-zero exit code.
+            Console.Error.WriteLine($"error: could not connect to {server}: {ex.Message}");
+            return null;
+        }
+    }
 }
 
 await using var _ = client;
