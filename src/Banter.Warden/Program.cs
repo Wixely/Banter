@@ -28,6 +28,8 @@ var costTier = int.TryParse(Arg("--cost"), out var parsedCost) ? parsedCost : 1;
 var routes = Has("--route");
 var noFrontier = Has("--no-frontier");
 var smartClassifier = Has("--llm-classify");
+var worksTasks = Has("--work-tasks");
+var assignedOnly = Has("--assigned-only");
 
 if (pass is null || model is null || Has("--help") || Has("-h"))
 {
@@ -56,6 +58,10 @@ if (pass is null || model is null || Has("--help") || Has("-h"))
           --llm-classify        use the model to classify request sensitivity instead of the
                                 keyword rules. Explicit sensitive terms still veto it, and any
                                 classifier failure falls back to sensitive.
+          --work-tasks          work the room's task board: claim open tasks matching this
+                                agent's skills, do them, and report the result
+          --assigned-only       with --work-tasks, only run tasks assigned to this agent -
+                                never take work off the open board
 
         --pass also reads BANTER_PASS; --model reads BANTER_MODEL; --llm reads BANTER_LLM.
         """);
@@ -76,6 +82,7 @@ var agentOptions = new BanterAgentOptions
     Description = Arg("--description") ?? $"{model} via {endpoint}",
     CostTier = costTier,
     WantsDelegator = Has("--delegator"),
+    TaskWork = worksTasks ? new TaskWorkOptions { ClaimOpenTasks = !assignedOnly } : null,
     Routing = routes
         ? new RoutingOptions
         {
@@ -123,6 +130,13 @@ catch (Exception ex)
 
 Console.WriteLine($"{user} is in {string.Join(", ", rooms)} using {model} at {endpoint}");
 Console.WriteLine($"Announced as {locality}, clearance {clearance}, skills [{string.Join(", ", skills)}].");
+if (worksTasks)
+{
+    Console.WriteLine(assignedOnly
+        ? "Working assigned tasks only."
+        : "Working the task board; claiming open tasks that match its skills.");
+}
+
 if (routes)
 {
     Console.WriteLine(noFrontier

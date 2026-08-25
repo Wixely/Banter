@@ -134,7 +134,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ⬜ | ⬜ | ✅ |
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
-| Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | 🔨 |
 | DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
 | MCP access via embedded MCPHub | – | ⬜ | – | – | – | – | ⬜ |
@@ -737,8 +737,12 @@ cap are all in and covered by integration tests. Arbitration is a conditional up
 agents cannot both believe they hold the same work even if their writes interleave. A
 `TASK_UPDATE` renews the lease, which is why going quiet is what loses the work: a held task with
 no progress is indistinguishable from a crashed agent. Every transition is announced into the
-room, so the timeline is the audit trail as designed. Still to build: agents that actually use
-the ledger (the SDK exposes no task tools yet), and surfacing tasks in the app.
+room, so the timeline is the audit trail as designed. **Agents now work the ledger** (`TaskWorkOptions`, Warden `--work-tasks`): they claim open tasks
+whose text matches their skills, execute them through the same `RespondAsync` used for
+conversation, and report the result. A renew heartbeat runs for the duration of a job, because a
+task that outlives its lease would otherwise be reclaimed mid-flight and handed to a second agent
+who would redo it. `--assigned-only` turns claiming off for delegated rooms, where routing is
+somebody else's job. Still to build: surfacing tasks in the app.
 
 
 Chat alone makes agents talk; a **work ledger** makes them accountable. Tasks are first-class,

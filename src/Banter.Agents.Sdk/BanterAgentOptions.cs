@@ -44,6 +44,12 @@ public sealed record BanterAgentOptions
     /// keeps the simpler behaviour, which is what a single-agent room wants.
     /// </summary>
     public RoutingOptions? Routing { get; init; }
+
+    /// <summary>
+    /// When set, this agent works the ledger (PLAN §8b): it claims open tasks matching its
+    /// skills, does them, and reports the result. Null means it ignores tasks entirely.
+    /// </summary>
+    public TaskWorkOptions? TaskWork { get; init; }
 }
 
 public sealed record LlmChatAgentOptions
@@ -110,4 +116,24 @@ public sealed record RoutingOptions
     /// </summary>
     public IReadOnlyList<string> FanOutPhrases { get; init; } =
         ["everyone", "all of you", "both of you", "each of you", "opinions", "second opinion"];
+}
+
+
+/// <summary>
+/// Makes an agent a worker on the room's task board (PLAN §8b).
+/// </summary>
+public sealed record TaskWorkOptions
+{
+    /// <summary>
+    /// Claim open tasks whose text matches this agent's skills. When false the agent still
+    /// executes tasks <em>assigned</em> to it, but never takes work off the board itself —
+    /// which is what you want in a delegated room where routing is somebody else's job.
+    /// </summary>
+    public bool ClaimOpenTasks { get; init; } = true;
+
+    /// <summary>
+    /// How often to renew the lease while working. Must be comfortably under the server's lease,
+    /// or a long job is reclaimed mid-flight and handed to somebody else.
+    /// </summary>
+    public TimeSpan ProgressInterval { get; init; } = TimeSpan.FromMinutes(5);
 }

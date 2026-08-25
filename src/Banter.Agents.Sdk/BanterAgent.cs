@@ -14,7 +14,7 @@ namespace Banter.Agents.Sdk;
 /// are the polite layer on top: they stop an agent replying to itself or chattering into a room
 /// nobody addressed, which is cheaper than being throttled for it.</para>
 /// </summary>
-public abstract class BanterAgent : IAsyncDisposable
+public abstract partial class BanterAgent : IAsyncDisposable
 {
     private BanterClient? _client;
     private readonly CancellationTokenSource _stopping = new();
@@ -53,6 +53,7 @@ public abstract class BanterAgent : IAsyncDisposable
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
         _client.MemberJoined += OnMemberJoined;
+        _client.TaskChanged += OnTaskChanged;
 
         // Announce before joining, so the attributes are already on file when the server runs
         // the election our arrival triggers.
@@ -438,6 +439,7 @@ public abstract class BanterAgent : IAsyncDisposable
             _client.DelegatorChanged -= OnDelegatorChanged;
             _client.RoomModeChanged -= OnRoomModeChanged;
             _client.MemberJoined -= OnMemberJoined;
+            _client.TaskChanged -= OnTaskChanged;
             await _client.DisposeAsync().ConfigureAwait(false);
         }
 
