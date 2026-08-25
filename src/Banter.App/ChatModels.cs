@@ -22,6 +22,15 @@ public sealed partial class MessageRow
     /// A class string rather than booleans because the cascade does the work in CSS.
     /// </summary>
     public string RowClass { get; set; } = "line";
+
+    /// <summary>Attached file, when the message carries one. Empty otherwise.</summary>
+    public string FileId { get; set; } = "";
+
+    /// <summary>Hidden until the row actually has an attachment.</summary>
+    public string AttachClass { get; set; } = "attach hidden";
+
+    /// <summary>Name and size, filled in once the server's file metadata arrives.</summary>
+    public string AttachText { get; set; } = "";
 }
 
 /// <summary>A joined room in the sidebar.</summary>

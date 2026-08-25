@@ -28,6 +28,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Called when the user asks for older history in a room.</summary>
     public Func<string, Task> LoadOlderAsync { get; init; } = _ => Task.CompletedTask;
 
+    /// <summary>
+    /// Called for composer input beginning with <c>/</c>. Slash commands are the file-transfer
+    /// entry point because CupriFace exposes no native file picker — <c>/upload &lt;path&gt;</c>
+    /// works identically on every head, and a picker can be added per-platform later without
+    /// changing this seam.
+    /// </summary>
+    public Func<string, string, Task> CommandAsync { get; init; } = (_, _) => Task.CompletedTask;
+
+    /// <summary>Called when the user clicks an attachment.</summary>
+    public Func<string, Task> DownloadAsync { get; init; } = _ => Task.CompletedTask;
+
     public override string Title => "Banter";
     public override object Model => ViewModel.Model;
     public override int Width => 1100;
@@ -60,7 +71,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
               <div class="{{RowClass}}" data-repeat="Messages">
-                <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span><span class="text">{{Text}}</span>
+                <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
+                <span class="text">{{Text}}<span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span></span>
               </div>
             </cupri-virtual>
             <div class="composer-row">
@@ -106,6 +118,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line.system .sender { color: #8b93a1; }
         .line.streaming .text { color: #cdd3dc; }
 
+        .attach { color: #7fa7ff; background: #1f2530; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+        .attach.hidden { display: none; }
+
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         .composer { flex: 1; min-height: 44px; max-height: 120px; }
         .send { width: 90px; margin-left: 8px; }
@@ -138,6 +153,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-load-older", _ =>
         {
             LoadOlder();
+            return true;
+        });
+
+        doc.OnAction("data-file", e =>
+        {
+            // Every row carries the attribute; only rows with a file have a value in it.
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = DownloadAsync(e.Value);
             return true;
         });
     }
@@ -195,6 +222,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         ViewModel.Model.Composer = "";
         _doc?.Refresh();
+
+        if (text[0] == '/')
+        {
+            _ = CommandAsync(room, text);
+            return;
+        }
 
         // Fire-and-forget by design: the authoritative message arrives back as a MSG echo, so
         // there is nothing to await here. Failures surface through the client's error events.

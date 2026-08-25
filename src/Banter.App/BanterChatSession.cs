@@ -129,10 +129,219 @@ public sealed class BanterChatSession : IDisposable
     public Task SendAsync(string room, string text) =>
         _client.SendMessageAsync(room, text).AsTask();
 
+    /// <summary>Where downloads land. Defaults to the user's Downloads folder.</summary>
+    public string DownloadDirectory { get; init; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+
+    /// <summary>
+    /// Handle composer input starting with <c>/</c>. Unknown commands report themselves rather
+    /// than being sent to the room as text, so a typo cannot leak a half-typed command to everyone.
+    /// </summary>
+    public async Task CommandAsync(string room, string line)
+    {
+        var space = line.IndexOf(' ');
+        var verb = (space < 0 ? line : line[..space])[1..].ToLowerInvariant();
+        var rest = space < 0 ? "" : line[(space + 1)..].Trim();
+
+        switch (verb)
+        {
+            case "upload" when rest.Length > 0:
+                await UploadAsync(room, rest).ConfigureAwait(false);
+                break;
+            case "upload":
+                _vm.Post(() => _vm.System(room, "usage: /upload <path> [description]"));
+                break;
+            case "files":
+                await ListFilesAsync(room).ConfigureAwait(false);
+                break;
+            case "topic" when rest.Length > 0:
+                await Guard(room, () => _client.SetTopicAsync(room, rest).AsTask()).ConfigureAwait(false);
+                break;
+            case "part":
+                await Guard(room, () => PartAsync(room)).ConfigureAwait(false);
+                break;
+            case "help":
+                _vm.Post(() => _vm.System(room,
+                    "/upload <path> [description] | /files | /topic <text> | /part | /help"));
+                break;
+            default:
+                _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
+                break;
+        }
+    }
+
+    /// <summary>Upload a local file into the room. The path may be quoted to allow spaces.</summary>
+    public async Task UploadAsync(string room, string argument)
+    {
+        var (path, description) = SplitPathAndDescription(argument);
+
+        if (!File.Exists(path))
+        {
+            _vm.Post(() => _vm.System(room, $"no such file: {path}"));
+            return;
+        }
+
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+            var name = Path.GetFileName(path);
+            _vm.Post(() => _vm.System(room, $"uploading {name} ({ChatViewModel.FormatSize(bytes.Length)})..."));
+
+            var info = await _client
+                .UploadFileAsync(room, name, bytes, MimeTypes.ForFile(name), description)
+                .ConfigureAwait(false);
+
+            _vm.Post(() => _vm.SetAttachmentInfo(info.FileId, info.Name, info.Size));
+        }
+        catch (Exception ex)
+        {
+            _vm.Post(() => _vm.System(room, $"upload failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Fetch a file and write it beside the user's other downloads.</summary>
+    public async Task DownloadAsync(string fileId)
+    {
+        var room = _vm.Model.ActiveRoom;
+        try
+        {
+            var info = await _client.GetFileInfoAsync(fileId).ConfigureAwait(false);
+            var bytes = await _client.DownloadFileAsync(fileId).ConfigureAwait(false);
+
+            Directory.CreateDirectory(DownloadDirectory);
+            var target = UniquePath(Path.Combine(DownloadDirectory, SafeName(info.Name)));
+            await File.WriteAllBytesAsync(target, bytes).ConfigureAwait(false);
+
+            _vm.Post(() => _vm.System(room, $"saved {target}"));
+        }
+        catch (Exception ex)
+        {
+            _vm.Post(() => _vm.System(room, $"download failed: {ex.Message}"));
+        }
+    }
+
+    private async Task ListFilesAsync(string room)
+    {
+        try
+        {
+            var list = await _client.ListFilesAsync(room).ConfigureAwait(false);
+            _vm.Post(() =>
+            {
+                if (list.Files.Count == 0)
+                {
+                    _vm.System(room, "no files in this room");
+                    return;
+                }
+
+                foreach (var f in list.Files)
+                {
+                    // Rendered as a real attachment row, so it is clickable like any other.
+                    _vm.Append(room, "*", $"{f.Uploader} shared", f.CreatedAt, "line system", fileId: f.FileId);
+                    _vm.SetAttachmentInfo(f.FileId, f.Name, f.Size);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _vm.Post(() => _vm.System(room, $"could not list files: {ex.Message}"));
+        }
+    }
+
+    private async Task Guard(string room, Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _vm.Post(() => _vm.System(room, ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Splits <c>"path with spaces" description</c> or <c>path description</c>. Public because it
+    /// is a pure function with awkward edge cases (an unquoted path that itself contains spaces)
+    /// worth testing directly rather than through a live upload.
+    /// </summary>
+    public static (string Path, string? Description) SplitPathAndDescription(string argument)
+    {
+        argument = argument.Trim();
+        if (argument.StartsWith('"'))
+        {
+            var close = argument.IndexOf('"', 1);
+            if (close > 0)
+            {
+                var desc = argument[(close + 1)..].Trim();
+                return (argument[1..close], desc.Length > 0 ? desc : null);
+            }
+        }
+
+        // Unquoted: if what precedes the first space is a real file, the rest is a description.
+        var space = argument.IndexOf(' ');
+        if (space > 0 && File.Exists(argument[..space]))
+        {
+            return (argument[..space], argument[(space + 1)..].Trim());
+        }
+
+        return (argument, null);
+    }
+
+    /// <summary>Strip any directory component a server-supplied name might carry.</summary>
+    private static string SafeName(string name)
+    {
+        var bare = Path.GetFileName(name);
+        return string.IsNullOrWhiteSpace(bare) ? "download" : bare;
+    }
+
+    /// <summary>Never silently overwrite something already in the downloads folder.</summary>
+    private static string UniquePath(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return path;
+        }
+
+        var dir = Path.GetDirectoryName(path) ?? ".";
+        var stem = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+        for (var n = 2; ; n++)
+        {
+            var candidate = Path.Combine(dir, $"{stem} ({n}){ext}");
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
     // The id matters beyond display: it is what stops a page of older history re-adding a
     // message the live feed already delivered.
-    private void OnMessage(Protocol.MsgPayload m) =>
-        _vm.Post(() => _vm.Append(m.Room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? ""));
+    private void OnMessage(Protocol.MsgPayload m)
+    {
+        _vm.Post(() => _vm.Append(m.Room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? "", fileId: m.FileId ?? ""));
+
+        // The message only carries a file id, so name and size need a round-trip. Done off the
+        // receive loop and best-effort: the row is already visible with a placeholder, and a
+        // failure here should not disturb the timeline.
+        if (m.FileId is { Length: > 0 } fileId)
+        {
+            _ = FetchAttachmentInfoAsync(fileId);
+        }
+    }
+
+    private async Task FetchAttachmentInfoAsync(string fileId)
+    {
+        try
+        {
+            var info = await _client.GetFileInfoAsync(fileId).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetAttachmentInfo(info.FileId, info.Name, info.Size));
+        }
+        catch (Exception)
+        {
+            // Leave the placeholder label; the attachment is still downloadable by id.
+        }
+    }
 
     private void OnJoined(Protocol.JoinPayload j) =>
         _vm.Post(() => _vm.System(j.Room, $"{j.Nick} joined"));

@@ -114,6 +114,8 @@ var app = new BanterChatApp(vm)
     // back-filled at join.
     RoomSelected = _ => { },
     LoadOlderAsync = room => session.LoadOlderAsync(room, settings.HistoryPageSize),
+    CommandAsync = session.CommandAsync,
+    DownloadAsync = session.DownloadAsync,
 };
 
 DesktopHost.Run(app, _ => { });

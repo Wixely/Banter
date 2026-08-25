@@ -153,7 +153,9 @@ public sealed class ChatViewModel
         }
     }
 
-    public MessageRow Append(string room, string sender, string text, long timestamp, string rowClass = "line", string id = "")
+    public MessageRow Append(
+        string room, string sender, string text, long timestamp,
+        string rowClass = "line", string id = "", string fileId = "")
     {
         var row = new MessageRow
         {
@@ -162,6 +164,11 @@ public sealed class ChatViewModel
             Text = text,
             Time = FormatTime(timestamp),
             RowClass = sender == Model.Nick && rowClass == "line" ? "line own" : rowClass,
+            FileId = fileId,
+            // Metadata arrives on a separate round-trip, so show the row immediately with a
+            // placeholder rather than withholding it until the name and size are known.
+            AttachClass = fileId.Length > 0 ? "attach" : "attach hidden",
+            AttachText = fileId.Length > 0 ? "attachment" : "",
         };
 
         var backlog = _rooms.TryGetValue(room, out var existing) ? existing : _rooms[room] = [];
@@ -192,6 +199,33 @@ public sealed class ChatViewModel
     }
 
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
+
+    /// <summary>
+    /// Fill in an attachment's name and size once the server has described it. Applies to every
+    /// room, because the same file can be granted to more than one.
+    /// </summary>
+    public void SetAttachmentInfo(string fileId, string name, long size)
+    {
+        if (fileId.Length == 0)
+        {
+            return;
+        }
+
+        var label = $"{name} ({FormatSize(size)})";
+        foreach (var row in _rooms.Values.SelectMany(rows => rows).Where(r => r.FileId == fileId))
+        {
+            row.AttachText = label;
+        }
+    }
+
+    /// <summary>Byte count in the largest unit that keeps it readable.</summary>
+    public static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
+    };
 
     // ── Older history ────────────────────────────────────────────────────────────────────────
 
