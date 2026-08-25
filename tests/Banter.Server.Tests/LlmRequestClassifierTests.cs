@@ -131,6 +131,28 @@ public sealed class LlmRequestClassifierTests
         Assert.False(LlmRequestClassifier.TryParse(raw, out _));
 
     [Fact]
+    public void AModelEchoingTheTemplateBackIsRejected()
+    {
+        // Observed for real from a 1.2B: it copied the schema instead of classifying. The
+        // alternation is not a valid label, so this must fail closed rather than be read as
+        // "public" because that word appears in it.
+        var echoed = """{"sensitivity":"public|internal|sensitive","skills":["code","github"],"reason":"short"}""";
+
+        Assert.False(LlmRequestClassifier.TryParse(echoed, out _));
+    }
+
+    [Fact]
+    public async Task ATemplateEchoLeavesTheRequestSensitive()
+    {
+        var handler = new StubHandler(
+            """{"sensitivity":"public|internal|sensitive","skills":[],"reason":"short"}""");
+
+        var result = await Classifier(handler).ClassifyAsync("what is the traffic like");
+
+        Assert.Equal(DataSensitivity.Sensitive, result.Sensitivity);
+    }
+
+    [Fact]
     public void JsonWrappedInProseOrFencesIsStillRead()
     {
         // Small models wrap JSON even when told not to; that is sloppiness, not a failure.
