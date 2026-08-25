@@ -36,6 +36,11 @@ public abstract class BanterAgent : IAsyncDisposable
     protected abstract IAsyncEnumerable<string> RespondAsync(
         string room, string sender, string prompt, CancellationToken cancellationToken);
 
+    /// <summary>Delegator nick per room, as last announced by the server. Null means none.</summary>
+    private readonly Dictionary<string, string?> _delegators = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RoomDispatchMode> _modes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _roomStateLock = new();
+
     public async Task StartAsync(IBanterClientTransport transport, CancellationToken cancellationToken = default)
     {
         _client = await BanterClient.ConnectAsync(
@@ -44,12 +49,98 @@ public abstract class BanterAgent : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
 
         _client.MessageReceived += OnMessage;
+        _client.DelegatorChanged += OnDelegatorChanged;
+        _client.RoomModeChanged += OnRoomModeChanged;
+        _client.MemberJoined += OnMemberJoined;
+
+        // Announce before joining, so the attributes are already on file when the server runs
+        // the election our arrival triggers.
+        await _client.AnnounceAgentAsync(
+            new AgentAnnouncePayload(
+                Options.User, Options.Locality, Options.Clearance, Options.Skills,
+                Options.Description, Options.CostTier, Options.WantsDelegator),
+            cancellationToken).ConfigureAwait(false);
 
         foreach (var room in Options.Rooms)
         {
             await _client.JoinAsync(room, cancellationToken).ConfigureAwait(false);
+            await RefreshRosterAsync(room, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Re-read the roster whenever someone joins. Without this the roster is a snapshot taken at
+    /// our own join: an agent arriving later would look like a human forever, and a delegator
+    /// would answer its chatter — exactly the agent-to-agent loop the guardrails exist to stop.
+    /// </summary>
+    private void OnMemberJoined(JoinPayload j) =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await RefreshRosterAsync(j.Room, _stopping.Token).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Best effort: a stale roster costs an unnecessary reply, not correctness.
+            }
+        });
+
+    private void OnDelegatorChanged(RoomDelegatorPayload p)
+    {
+        lock (_roomStateLock)
+        {
+            _delegators[p.Room] = p.Nick;
+        }
+    }
+
+    private void OnRoomModeChanged(RoomModePayload p)
+    {
+        lock (_roomStateLock)
+        {
+            _modes[p.Room] = p.Mode;
+        }
+    }
+
+    /// <summary>True when this agent is the elected delegator for the room.</summary>
+    public bool IsDelegatorFor(string room)
+    {
+        lock (_roomStateLock)
+        {
+            return _delegators.TryGetValue(room, out var nick)
+                && string.Equals(nick, Nick, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>Current delegator for a room, or null.</summary>
+    protected string? DelegatorFor(string room)
+    {
+        lock (_roomStateLock)
+        {
+            return _delegators.GetValueOrDefault(room);
+        }
+    }
+
+    /// <summary>
+    /// Dispatch mode for a room. Defaults to <see cref="RoomDispatchMode.Delegated"/> for a room
+    /// we have not been told about — the quieter assumption, so an agent cannot start answering
+    /// everything because a mode message was missed.
+    /// </summary>
+    protected RoomDispatchMode ModeFor(string room)
+    {
+        lock (_roomStateLock)
+        {
+            return _modes.GetValueOrDefault(room, RoomDispatchMode.Delegated);
+        }
+    }
+
+    /// <summary>
+    /// Say something into a room without being asked. This is how a delegator hands work over —
+    /// naming the chosen agent in the room, so the routing decision is visible to the humans in it
+    /// rather than happening on a side channel.
+    /// </summary>
+    public Task SayAsync(string room, string text, CancellationToken cancellationToken = default) =>
+        Client.SendMessageAsync(room, text, cancellationToken).AsTask();
 
     /// <summary>Blocks until cancelled or <see cref="DisposeAsync"/>.</summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -77,9 +168,16 @@ public abstract class BanterAgent : IAsyncDisposable
     }
 
     /// <summary>
-    /// Whether this message deserves a reply. Never to itself — that is the one rule that turns a
-    /// room into an infinite loop — and, unless the room is configured otherwise, only when
-    /// addressed by nick.
+    /// Whether this message deserves a reply (PLAN §8a).
+    ///
+    /// <para>Never to itself — the one rule that turns a room into an infinite loop — and never to
+    /// the server's own announcements, which would fight the loop-breaker.</para>
+    ///
+    /// <para>In a <b>delegated</b> room only the delegator acts on human messages; every other
+    /// agent stays quiet until the delegator hands work to it by name. That hand-off is the only
+    /// way a non-delegator speaks, which is what stops five agents answering one question.</para>
+    ///
+    /// <para>In a <b>mention</b> room every agent answers when named.</para>
     /// </summary>
     protected virtual bool ShouldRespond(MsgPayload m)
     {
@@ -93,12 +191,69 @@ public abstract class BanterAgent : IAsyncDisposable
             return false;
         }
 
-        if (Options.RespondToEveryMessage)
+        if (ModeFor(m.Room) == RoomDispatchMode.Delegated)
         {
-            return true;
+            var delegatorNick = DelegatorFor(m.Room);
+
+            // No delegator elected: the room falls back to mention behaviour rather than going
+            // silent. A room with only frontier agents elects nobody, and it should still work.
+            if (delegatorNick is null)
+            {
+                return Addressed(m);
+            }
+
+            return IsDelegatorFor(m.Room)
+                ? !IsAgentSender(m)          // the delegator acts on human traffic
+                : string.Equals(m.Sender, delegatorNick, StringComparison.OrdinalIgnoreCase)
+                  && Addressed(m);           // everyone else waits to be handed work
         }
 
-        return m.Text.Contains(Nick, StringComparison.OrdinalIgnoreCase);
+        return Options.RespondToEveryMessage || Addressed(m);
+    }
+
+    private bool Addressed(MsgPayload m) => m.Text.Contains(Nick, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a message came from another agent. Known agents are those the roster reports, so
+    /// this is best-effort: an unrostered sender is treated as human, which risks an extra reply
+    /// rather than a silent room.
+    /// </summary>
+    private bool IsAgentSender(MsgPayload m)
+    {
+        lock (_roomStateLock)
+        {
+            return _knownAgents.Contains(m.Sender);
+        }
+    }
+
+    private readonly HashSet<string> _knownAgents = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Refresh the set of agent nicks for a room, so the delegator can tell a human message from
+    /// another agent's. Called after joins and whenever the delegator changes.
+    /// </summary>
+    protected async Task RefreshRosterAsync(string room, CancellationToken cancellationToken = default)
+    {
+        var roster = await Client.GetAgentsAsync(room, cancellationToken).ConfigureAwait(false);
+        lock (_roomStateLock)
+        {
+            foreach (var agent in roster.Agents)
+            {
+                _knownAgents.Add(agent.Nick);
+            }
+        }
+    }
+
+    /// <summary>The agents currently known in any joined room, excluding this one.</summary>
+    protected IReadOnlyCollection<string> KnownAgents
+    {
+        get
+        {
+            lock (_roomStateLock)
+            {
+                return _knownAgents.Where(n => !string.Equals(n, Nick, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+        }
     }
 
     private async Task TakeTurnAsync(MsgPayload m)
@@ -170,6 +325,9 @@ public abstract class BanterAgent : IAsyncDisposable
         if (_client is not null)
         {
             _client.MessageReceived -= OnMessage;
+            _client.DelegatorChanged -= OnDelegatorChanged;
+            _client.RoomModeChanged -= OnRoomModeChanged;
+            _client.MemberJoined -= OnMemberJoined;
             await _client.DisposeAsync().ConfigureAwait(false);
         }
 

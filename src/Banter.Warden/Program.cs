@@ -1,4 +1,5 @@
 using Banter.Agents.Sdk;
+using Banter.Protocol;
 using Banter.Protocol.Transport;
 
 // Banter.Warden - agent supervisor. Today it runs a single LlmChatAgent from the command line;
@@ -15,6 +16,15 @@ var model = Arg("--model") ?? Environment.GetEnvironmentVariable("BANTER_MODEL")
 var apiKey = Arg("--api-key") ?? Environment.GetEnvironmentVariable("BANTER_LLM_KEY") ?? "";
 var systemPrompt = Arg("--system");
 var answerAll = Has("--answer-all");
+var locality = Has("--frontier") ? AgentLocality.Frontier : AgentLocality.Local;
+var clearance = (Arg("--clearance") ?? "sensitive").ToLowerInvariant() switch
+{
+    "public" => DataSensitivity.Public,
+    "internal" => DataSensitivity.Internal,
+    _ => DataSensitivity.Sensitive,
+};
+var skills = (Arg("--skills") ?? "chat").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var costTier = int.TryParse(Arg("--cost"), out var parsedCost) ? parsedCost : 1;
 
 if (pass is null || model is null || Has("--help") || Has("-h"))
 {
@@ -26,8 +36,16 @@ if (pass is null || model is null || Has("--help") || Has("-h"))
                         [--llm http://localhost:1234/v1] [--api-key <key>]
                         [--system "<system prompt>"] [--answer-all]
 
-        By default the agent replies only when its nick is mentioned. --answer-all makes it
-        reply to everything, which suits a dedicated room and will get it throttled elsewhere.
+        Rooms are delegated by default: one elected agent acts on human messages and hands
+        work to the others by name. --answer-all only applies in mention-mode rooms.
+
+        Routing attributes (PLAN 8a):
+          --frontier            this agent is a third-party model; data sent to it leaves.
+                                Omit for a local agent, which is what gets elected delegator.
+          --clearance <level>   public | internal | sensitive (default sensitive)
+          --skills a,b,c        capability tags the delegator matches on (default chat)
+          --cost <n>            lower is cheaper; a tie-break only
+          --delegator           ask to be this room's delegator
 
         --pass also reads BANTER_PASS; --model reads BANTER_MODEL; --llm reads BANTER_LLM.
         """);
@@ -42,6 +60,12 @@ var agentOptions = new BanterAgentOptions
     Rooms = rooms,
     ClientName = "Banter.Warden",
     RespondToEveryMessage = answerAll,
+    Locality = locality,
+    Clearance = clearance,
+    Skills = skills,
+    Description = Arg("--description") ?? $"{model} via {endpoint}",
+    CostTier = costTier,
+    WantsDelegator = Has("--delegator"),
 };
 
 var llmOptions = new LlmChatAgentOptions
@@ -70,7 +94,7 @@ catch (Exception ex)
 }
 
 Console.WriteLine($"{user} is in {string.Join(", ", rooms)} using {model} at {endpoint}");
-Console.WriteLine(answerAll ? "Answering every message." : $"Answering when '{user}' is mentioned.");
+Console.WriteLine($"Announced as {locality}, clearance {clearance}, skills [{string.Join(", ", skills)}].");
 Console.WriteLine("Press Ctrl+C to stop.");
 
 using var stopping = new CancellationTokenSource();

@@ -9,11 +9,35 @@ public sealed record BanterAgentOptions
     public string ClientName { get; init; } = "Banter.Agent";
 
     /// <summary>
-    /// When false (the default) the agent only answers messages that mention its nick. Turning it
-    /// on makes the agent answer everything, which is what you want for a dedicated room and what
-    /// will get it throttled anywhere else.
+    /// In <see cref="Protocol.RoomDispatchMode.Mention"/> rooms: answer everything rather than
+    /// only messages naming this agent. Suits a dedicated room; will get the agent throttled
+    /// anywhere else. Ignored in delegated rooms, where the delegator decides who speaks.
     /// </summary>
     public bool RespondToEveryMessage { get; init; }
+
+    // ── Routing attributes (PLAN §8a), announced on start ────────────────────────────────────
+
+    /// <summary>
+    /// Where this agent runs. Defaults to <see cref="Protocol.AgentLocality.Unknown"/>, which the
+    /// server treats as frontier and never elects — an agent must state that it is local, because
+    /// assuming it is the mistake that leaks data.
+    /// </summary>
+    public Protocol.AgentLocality Locality { get; init; } = Protocol.AgentLocality.Unknown;
+
+    /// <summary>Most sensitive data this agent may receive. Unknown means no clearance at all.</summary>
+    public Protocol.DataSensitivity Clearance { get; init; } = Protocol.DataSensitivity.Unknown;
+
+    /// <summary>Capability tags the delegator matches against (<c>code</c>, <c>github</c>, …).</summary>
+    public IReadOnlyList<string> Skills { get; init; } = [];
+
+    /// <summary>Human-readable summary shown in the roster.</summary>
+    public string Description { get; init; } = "";
+
+    /// <summary>Lower is cheaper. A tie-break in election and routing.</summary>
+    public int CostTier { get; init; } = 1;
+
+    /// <summary>Ask to be this room's delegator. Only honoured for agents that are eligible.</summary>
+    public bool WantsDelegator { get; init; }
 }
 
 public sealed record LlmChatAgentOptions

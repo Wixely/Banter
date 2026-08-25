@@ -274,7 +274,9 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
             }
         }
 
-        // Tell the joiner who is dispatching, so an agent knows on arrival whether to stay quiet.
+        // Tell the joiner how the room dispatches and who is dispatching, so an agent knows on
+        // arrival whether to stay quiet rather than answering once before finding out.
+        session.Send(new RoomModePayload(room.Name, room.Mode));
         session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }

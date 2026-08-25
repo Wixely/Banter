@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Banter.Client.Core/Banter.Client.Core.csproj" />
+    <ProjectReference Include="../../src/Banter.Agents.Sdk/Banter.Agents.Sdk.csproj" />
     <ProjectReference Include="../../src/Banter.Core/Banter.Core.csproj" />
     <ProjectReference Include="../../src/Banter.Protocol/Banter.Protocol.csproj" />
     <ProjectReference Include="../../src/Banter.Server/Banter.Server.csproj" />
