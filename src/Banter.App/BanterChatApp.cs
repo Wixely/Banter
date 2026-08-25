@@ -82,6 +82,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </div>
           </div>
           <div class="roster">
+            <div class="{{TasksClass}}">
+              <div class="roster-title">Work</div>
+              <div class="{{RowClass}}" data-repeat="Tasks">
+                <div class="task-title">{{Title}}</div>
+                <div class="task-status">{{Status}}</div>
+              </div>
+            </div>
             <div class="roster-title">Agents</div>
             <div class="{{RowClass}}" data-repeat="Agents">
               <div class="agent-line"><span class="agent-nick">{{Nick}}</span><span class="agent-role">{{Role}}</span></div>
@@ -132,7 +139,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .dispatch { flex: 1; text-align: right; color: #8b93a1; font-size: 12px; }
 
-        .roster { width: 190px; background: #1b1e24; padding: 12px; }
+        .roster { width: 190px; background: #1b1e24; padding: 12px; overflow: scroll; }
+
+        .tasks { padding-bottom: 12px; }
+        .tasks.hidden { display: none; }
+        .task { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #232833; }
+        /* Held work reads differently from work still waiting for someone. */
+        .task.held { background: #1f2b33; }
+        .task-title { font-size: 12px; }
+        .task-status { color: #8b93a1; font-size: 11px; }
         .roster-title { font-weight: bold; font-size: 12px; color: #8b93a1; padding-bottom: 8px; }
         .agent { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #232833; }
         /* Frontier agents are marked, not merely listed: whether a third party is in the room is

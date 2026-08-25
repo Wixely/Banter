@@ -54,6 +54,20 @@ public sealed partial class AgentRow
     public string RowClass { get; set; } = "agent";
 }
 
+/// <summary>A unit of work on the room's board (PLAN §8b).</summary>
+[CupriBindable]
+public sealed partial class TaskRow
+{
+    public string TaskId { get; set; } = "";
+    public string Title { get; set; } = "";
+
+    /// <summary>"open", "claimed by dagger", "done", "failed" — state and holder in one line.</summary>
+    public string Status { get; set; } = "";
+
+    /// <summary>Drives styling: <c>task</c>, <c>task held</c>, <c>task done</c>, <c>task failed</c>.</summary>
+    public string RowClass { get; set; } = "task";
+}
+
 /// <summary>A joined room in the sidebar.</summary>
 [CupriBindable]
 public sealed partial class RoomRow
@@ -85,7 +99,11 @@ public sealed partial class ChatModel
     public string Delegator { get; set; } = "";
     public string DispatchMode { get; set; } = "";
 
+    /// <summary>Hidden until the room actually has work on the board.</summary>
+    public string TasksClass { get; set; } = "tasks hidden";
+
     public List<RoomRow> Rooms { get; set; } = [];
     public List<AgentRow> Agents { get; set; } = [];
+    public List<TaskRow> Tasks { get; set; } = [];
     public List<MessageRow> Messages { get; set; } = [];
 }

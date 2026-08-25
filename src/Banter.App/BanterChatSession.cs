@@ -45,6 +45,7 @@ public sealed class BanterChatSession : IDisposable
 
         _client.MessageReceived += OnMessage;
         _client.DelegatorChanged += OnDelegatorChanged;
+        _client.TaskChanged += OnTaskChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
         _client.MemberJoined += OnJoined;
         _client.MemberParted += OnParted;
@@ -83,7 +84,29 @@ public sealed class BanterChatSession : IDisposable
         });
 
         await RefreshAgentsAsync(room, cancellationToken).ConfigureAwait(false);
+        await RefreshTasksAsync(room, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>Load the room's live task board. Terminal tasks are left out: the panel answers
+    /// "what is happening now", and the timeline already records what happened.</summary>
+    public async Task RefreshTasksAsync(string room, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var board = await _client.ListTasksAsync(room, includeFinished: false, cancellationToken)
+                .ConfigureAwait(false);
+            _vm.Post(() => _vm.SetTasks(
+                room,
+                board.Tasks.Select(t => (t.TaskId, t.Title, t.State.ToString(), t.Assignee))));
+        }
+        catch (Exception)
+        {
+            // Best effort; the board is a view, not the record.
+        }
+    }
+
+    private void OnTaskChanged(Protocol.TaskInfoPayload t) =>
+        _vm.Post(() => _vm.SetTask(t.Room, t.TaskId, t.Title, t.State.ToString(), t.Assignee));
 
     /// <summary>
     /// Re-read who is in the room. Called on join and whenever membership or the delegator
@@ -191,6 +214,20 @@ public sealed class BanterChatSession : IDisposable
             case "files":
                 await ListFilesAsync(room).ConfigureAwait(false);
                 break;
+            case "task" when rest.Length > 0:
+                await Guard(room, async () =>
+                {
+                    var (title, body) = SplitTitleAndBody(rest);
+                    await _client.PostTaskAsync(room, title, body).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+                break;
+            case "task":
+                _vm.Post(() => _vm.System(room, "usage: /task <title> [-- details]"));
+                break;
+            case "tasks":
+                await RefreshTasksAsync(room).ConfigureAwait(false);
+                await ShowTasksAsync(room).ConfigureAwait(false);
+                break;
             case "topic" when rest.Length > 0:
                 await Guard(room, () => _client.SetTopicAsync(room, rest).AsTask()).ConfigureAwait(false);
                 break;
@@ -199,7 +236,8 @@ public sealed class BanterChatSession : IDisposable
                 break;
             case "help":
                 _vm.Post(() => _vm.System(room,
-                    "/upload <path> [description] | /files | /topic <text> | /part | /help"));
+                    "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
+                    "/topic <text> | /part | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
@@ -254,6 +292,41 @@ public sealed class BanterChatSession : IDisposable
         catch (Exception ex)
         {
             _vm.Post(() => _vm.System(room, $"download failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Splits <c>title -- details</c>; without the separator it is all title.</summary>
+    public static (string Title, string Body) SplitTitleAndBody(string text)
+    {
+        var marker = text.IndexOf("--", StringComparison.Ordinal);
+        return marker < 0
+            ? (text.Trim(), "")
+            : (text[..marker].Trim(), text[(marker + 2)..].Trim());
+    }
+
+    private async Task ShowTasksAsync(string room)
+    {
+        try
+        {
+            var board = await _client.ListTasksAsync(room).ConfigureAwait(false);
+            _vm.Post(() =>
+            {
+                if (board.Tasks.Count == 0)
+                {
+                    _vm.System(room, "no open work in this room");
+                    return;
+                }
+
+                foreach (var t in board.Tasks)
+                {
+                    var who = t.Assignee is { Length: > 0 } a ? $" ({a})" : "";
+                    _vm.System(room, $"[{t.State.ToString().ToLowerInvariant()}]{who} {t.Title}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _vm.Post(() => _vm.System(room, $"could not list work: {ex.Message}"));
         }
     }
 
@@ -435,6 +508,7 @@ public sealed class BanterChatSession : IDisposable
         _disposed = true;
         _client.MessageReceived -= OnMessage;
         _client.DelegatorChanged -= OnDelegatorChanged;
+        _client.TaskChanged -= OnTaskChanged;
         _client.RoomModeChanged -= OnRoomModeChanged;
         _client.MemberJoined -= OnJoined;
         _client.MemberParted -= OnParted;

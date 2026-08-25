@@ -144,6 +144,7 @@ public sealed class ChatViewModel
         _prepended = 0;
         RefreshLoadOlderVisibility();
         ShowAgentsFor(room);
+        ShowTasksFor(room);
     }
 
     public void SetTopic(string room, string topic)
@@ -397,6 +398,66 @@ public sealed class ChatViewModel
 
         var delegatorRow = Model.Agents.FirstOrDefault(a => a.Role.Length > 0);
         Model.Delegator = delegatorRow?.Nick ?? "no delegator";
+    }
+
+    // ── Task board (PLAN §8b) ────────────────────────────────────────────────────────────────
+
+    private readonly Dictionary<string, Dictionary<string, TaskRow>> _tasks =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Add or update one task. Terminal tasks are dropped from the board rather than accumulating:
+    /// the panel answers "what is happening now", and the timeline already records what happened.
+    /// </summary>
+    public void SetTask(string room, string taskId, string title, string state, string? assignee)
+    {
+        var board = _tasks.TryGetValue(room, out var existing) ? existing : _tasks[room] = new(StringComparer.Ordinal);
+        var terminal = state is "Done" or "Failed";
+
+        if (terminal)
+        {
+            board.Remove(taskId);
+        }
+        else
+        {
+            var row = board.TryGetValue(taskId, out var found) ? found : board[taskId] = new TaskRow { TaskId = taskId };
+            row.Title = title;
+            row.Status = assignee is { Length: > 0 }
+                ? $"{state.ToLowerInvariant()} · {assignee}"
+                : state.ToLowerInvariant();
+            row.RowClass = assignee is { Length: > 0 } ? "task held" : "task";
+        }
+
+        if (room == Model.ActiveRoom)
+        {
+            ShowTasksFor(room);
+        }
+    }
+
+    /// <summary>Replace the whole board, for the initial load.</summary>
+    public void SetTasks(string room, IEnumerable<(string TaskId, string Title, string State, string? Assignee)> tasks)
+    {
+        _tasks[room] = new Dictionary<string, TaskRow>(StringComparer.Ordinal);
+        foreach (var (id, title, state, assignee) in tasks)
+        {
+            SetTask(room, id, title, state, assignee);
+        }
+
+        if (room == Model.ActiveRoom)
+        {
+            ShowTasksFor(room);
+        }
+    }
+
+    private void ShowTasksFor(string room)
+    {
+        Model.Tasks.Clear();
+        if (_tasks.TryGetValue(room, out var board))
+        {
+            Model.Tasks.AddRange(board.Values);
+        }
+
+        Model.TasksClass = Model.Tasks.Count > 0 ? "tasks" : "tasks hidden";
     }
 
     /// <summary>Rows currently held for a room — the backlog, not just what is on screen.</summary>
