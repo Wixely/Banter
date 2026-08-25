@@ -32,11 +32,29 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
         public System.Text.StringBuilder Accumulated { get; } = new();
     }
 
+    /// <summary>Monotonic counter giving each agent a stable join order for election tie-breaks.</summary>
+    private long _joinSequence;
+
     private sealed class Room(string name, string? topic)
     {
         public string Name { get; } = name;
         public string? Topic { get; set; } = topic;
         public HashSet<ClientSession> Members { get; } = [];
+
+        /// <summary>Dispatch mode (PLAN §8a). Delegated is the default.</summary>
+        public RoomDispatchMode Mode { get; set; } = RoomDispatchMode.Delegated;
+
+        /// <summary>
+        /// Most sensitive content this room may carry. Defaults to <see cref="DataSensitivity.Sensitive"/>
+        /// so an unclassified room gets the strict election rule rather than the permissive one.
+        /// </summary>
+        public DataSensitivity Sensitivity { get; set; } = DataSensitivity.Sensitive;
+
+        /// <summary>Agents present, by nick, with the attributes they announced.</summary>
+        public Dictionary<string, AgentCandidate> Agents { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Current delegator's nick, or null when none is elected.</summary>
+        public string? Delegator { get; set; }
 
         /// <summary>Timestamps of recent agent messages, for the sliding-window rate limit.</summary>
         public Queue<long> AgentMessageTimes { get; } = new();
@@ -157,7 +175,7 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
                 }
             }
 
-            RemoveFromAllRooms(session, "disconnected");
+            await RemoveFromAllRoomsAsync(session, "disconnected").ConfigureAwait(false);
             if (_sessionsByNick.TryGetValue(session.Nick, out var sessions))
             {
                 sessions.Remove(session);
@@ -176,7 +194,7 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
                 await HandleJoinAsync(session, envelope, join).ConfigureAwait(false);
                 break;
             case PartPayload part:
-                HandlePart(session, envelope, part);
+                await HandlePartAsync(session, envelope, part).ConfigureAwait(false);
                 break;
             case MsgPayload msg:
                 await HandleMsgAsync(session, envelope, msg).ConfigureAwait(false);
@@ -207,6 +225,15 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
             case RoomMembersPayload members:
                 HandleMembers(session, envelope, members);
                 break;
+            case AgentAnnouncePayload announce:
+                await HandleAgentAnnounceAsync(session, envelope, announce).ConfigureAwait(false);
+                break;
+            case AgentListPayload agents:
+                HandleAgentList(session, envelope, agents);
+                break;
+            case RoomModePayload mode:
+                await HandleRoomModeAsync(session, envelope, mode).ConfigureAwait(false);
+                break;
             default:
                 session.Send(new ErrorPayload("UNSUPPORTED", $"{envelope.Type} is not supported yet."), replyTo: envelope.MsgId);
                 break;
@@ -231,20 +258,134 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
         if (room.Members.Add(session))
         {
             Broadcast(room, new JoinPayload(room.Name, session.Nick));
+
+            if (session.IsAgent)
+            {
+                // An agent that has not announced still enters the roster, with Unknown
+                // attributes — which the election treats as frontier and uncleared. Leaving it
+                // out entirely would be worse: it would be invisible to a human asking who is
+                // in the room, while still reading everything said there.
+                room.Agents[session.Nick] = session.Announcement is { } announced
+                    ? ToCandidate(announced, _joinSequence++)
+                    : new AgentCandidate(session.Nick, AgentLocality.Unknown, DataSensitivity.Unknown,
+                        [], CostTier: 1, JoinSequence: _joinSequence++);
+
+                await ReelectAsync(room).ConfigureAwait(false);
+            }
         }
 
+        // Tell the joiner who is dispatching, so an agent knows on arrival whether to stay quiet.
+        session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
-    private void HandlePart(ClientSession session, BanterEnvelope envelope, PartPayload part)
+    private async ValueTask HandlePartAsync(ClientSession session, BanterEnvelope envelope, PartPayload part)
     {
         if (_rooms.TryGetValue(part.Room, out var room) && room.Members.Remove(session))
         {
             Broadcast(room, new PartPayload(room.Name, part.Reason, session.Nick));
             session.Send(new PartPayload(room.Name, part.Reason, session.Nick));
+
+            if (room.Agents.Remove(session.Nick))
+            {
+                await ReelectAsync(room).ConfigureAwait(false);
+            }
         }
 
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    private static AgentCandidate ToCandidate(AgentAnnouncePayload a, long joinSequence) =>
+        new(a.Nick, a.Locality, a.Clearance, a.Skills, a.CostTier, joinSequence, a.WantsDelegator);
+
+    /// <summary>
+    /// Re-run the election and, if the outcome changed, announce it. Announcing only on change is
+    /// what keeps a busy room from narrating an election on every join, and the announcement is
+    /// what makes the choice auditable from the timeline rather than an invisible server decision.
+    /// </summary>
+    private async ValueTask ReelectAsync(Room room)
+    {
+        var result = DelegatorElection.Elect([.. room.Agents.Values], room.Sensitivity);
+        if (string.Equals(result.Nick, room.Delegator, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        room.Delegator = result.Nick;
+        Broadcast(room, new RoomDelegatorPayload(room.Name, result.Nick, result.Reason));
+
+        var text = result.Nick is null
+            ? $"No delegator: {result.Reason}. Agents answer when mentioned."
+            : $"{result.Nick} is now the delegator for this room ({result.Reason}).";
+        await AnnounceSystemAsync(room, text).ConfigureAwait(false);
+    }
+
+    private async ValueTask HandleAgentAnnounceAsync(
+        ClientSession session, BanterEnvelope envelope, AgentAnnouncePayload announce)
+    {
+        if (!session.IsAgent)
+        {
+            // Attributes decide who may read a room's traffic, so only accounts the server
+            // already recognises as agents may claim them.
+            session.Send(new ErrorPayload("NOT_AN_AGENT", "Only agent accounts may announce capabilities."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        // The announcement is always attributed to the authenticated nick, never to whatever the
+        // payload claims — otherwise an agent could announce on another's behalf.
+        var owned = announce with { Nick = session.Nick };
+        session.Announcement = owned;
+
+        foreach (var room in _rooms.Values.Where(r => r.Members.Contains(session)))
+        {
+            var existing = room.Agents.TryGetValue(session.Nick, out var current)
+                ? current.JoinSequence
+                : _joinSequence++;
+            room.Agents[session.Nick] = ToCandidate(owned, existing);
+            await ReelectAsync(room).ConfigureAwait(false);
+        }
+
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    private void HandleAgentList(ClientSession session, BanterEnvelope envelope, AgentListPayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        session.Send(
+            new AgentListPayload(
+                room.Name,
+                room.Agents.Values
+                    .Select(a => new AgentInfoPayload(
+                        a.Nick, a.Locality, a.Clearance, a.Skills, "", a.CostTier,
+                        string.Equals(a.Nick, room.Delegator, StringComparison.OrdinalIgnoreCase)))
+                    .ToArray()),
+            replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleRoomModeAsync(ClientSession session, BanterEnvelope envelope, RoomModePayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (room.Mode != request.Mode)
+        {
+            room.Mode = request.Mode;
+            Broadcast(room, new RoomModePayload(room.Name, room.Mode));
+            await AnnounceSystemAsync(room, room.Mode == RoomDispatchMode.Delegated
+                ? "Room is now delegated: one agent routes requests."
+                : "Room is now mention mode: agents answer when named.").ConfigureAwait(false);
+        }
+
+        session.Send(new RoomModePayload(room.Name, room.Mode), replyTo: envelope.MsgId);
     }
 
     private async ValueTask HandleMsgAsync(ClientSession session, BanterEnvelope envelope, MsgPayload msg)
@@ -535,13 +676,22 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
         return false;
     }
 
-    private void RemoveFromAllRooms(ClientSession session, string reason)
+    private async ValueTask RemoveFromAllRoomsAsync(ClientSession session, string reason)
     {
         foreach (var room in _rooms.Values)
         {
-            if (room.Members.Remove(session))
+            if (!room.Members.Remove(session))
             {
-                Broadcast(room, new PartPayload(room.Name, reason, session.Nick));
+                continue;
+            }
+
+            Broadcast(room, new PartPayload(room.Name, reason, session.Nick));
+
+            // A delegator whose socket drops would otherwise leave the room with a dispatcher
+            // that is not there, and every request unanswered.
+            if (room.Agents.Remove(session.Nick))
+            {
+                await ReelectAsync(room).ConfigureAwait(false);
             }
         }
     }

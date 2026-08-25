@@ -133,6 +133,29 @@ public sealed class BanterClient : IAsyncDisposable
         RequestAsync<RoomMembersPayload>(new RoomMembersPayload(room, []), cancellationToken);
 
     /// <summary>
+    /// Declare what this agent is and what it may be trusted with (PLAN §8a). The server
+    /// re-attributes the announcement to the authenticated nick, so <c>Nick</c> here is advisory.
+    /// Announce before joining and the attributes apply on arrival.
+    /// </summary>
+    public Task AnnounceAgentAsync(AgentAnnouncePayload announcement, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(announcement, cancellationToken);
+
+    /// <summary>The agents in a room and their routing attributes, including who is delegator.</summary>
+    public Task<AgentListPayload> GetAgentsAsync(string room, CancellationToken cancellationToken = default) =>
+        RequestAsync<AgentListPayload>(new AgentListPayload(room, []), cancellationToken);
+
+    /// <summary>Read or change a room's dispatch mode. Returns the mode in effect afterwards.</summary>
+    public Task<RoomModePayload> SetRoomModeAsync(
+        string room, RoomDispatchMode mode, CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomModePayload>(new RoomModePayload(room, mode), cancellationToken);
+
+    /// <summary>Raised when a room's delegator changes, including on join.</summary>
+    public event Action<RoomDelegatorPayload>? DelegatorChanged;
+
+    /// <summary>Raised when a room's dispatch mode changes.</summary>
+    public event Action<RoomModePayload>? RoomModeChanged;
+
+    /// <summary>
     /// Opens a streamed message in a room: deltas render live in every member's client and the
     /// completed text lands in history as one message. This is the path agent token streams take
     /// (PLAN §4). Dispose without completing and the server still closes the stream from the
@@ -429,6 +452,12 @@ public sealed class BanterClient : IAsyncDisposable
                         break;
                     case TopicPayload topic:
                         TopicChanged?.Invoke(topic);
+                        break;
+                    case RoomDelegatorPayload delegator:
+                        DelegatorChanged?.Invoke(delegator);
+                        break;
+                    case RoomModePayload roomMode:
+                        RoomModeChanged?.Invoke(roomMode);
                         break;
                     case MsgStreamStartPayload streamStart:
                         MessageStreamStarted?.Invoke(streamStart);

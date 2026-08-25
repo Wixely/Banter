@@ -22,6 +22,13 @@ internal sealed class ClientSession(
 
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
+
+    /// <summary>
+    /// Attributes this agent announced (PLAN §8a), or null if it has not announced. Held on the
+    /// session so a re-join re-applies them without the agent having to announce again, and only
+    /// ever written by the room engine on the single-writer loop.
+    /// </summary>
+    public AgentAnnouncePayload? Announcement { get; set; }
     /// <summary>The banter.core ordinal agreed with this peer during HELLO (CupriMark).</summary>
     public ushort NegotiatedCoreVersion { get; private set; } = 1;
     private bool Authenticated => Nick.Length > 0;
