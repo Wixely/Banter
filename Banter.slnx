@@ -12,6 +12,7 @@
     <Project Path="src/Banter.Agents.Acp/Banter.Agents.Acp.csproj" />
     <Project Path="src/Banter.Warden/Banter.Warden.csproj" />
     <Project Path="src/Banter.App/Banter.App.csproj" />
+    <Project Path="src/Banter.App.Desktop/Banter.App.Desktop.csproj" />
     <Project Path="src/Banter.Cli/Banter.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -20,5 +21,6 @@
     <Project Path="tests/Banter.Voice.Tests/Banter.Voice.Tests.csproj" />
     <Project Path="tests/Banter.Integration.Tests/Banter.Integration.Tests.csproj" />
     <Project Path="tests/Banter.App.Spikes/Banter.App.Spikes.csproj" />
+    <Project Path="tests/Banter.App.Tests/Banter.App.Tests.csproj" />
   </Folder>
 </Solution>

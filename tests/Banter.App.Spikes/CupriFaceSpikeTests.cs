@@ -166,6 +166,45 @@ public sealed class CupriFaceSpikeTests(ITestOutputHelper output)
         Assert.Contains(pixels, b => b != 0);
     }
 
+    /// <summary>
+    /// The case CupriFace 0.4.0 (#67) added and the whole timeline design now rests on: rows whose
+    /// height comes from their own wrapped content, not from <c>item-height</c>. Messages here vary
+    /// from one line to many, so if heights were still forced to a uniform pitch this would either
+    /// clip badly or scale with history.
+    /// </summary>
+    [Fact]
+    public void VariableHeightRowsAreStillVirtualised()
+    {
+        static TimelineModel Wrapped(int count)
+        {
+            var m = new TimelineModel();
+            for (var i = 0; i < count; i++)
+            {
+                // 1 line to ~12 lines, the real spread of chat messages.
+                var words = 4 + (i % 7) * 40;
+                m.Messages.Add(new TimelineRow
+                {
+                    Sender = i % 2 == 0 ? "alice" : "dagger",
+                    Text = string.Join(' ', Enumerable.Repeat("the quick brown fox", words)),
+                });
+            }
+
+            return m;
+        }
+
+        using var small = new VirtualTimelineApp(Wrapped(100)).CreateDocument();
+        using var large = new VirtualTimelineApp(Wrapped(5_000)).CreateDocument();
+
+        var (smallMs, largeMs) = Race(
+            () => small.BuildDisplayList(Width, Height),
+            () => large.BuildDisplayList(Width, Height));
+
+        var ratio = largeMs / Math.Max(smallMs, 0.0001);
+        output.WriteLine($"wrap-height rows: 100 msgs {smallMs:F3} ms, 5,000 msgs {largeMs:F3} ms (x{ratio:F2})");
+
+        Assert.True(ratio < 5, $"Variable-height virtualization scaled with history (x{ratio:F2}).");
+    }
+
     [Fact]
     public void ComposerAcceptsTypedTextIntoTheModel()
     {

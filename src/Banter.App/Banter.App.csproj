@@ -1,5 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Banter.Client.Core/Banter.Client.Core.csproj" />
+    <!-- Engine only. Host heads (Desktop/Android/Web) bring their own CupriFace.* host package,
+         which keeps this project buildable and testable headlessly on any platform. -->
+    <PackageReference Include="CupriFace" Version="0.4.0" />
+  </ItemGroup>
 </Project>

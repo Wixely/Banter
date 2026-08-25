@@ -174,6 +174,15 @@ these are repeatable gates in CI, not one-off eyeball checks. Ratios are the ass
 | **Streaming-delta render rate** — per-token rebind + layout in a 2,000-message room | **0.899 ms** | Pass with ~20× headroom against a 50 tokens/s stream, even though `Refresh()` is a full re-bind (there is no property-level invalidation). |
 | **Composer** — click, type, two-way write-back | model updated (`'hi'`) | Pass headlessly. Feel/IME on a real Android device still outstanding. |
 
+> **Resolved in CupriFace v0.4.0 (2026-08-25).** `item-height` is now an *estimate*: realised rows
+> are measured back into a per-list cache and replace it, with the scroll offset anchored so
+> measurement never makes content jump. Also added `anchor="bottom"` (opens at the bottom, follows
+> appends while the user is there, releases on scroll-up) and `CupriDocument.VirtualListInserted`
+> for prepending older history without the viewport moving — both exactly the chat cases. Verified
+> here: wrap-height rows measured **×1.10** from 100 to 5,000 messages (5.20 ms → 5.75 ms).
+> **So the timeline uses natural wrapping**; neither fixed-height rows nor self-windowing is
+> needed, and the decision below is closed. The original finding is kept for the record:
+
 **The one real constraint found: `<cupri-virtual>` requires a fixed `item-height`.** Chat
 messages are variable height, so the timeline cannot simply drop into it. Options for Phase 2,
 in preference order: (1) fixed-height rows — one line per message with overflow elided, and an

@@ -3,7 +3,10 @@ using CupriFace.Binding;
 
 namespace Banter.App.Spikes;
 
-/// <summary>One rendered chat line. Fixed-height rows are what <c>cupri-virtual</c> requires.</summary>
+/// <summary>
+/// One rendered chat line. As of CupriFace 0.4.0 rows may be any height — <c>item-height</c> is
+/// an estimated pitch that real measurements replace, so wrapped chat text is fine.
+/// </summary>
 [CupriBindable]
 public sealed partial class TimelineRow
 {
@@ -21,7 +24,8 @@ public sealed partial class TimelineModel
 
 /// <summary>
 /// The virtualized timeline: <c>cupri-virtual</c> windows the message list to a screenful, so
-/// render cost should not grow with history size. Fixed row height is the constraint it imposes.
+/// render cost should not grow with history size. Rows wrap to their own height (no fixed
+/// <c>height</c> on <c>.line</c>) — the case that matters for chat and that 0.4.0 added.
 /// </summary>
 public sealed class VirtualTimelineApp(TimelineModel model) : CupriApp
 {
@@ -31,7 +35,7 @@ public sealed class VirtualTimelineApp(TimelineModel model) : CupriApp
     public override string Html => """
         <div class="app">
           <div class="room">{{Room}}</div>
-          <cupri-virtual class="timeline" height="560" item-height="28">
+          <cupri-virtual class="timeline" height="560" item-height="28" anchor="bottom">
             <div class="line" data-repeat="Messages"><b>{{Sender}}</b> {{Text}}</div>
           </cupri-virtual>
           <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
@@ -42,7 +46,7 @@ public sealed class VirtualTimelineApp(TimelineModel model) : CupriApp
         .app { display: flex; flex-direction: column; height: 720px; font-size: 14px; }
         .room { padding: 8px; font-weight: bold; }
         .timeline { flex: 1; }
-        .line { height: 28px; padding: 4px 8px; overflow: hidden; }
+        .line { padding: 4px 8px; }
         .composer { min-height: 60px; max-height: 120px; }
         """;
 }

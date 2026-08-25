@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>banter</AssemblyName>
+    <RootNamespace>Banter.App.Desktop</RootNamespace>
+    <!-- Console output is still wanted for usage text and connect errors before the window opens. -->
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Banter.App/Banter.App.csproj" />
+    <ProjectReference Include="../Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
+    <PackageReference Include="CupriFace.Shell" Version="0.4.0" />
+  </ItemGroup>
+</Project>

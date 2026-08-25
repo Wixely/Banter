@@ -634,6 +634,18 @@ clients on different machines chat in a room through the server.
 `Banter.App` (one CupriApp) with desktop (Windows + Linux) and Android heads: room UI, streaming
 message rendering, settings, QR/mesh-magnet server join. Server-side room-scoped storage (§5a):
 `FILE_*` verbs, grants, quotas; upload/download from CLI and app, inline image rendering.
+
+*Started 2026-08-25.* `Banter.App` (shared CupriApp) and `Banter.App.Desktop` (the `banter`
+executable, TCP or CupriNet by URI scheme) are in, with 16 headless tests covering rooms,
+per-room backlog and unread badges, streaming rebind, scrollback capping, real click/keystroke
+dispatch, and the render-thread pump. **The threading seam is the design point worth keeping:**
+`BanterClient` events arrive on socket threads while CupriFace binds on the render thread, so
+`ChatViewModel` takes mutations as queued closures and `BanterChatApp.Present` drains them
+immediately before the frame that shows them — the model is only ever touched by one thread, and
+`Refresh()` runs only when something changed. `ChatViewModel` has no CupriFace dependency, which
+is what makes the client's behaviour testable without a document, window or server.
+Still to do here: settings, QR/mesh-magnet join, file transfer in the UI, paged scrollback via
+`VirtualListInserted`, and the Android head.
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
