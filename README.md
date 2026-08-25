@@ -29,6 +29,9 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Upstream gaps found by the spike | all four fixed in [DaggerAgent v1.7.0](https://github.com/Wixely/DaggerAgent/releases/tag/v1.7.0): tool-call events, durable CLI sessions, partial output on timeout, NU1903 cleared |
 | Embeddable MCP (MCPHub split) | shipped in [MCPHub v0.6.0](https://github.com/Wixely/MCPHub/releases/tag/v0.6.0) — three packages on the feed, tenancy seam in |
 | `Banter.App` (shared CupriApp: rooms, wrapping timeline, streaming, composer) | implemented, tested headlessly |
+| App: paged scrollback (anchored history prepend, id dedup) | implemented, tested |
+| App: persisted settings (no secrets on disk) | implemented, tested |
+| App: file transfer (attachment chips, `/upload`, `/files`, download) | implemented, tested |
 | `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented, needs a manual run against a live server |
 
 ## Building

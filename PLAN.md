@@ -644,8 +644,17 @@ dispatch, and the render-thread pump. **The threading seam is the design point w
 immediately before the frame that shows them — the model is only ever touched by one thread, and
 `Refresh()` runs only when something changed. `ChatViewModel` has no CupriFace dependency, which
 is what makes the client's behaviour testable without a document, window or server.
-Still to do here: settings, QR/mesh-magnet join, file transfer in the UI, paged scrollback via
-`VirtualListInserted`, and the Android head.
+Since added: **paged scrollback** (cursor paging spliced above the view, with
+`VirtualListInserted` called *before* `Refresh` so the viewport doesn't jump, and message-id
+dedup so a page overlapping the live feed can't duplicate anything); **persisted settings**
+(`%APPDATA%/Banter/settings.json` — server, user, rooms; **secrets deliberately excluded**, with
+a test asserting no secret-shaped field ever appears, since a plain JSON file in the profile is
+not a credential store); and **file transfer** (attachment chips, `/upload`, `/files`, download
+that never silently overwrites).
+
+Still to do here: QR/mesh-magnet join (the `cupri://` scheme is accepted, but generating and
+scanning a code is a per-head job and really an Android concern), inline image rendering for
+image attachments, a native file picker per head to replace `/upload`, and the Android head.
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
