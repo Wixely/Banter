@@ -336,6 +336,30 @@ public sealed record RoomDelegatorPayload(
     [property: Key(1)] string? Nick,
     [property: Key(2)] string Reason = "");
 
+/// <summary>
+/// Open a room. When <see cref="ParentRoom"/> is set the new room is a <b>sub-room</b>: the
+/// delegator's side channel for a piece of work (PLAN §8a).
+///
+/// <para>A sub-room <b>inherits its parent's sensitivity</b>. Without that, opening a child room
+/// would be a way to launder sensitive context into a room where a frontier agent is eligible —
+/// the sub-room must be no more permissive than the conversation it came from.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record RoomCreatePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string? ParentRoom = null,
+    [property: Key(2)] string Purpose = "");
+
+/// <summary>
+/// Move an agent into a room. Issued by a room's delegator to pull a chosen agent into a
+/// sub-room, or by an op. Refused when the agent is not cleared for that room's sensitivity.
+/// </summary>
+[MessagePackObject]
+public sealed record AgentMovePayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] string Room,
+    [property: Key(2)] string Reason = "");
+
 /// <summary>Get (Mode omitted by convention) or set a room's dispatch mode.</summary>
 [MessagePackObject]
 public sealed record RoomModePayload(

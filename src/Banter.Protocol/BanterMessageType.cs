@@ -27,6 +27,9 @@ public enum BanterMessageType : ushort
     Mode = 17,
     Whois = 18,
 
+    /// <summary>Open a room, optionally as a child of another (PLAN §8a sub-rooms).</summary>
+    RoomCreate = 19,
+
     // Chat (20–29)
     Msg = 20,
     PrivMsg = 21,

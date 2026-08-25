@@ -149,6 +149,23 @@ public sealed class BanterClient : IAsyncDisposable
         string room, RoomDispatchMode mode, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomModePayload>(new RoomModePayload(room, mode), cancellationToken);
 
+    /// <summary>
+    /// Open a room. With <paramref name="parentRoom"/> set it is a sub-room, which inherits the
+    /// parent's sensitivity — a child room is never more permissive than the conversation that
+    /// spawned it. The caller joins it automatically.
+    /// </summary>
+    public Task<RoomCreatePayload> CreateRoomAsync(
+        string room, string? parentRoom = null, string purpose = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomCreatePayload>(new RoomCreatePayload(room, parentRoom, purpose), cancellationToken);
+
+    /// <summary>
+    /// Pull an agent into a room you are the delegator of. Refused when the agent is not cleared
+    /// for that room's sensitivity.
+    /// </summary>
+    public Task MoveAgentAsync(
+        string nick, string room, string reason = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new AgentMovePayload(nick, room, reason), cancellationToken);
+
     /// <summary>Raised when a room's delegator changes, including on join.</summary>
     public event Action<RoomDelegatorPayload>? DelegatorChanged;
 

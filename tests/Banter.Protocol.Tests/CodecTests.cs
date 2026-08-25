@@ -90,9 +90,22 @@ public sealed class CodecTests
     [Fact]
     public void ReservedMessageTypesAreLegalWithoutContracts()
     {
-        // Agent/task areas are enum-reserved but contract-less until their phases.
+        // The work-ledger area (§8b) is enum-reserved but contract-less until its phase.
+        // AgentMove and the other agent-control types gained contracts with §8a.
         Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.TaskPost));
-        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentMove));
+        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.TaskClaim));
+        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentPause));
+    }
+
+    [Fact]
+    public void AgentControlTypesUsedByDelegationHaveContracts()
+    {
+        Assert.Equal(typeof(AgentAnnouncePayload), PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentAnnounce));
+        Assert.Equal(typeof(AgentListPayload), PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentList));
+        Assert.Equal(typeof(AgentMovePayload), PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentMove));
+        Assert.Equal(typeof(RoomCreatePayload), PayloadRegistry.PayloadTypeFor(BanterMessageType.RoomCreate));
+        Assert.Equal(typeof(RoomDelegatorPayload), PayloadRegistry.PayloadTypeFor(BanterMessageType.RoomDelegator));
+        Assert.Equal(typeof(RoomModePayload), PayloadRegistry.PayloadTypeFor(BanterMessageType.RoomMode));
     }
 
     [Fact]

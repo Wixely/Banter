@@ -56,6 +56,10 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
         /// <summary>Current delegator's nick, or null when none is elected.</summary>
         public string? Delegator { get; set; }
 
+        /// <summary>Parent room when this is a sub-room, so the side channel stays traceable
+        /// back to the conversation that spawned it.</summary>
+        public string? ParentRoom { get; set; }
+
         /// <summary>Timestamps of recent agent messages, for the sliding-window rate limit.</summary>
         public Queue<long> AgentMessageTimes { get; } = new();
 
@@ -234,6 +238,12 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
             case RoomModePayload mode:
                 await HandleRoomModeAsync(session, envelope, mode).ConfigureAwait(false);
                 break;
+            case RoomCreatePayload create:
+                await HandleRoomCreateAsync(session, envelope, create).ConfigureAwait(false);
+                break;
+            case AgentMovePayload move:
+                await HandleAgentMoveAsync(session, envelope, move).ConfigureAwait(false);
+                break;
             default:
                 session.Send(new ErrorPayload("UNSUPPORTED", $"{envelope.Type} is not supported yet."), replyTo: envelope.MsgId);
                 break;
@@ -368,6 +378,151 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
                         string.Equals(a.Nick, room.Delegator, StringComparison.OrdinalIgnoreCase)))
                     .ToArray()),
             replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Open a room, optionally as a child of one the caller is in. A sub-room inherits its
+    /// parent's sensitivity and mode: anything looser would make "open a sub-room" a way to move
+    /// a sensitive conversation somewhere a frontier agent is eligible to read it.
+    /// </summary>
+    private async ValueTask HandleRoomCreateAsync(
+        ClientSession session, BanterEnvelope envelope, RoomCreatePayload request)
+    {
+        if (!RoomName.IsValid(request.Room))
+        {
+            session.Send(new ErrorPayload("BAD_ROOM", $"'{request.Room}' is not a valid room name."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        Room? parent = null;
+        if (request.ParentRoom is { Length: > 0 } parentName)
+        {
+            if (!_rooms.TryGetValue(parentName, out parent) || !parent.Members.Contains(session))
+            {
+                session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {parentName}."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+        }
+
+        if (_rooms.TryGetValue(request.Room, out var existing))
+        {
+            // Already exists: joining is the caller's next move, but never silently relax an
+            // existing room's sensitivity to match a new parent.
+            session.Send(new RoomCreatePayload(existing.Name, request.ParentRoom, request.Purpose),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var room = new Room(request.Room, topic: request.Purpose.Length > 0 ? request.Purpose : null);
+        if (parent is not null)
+        {
+            room.Sensitivity = parent.Sensitivity;
+            room.Mode = parent.Mode;
+            room.ParentRoom = parent.Name;
+        }
+
+        _rooms[room.Name] = room;
+        await store.UpsertRoomAsync(room.Name, room.Topic).ConfigureAwait(false);
+
+        // The creator joins immediately: a sub-room nobody is in is not useful, and the
+        // delegator needs to be in it to run it.
+        room.Members.Add(session);
+        if (session.IsAgent)
+        {
+            room.Agents[session.Nick] = session.Announcement is { } announced
+                ? ToCandidate(announced, _joinSequence++)
+                : new AgentCandidate(session.Nick, AgentLocality.Unknown, DataSensitivity.Unknown,
+                    [], CostTier: 1, JoinSequence: _joinSequence++);
+        }
+
+        await ReelectAsync(room).ConfigureAwait(false);
+
+        if (parent is not null)
+        {
+            // Link it from the parent, so the side channel is discoverable from the main
+            // conversation rather than being a room only the agents know about.
+            await AnnounceSystemAsync(
+                parent,
+                request.Purpose.Length > 0
+                    ? $"{session.Nick} opened {room.Name} for: {request.Purpose}"
+                    : $"{session.Nick} opened {room.Name}").ConfigureAwait(false);
+        }
+
+        session.Send(new RoomModePayload(room.Name, room.Mode));
+        session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+        session.Send(new RoomCreatePayload(room.Name, room.ParentRoom, request.Purpose), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Move an agent into a room on a delegator's behalf. The clearance check is the point of
+    /// this handler: without it a delegator could pull a frontier agent into a sensitive
+    /// sub-room, which is exactly the egress the routing rules exist to prevent.
+    /// </summary>
+    private async ValueTask HandleAgentMoveAsync(
+        ClientSession session, BanterEnvelope envelope, AgentMovePayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            session.Send(new ErrorPayload("NOT_DELEGATOR", $"Only {room.Name}'s delegator may move agents into it."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!_sessionsByNick.TryGetValue(request.Nick, out var targets) || targets.Count == 0)
+        {
+            session.Send(new ErrorPayload("NO_SUCH_USER", $"'{request.Nick}' has no live session."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var target = targets.First();
+        if (!target.IsAgent)
+        {
+            session.Send(new ErrorPayload("NOT_AN_AGENT", "Only agents can be moved between rooms."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var candidate = target.Announcement is { } announced
+            ? ToCandidate(announced, 0)
+            : new AgentCandidate(target.Nick, AgentLocality.Unknown, DataSensitivity.Unknown, [], 1, 0);
+
+        if (!DelegatorElection.CanReceive(candidate, room.Sensitivity))
+        {
+            session.Send(
+                new ErrorPayload(
+                    "NOT_CLEARED",
+                    $"'{request.Nick}' is not cleared for {room.Sensitivity.ToString().ToLowerInvariant()} " +
+                    $"content in {room.Name}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        foreach (var moved in targets.Where(t => room.Members.Add(t)).ToList())
+        {
+            Broadcast(room, new JoinPayload(room.Name, moved.Nick));
+            moved.Send(new RoomModePayload(room.Name, room.Mode));
+            moved.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+        }
+
+        room.Agents[target.Nick] = candidate with { JoinSequence = _joinSequence++ };
+        await ReelectAsync(room).ConfigureAwait(false);
+
+        if (request.Reason.Length > 0)
+        {
+            await AnnounceSystemAsync(room, $"{request.Nick} was brought in: {request.Reason}").ConfigureAwait(false);
+        }
+
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
     private async ValueTask HandleRoomModeAsync(ClientSession session, BanterEnvelope envelope, RoomModePayload request)

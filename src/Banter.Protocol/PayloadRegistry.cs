@@ -43,6 +43,8 @@ public static class PayloadRegistry
         [BanterMessageType.MsgStreamStart] = typeof(MsgStreamStartPayload),
         [BanterMessageType.MsgStreamDelta] = typeof(MsgStreamDeltaPayload),
         [BanterMessageType.MsgStreamEnd] = typeof(MsgStreamEndPayload),
+        [BanterMessageType.RoomCreate] = typeof(RoomCreatePayload),
+        [BanterMessageType.AgentMove] = typeof(AgentMovePayload),
         [BanterMessageType.AgentAnnounce] = typeof(AgentAnnouncePayload),
         [BanterMessageType.AgentList] = typeof(AgentListPayload),
         [BanterMessageType.RoomDelegator] = typeof(RoomDelegatorPayload),

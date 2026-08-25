@@ -626,8 +626,14 @@ attributes, classification, routing and the egress announcement are all in and c
 and integration tests. Verified live against LM Studio: a public GitHub question produced
 `[egress] sending this to scout, which is a third-party agent. Classified public: …` followed by
 the hand-off and scout's reply, while `summarise my email inbox` stayed with the local agent.
-Still to build here: **sub-rooms** (the delegator opening a child room with the chosen agents),
-fan-out to several agents at once, and an LLM-backed classifier behind `IRequestClassifier` —
+**Sub-rooms are in too:** a delegator can open a child room (`ROOM_CREATE` with a parent) and pull
+cleared agents into it (`AGENT_MOVE`). A sub-room **inherits its parent's sensitivity**, which is
+what stops "open a sub-room" being a way to launder a sensitive conversation somewhere a frontier
+agent is eligible to read it — moving an uncleared agent in is refused with `NOT_CLEARED`. Only the
+room's delegator may move agents, humans are never moved, and the new room is announced in the
+parent so the side channel stays auditable from the main conversation.
+Still to build here: fan-out to several agents at once (`ChooseAll` exists and is tested, but the
+delegator only routes to one), and an LLM-backed classifier behind `IRequestClassifier` —
 the shipped `KeywordRequestClassifier` is a conservative fallback, not the intended production
 classifier.
 
