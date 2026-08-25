@@ -554,6 +554,79 @@ MCPHub's endpoint with its tenant token. Scope note: multi-tenant MCPHub is a re
 if Phase 5 needs MCP sooner, the interim is per-agent MCPHub grant *profiles* (static config, one
 listener per agent) with the full tenant/token model following in Phase 6.
 
+### 8a. Room modes, delegator election, and data-locality routing
+
+**Decided 2026-08-25.** A room with several agents in it should not have every agent answering
+every message. The default is therefore **delegated mode**: exactly one agent — the **delegator** —
+acts on human messages, and it decides which agent (or agents) should actually respond.
+
+**Two room modes.**
+
+| Mode | Behaviour |
+|---|---|
+| `delegated` (**default**) | Only the delegator acts on a human message. It routes to one or more suitable agents, or answers itself. |
+| `mention` | Every agent answers when its own nick is mentioned. The behaviour shipped today; right for a room with one agent, or when a human wants to pick deliberately. |
+
+**Election.** When a room needs a delegator and has none, one is elected automatically:
+
+1. an agent explicitly configured as delegator for that room (ops-granted), else
+2. **a local agent, preferred over a frontier one** — see the egress argument below, which makes
+   this a *requirement* in rooms that permit sensitive content, not merely a preference, else
+3. deterministic tie-break: earliest joined, then nick order.
+
+**The election is server-side**, decided by the room engine and announced into the room. Agents
+must not elect among themselves: the engine is already a deterministic single-writer, whereas
+peer election across N agents races on join/part and split-brains under reconnect — two
+delegators both dispatching is strictly worse than none. Re-election happens when the delegator
+parts or its session drops, and the change is announced like any other room event.
+
+**Agent attributes.** Routing is only as good as what agents advertise about themselves, sent on
+join and held in the room roster:
+
+- **`Locality`** — `Local` (runs on hardware we control) or `Frontier` (a third-party hosted
+  model: Claude, Codex, Copilot). This is the axis that matters most, because it is really "does
+  data leave the building".
+- **`Clearance`** — the most sensitive data this agent may receive: `Public`, `Internal`,
+  `Sensitive`. A frontier agent is `Public` unless an operator says otherwise.
+- **`Skills`** — freeform tags the delegator matches against (`code`, `github`, `email`,
+  `web`, `vision`, `docs`).
+- **`Cost` / `Latency` tiers** — tie-breakers only, so a cheap local model wins a job either
+  could do.
+
+**Routing.** The delegator classifies a request's sensitivity and required skills, then picks the
+cheapest agent whose `Clearance` covers the classification and whose `Skills` cover the need. A
+query about traffic or a public GitHub issue is `Public` and can go to a frontier agent; anything
+touching our mail, internal systems or customer data is `Sensitive` and stays local.
+
+> **Egress is the safety-critical part of this design, and it fails closed.**
+>
+> - **Unknown or uncertain sensitivity is treated as `Sensitive`**, so the fallback is a local
+>   agent. A misclassification that keeps data in-house costs quality; one that sends it out
+>   cannot be undone — the data is on someone else's servers the moment the request is made.
+> - **The delegator must itself satisfy the room's highest clearance**, because it reads *every*
+>   message before classifying any of them. Routing a sensitive message to a local specialist is
+>   pointless if a frontier delegator has already seen it. This is why local is preferred at
+>   election, and required where sensitive content is allowed.
+> - **Every hand-off to a frontier agent is announced in the room**, naming the agent and why it
+>   was chosen. The timeline is already the audit trail (§8b); data leaving the building should
+>   be the most visible thing in it, not a silent routing decision.
+> - Classification is advisory input from a model, so it is **bounded by static policy**: a room
+>   or an agent may be configured to refuse frontier routing outright, and that setting wins over
+>   whatever the delegator concludes.
+
+**Where the work happens.** The delegator may answer in the room, fan out to several agents in
+the room, or **open a sub-room containing itself and the chosen agents** and continue there,
+linked back to the parent. **All data passing between agents goes through chat**, which is what
+makes it inspectable and replayable. The exception is deliberate: when agents collaborate inside
+an external system that already has its own durable record — GitHub issues and PRs, Azure DevOps
+work items — the work lives there and the room carries the references.
+
+**Protocol additions** (v1 ranges already reserve room for these): agents advertise on join
+(`AGENT_ANNOUNCE` with the attributes above), the server maintains a per-room roster
+(`AGENT_LIST`), room mode and delegator are room state (`ROOM_MODE`, `DELEGATOR_SET` + an
+announcement), and dispatch reuses `TASK_ASSIGN` from §8b so delegation and the work ledger are
+one mechanism rather than two.
+
 ### 8b. Work: delegation & claiming
 
 Chat alone makes agents talk; a **work ledger** makes them accountable. Tasks are first-class,
@@ -567,7 +640,8 @@ room-scoped server objects (like files, §5a) so "the main channel" doubles as a
   1. **Claiming (marketplace):** anyone posts `TASK_POST` into a room; any agent in the room may
      `TASK_CLAIM`. The server is the arbiter — first claim wins atomically (single-writer room
      engine already guarantees ordering), losers get a clean rejection instead of duplicate work.
-  2. **Delegation (dispatcher):** a room can be set to *delegated* mode, naming a **delegator** —
+  2. **Delegation (dispatcher):** a room in *delegated* mode (the default — see §8a for the mode,
+     election and data-locality rules) has a **delegator** —
      normally a DaggerAgent instance whose job is routing, not doing. It watches the room, and on
      `TASK_POST` (or on plain conversation it decides is a work request — it may itself
      `TASK_POST` to formalize) issues `TASK_ASSIGN` to the best-fit agent. Its routing knowledge
