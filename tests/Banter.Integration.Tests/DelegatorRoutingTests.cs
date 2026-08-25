@@ -22,7 +22,10 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
     private readonly InMemoryAccountStore _accounts = new InMemoryAccountStore()
         .AddUser("human", "pw")
         .AddUser("local", "pw", isAgent: true)
-        .AddUser("claude", "pw", isAgent: true);
+        .AddUser("claude", "pw", isAgent: true)
+        .AddUser("scout", "pw", isAgent: true)
+        .AddUser("local-2", "pw", isAgent: true)
+        .AddUser("local-3", "pw", isAgent: true);
 
     private string _root = null!;
     private BanterDatabase _database = null!;
@@ -58,7 +61,7 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
     }
 
     /// <summary>The local delegator: routes, and is cleared for everything.</summary>
-    private BanterAgentOptions Delegator(bool allowFrontier = true) => new()
+    private BanterAgentOptions Delegator(bool allowFrontier = true, bool subRooms = false) => new()
     {
         Server = _server.Endpoint,
         User = "local",
@@ -67,7 +70,34 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
         Locality = AgentLocality.Local,
         Clearance = DataSensitivity.Sensitive,
         Skills = ["chat", "email"],
-        Routing = new RoutingOptions { AllowFrontier = allowFrontier },
+        Routing = new RoutingOptions { AllowFrontier = allowFrontier, SubRoomForFanOut = subRooms },
+    };
+
+    /// <summary>A local helper, for fan-outs that stay in-house.</summary>
+    private BanterAgentOptions LocalHelper(string nick, string skill) => new()
+    {
+        Server = _server.Endpoint,
+        User = nick,
+        Password = "pw",
+        Rooms = ["#main"],
+        Locality = AgentLocality.Local,
+        Clearance = DataSensitivity.Sensitive,
+        Skills = [skill, "chat"],
+        CostTier = 2,
+    };
+
+    /// <summary>A second researcher, so a fan-out has more than one recipient: the delegator
+    /// excludes itself from its own routing, so two agents in a room is not a fan-out.</summary>
+    private BanterAgentOptions SecondResearcher() => new()
+    {
+        Server = _server.Endpoint,
+        User = "scout",
+        Password = "pw",
+        Rooms = ["#main"],
+        Locality = AgentLocality.Frontier,
+        Clearance = DataSensitivity.Public,
+        Skills = ["github", "web", "research"],
+        CostTier = 6,
     };
 
     /// <summary>The frontier specialist: only cleared for public data.</summary>
@@ -240,6 +270,90 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
 
         Assert.Null(await WaitForAsync(
             human, m => m.Text == "FRONTIER-ANSWERED", within: TimeSpan.FromSeconds(3)));
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text.StartsWith("[egress]"), within: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public async Task ALocalFanOutCanBeTakenIntoASubRoom()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(subRooms: true), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var helperA = new MarkerAgent(LocalHelper("local-2", "chat"), "HELPER-A");
+        await helperA.StartAsync(_transport);
+        await using var helperB = new MarkerAgent(LocalHelper("local-3", "chat"), "HELPER-B");
+        await helperB.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        await human.SendMessageAsync("#main", "what does everyone think about the Thompson matter");
+
+        // The parent room must say where the conversation went - a side channel the humans
+        // cannot find is one they cannot follow.
+        var pointer = await WaitForAsync(human, m => m.Text.StartsWith("Taking this to #main-"));
+        if (pointer is null)
+        {
+            var dump = await human.GetHistoryAsync("#main", limit: 100);
+            Assert.Fail("no sub-room pointer. Room said: " +
+                string.Join(" | ", dump.Messages.Select(m => $"<{m.Sender}> {m.Text}")));
+        }
+
+        var subRoom = pointer.Text.Split(' ')[3];
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var members = await human.GetMembersAsync(subRoom);
+            if (members.Members.Any(m => m.Nick == "local-2") && members.Members.Any(m => m.Nick == "local-3"))
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.Fail($"Agents were never moved into {subRoom}.");
+    }
+
+    [Fact]
+    public async Task AFanOutInvolvingAThirdPartyStaysInTheMainRoom()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(subRooms: true), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var claude = new MarkerAgent(Frontier(), "FRONTIER-ANSWERED");
+        await claude.StartAsync(_transport);
+        await using var scout = new MarkerAgent(SecondResearcher(), "SCOUT-ANSWERED");
+        await scout.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        await human.SendMessageAsync("#main", "what does everyone think about this public github issue");
+
+        // Both third parties answer, and they answer here: moving the one exchange that leaves
+        // our systems into a side channel would make the most consequential thing the least
+        // visible.
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "FRONTIER-ANSWERED"));
+        Assert.NotNull(await WaitForAsync(human, m => m.Text.StartsWith("[egress]")));
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text.StartsWith("Taking this to"), within: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public async Task ASensitiveFanOutCannotBeLaunderedThroughASubRoom()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(subRooms: true), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var claude = new MarkerAgent(Frontier(), "FRONTIER-ANSWERED");
+        await claude.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // Sensitive, so claude is not eligible and there is nothing to fan out to. No side room
+        // should appear, and nothing should leave.
+        await human.SendMessageAsync("#main", "what does everyone think about my email inbox");
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "LOCAL-ANSWERED"));
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text.StartsWith("Taking this to"), within: TimeSpan.FromSeconds(2)));
         Assert.Null(await WaitForAsync(
             human, m => m.Text.StartsWith("[egress]"), within: TimeSpan.FromSeconds(2)));
     }

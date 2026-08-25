@@ -215,6 +215,46 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
     private bool Addressed(MsgPayload m) => m.Text.Contains(Nick, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Open a child room, bring the chosen agents into it, and put the request there. Returns
+    /// false if any step fails, so the caller can fall back to answering in the main room.
+    ///
+    /// <para>The sub-room inherits the parent's sensitivity server-side, and moving an agent that
+    /// is not cleared for it is refused — so this cannot become a way to continue a sensitive
+    /// conversation somewhere a frontier agent is eligible.</para>
+    /// </summary>
+    private async Task<bool> TryOpenSubRoomAsync(string parent, string prompt, IReadOnlyList<string> agents)
+    {
+        var name = $"{parent}-{Guid.NewGuid().ToString("N")[..6]}";
+        try
+        {
+            await Client.CreateSubRoomAsync(name, parent, Summarise(prompt), _stopping.Token).ConfigureAwait(false);
+
+            foreach (var agent in agents)
+            {
+                await Client.MoveAgentAsync(agent, name, "working this together", _stopping.Token)
+                    .ConfigureAwait(false);
+            }
+
+            await SayAsync(parent, $"Taking this to {name} with {string.Join(", ", agents)}.").ConfigureAwait(false);
+            await SayAsync(name, $"{string.Join(", ", agents)}: {prompt}").ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await SayAsync(parent, $"(could not open a side room: {ex.Message}; continuing here)")
+                .ConfigureAwait(false);
+            return false;
+        }
+    }
+
+    /// <summary>A room topic should be a label, not the whole request.</summary>
+    private static string Summarise(string prompt)
+    {
+        var line = prompt.ReplaceLineEndings(" ").Trim();
+        return line.Length <= 80 ? line : line[..80] + "…";
+    }
+
     /// <summary>Whether a rostered agent is a frontier one, for naming recipients in an egress
     /// notice. Unknown locality counts as frontier, as everywhere else.</summary>
     private bool IsFrontier(string nick)
@@ -345,6 +385,23 @@ public abstract partial class BanterAgent : IAsyncDisposable
         }
 
         var prompt = StripAddress(m.Text);
+
+        // A fan-out that involves a third party stays in the main room, whatever the sub-room
+        // setting says. Two reasons, and they point the same way: the sub-room inherits the
+        // parent's sensitivity, so a frontier agent could not be moved into it anyway; and
+        // moving the one exchange that leaves our systems into a side channel would make the
+        // most consequential thing in the room the least visible.
+        if (routing.SubRoomForFanOut && decision.Agents.Count > 1 && !decision.CrossesEgressBoundary)
+        {
+            if (await TryOpenSubRoomAsync(m.Room, prompt, decision.Agents).ConfigureAwait(false))
+            {
+                return true;
+            }
+
+            // Falling through on failure is deliberate: the work still gets done in the main
+            // room rather than being dropped because a side channel could not be opened.
+        }
+
         foreach (var agent in decision.Agents)
         {
             await SayAsync(m.Room, $"{agent}: {prompt}").ConfigureAwait(false);

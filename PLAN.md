@@ -696,6 +696,14 @@ what stops "open a sub-room" being a way to launder a sensitive conversation som
 agent is eligible to read it — moving an uncleared agent in is refused with `NOT_CLEARED`. Only the
 room's delegator may move agents, humans are never moved, and the new room is announced in the
 parent so the side channel stays auditable from the main conversation.
+**Sub-rooms are used, not just available:** with `SubRoomForFanOut`, a multi-agent request moves
+into a child room and the parent is told where it went. **A fan-out involving a third party always
+stays in the main room**, for two reasons that point the same way — the sub-room inherits the
+parent's sensitivity so a frontier agent could not be moved into it anyway, and moving the one
+exchange that leaves our systems into a side channel would make the most consequential thing in
+the room the least visible. Off by default: a fan-out in the main room is noisier but keeps the
+humans in it, and a side channel they have to go and find is one they will not read.
+
 **Fan-out is in:** a request containing a phrase like "what does everyone think" goes to every
 eligible agent rather than the single best. Deliberately an explicit opt-in per request rather
 than something the delegator infers — fanning out multiplies cost and room noise — and the same

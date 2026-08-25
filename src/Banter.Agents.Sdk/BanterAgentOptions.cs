@@ -116,6 +116,17 @@ public sealed record RoutingOptions
     /// </summary>
     public IReadOnlyList<string> FanOutPhrases { get; init; } =
         ["everyone", "all of you", "both of you", "each of you", "opinions", "second opinion"];
+
+    /// <summary>
+    /// Move a multi-agent request into a sub-room instead of running it in the main one.
+    ///
+    /// <para>Off by default, deliberately: a fan-out in the main room is noisier but keeps the
+    /// humans in it, and a side channel they have to go and find is a side channel they will not
+    /// read. Turn it on when the back-and-forth would drown the conversation. The sub-room
+    /// inherits the parent's sensitivity either way, so this never changes who may see the
+    /// data — only where they say it.</para>
+    /// </summary>
+    public bool SubRoomForFanOut { get; init; }
 }
 
 

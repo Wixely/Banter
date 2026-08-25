@@ -154,6 +154,11 @@ public sealed class BanterClient : IAsyncDisposable
     /// parent's sensitivity — a child room is never more permissive than the conversation that
     /// spawned it. The caller joins it automatically.
     /// </summary>
+    /// <summary>Open a child room of one you are in; it inherits the parent's sensitivity.</summary>
+    public Task<RoomCreatePayload> CreateSubRoomAsync(
+        string room, string parentRoom, string purpose = "", CancellationToken cancellationToken = default) =>
+        CreateRoomAsync(room, parentRoom, purpose, cancellationToken);
+
     public Task<RoomCreatePayload> CreateRoomAsync(
         string room, string? parentRoom = null, string purpose = "", CancellationToken cancellationToken = default) =>
         RequestAsync<RoomCreatePayload>(new RoomCreatePayload(room, parentRoom, purpose), cancellationToken);
