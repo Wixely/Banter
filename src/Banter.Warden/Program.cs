@@ -27,6 +27,7 @@ var skills = (Arg("--skills") ?? "chat").Split(',', StringSplitOptions.RemoveEmp
 var costTier = int.TryParse(Arg("--cost"), out var parsedCost) ? parsedCost : 1;
 var routes = Has("--route");
 var noFrontier = Has("--no-frontier");
+var smartClassifier = Has("--llm-classify");
 
 if (pass is null || model is null || Has("--help") || Has("-h"))
 {
@@ -52,6 +53,9 @@ if (pass is null || model is null || Has("--help") || Has("-h"))
                                 the best-suited agent instead of answering everything
           --no-frontier         never route anything to a frontier agent, whatever the
                                 classification says. Static policy beats the model.
+          --llm-classify        use the model to classify request sensitivity instead of the
+                                keyword rules. Explicit sensitive terms still veto it, and any
+                                classifier failure falls back to sensitive.
 
         --pass also reads BANTER_PASS; --model reads BANTER_MODEL; --llm reads BANTER_LLM.
         """);
@@ -72,7 +76,24 @@ var agentOptions = new BanterAgentOptions
     Description = Arg("--description") ?? $"{model} via {endpoint}",
     CostTier = costTier,
     WantsDelegator = Has("--delegator"),
-    Routing = routes ? new RoutingOptions { AllowFrontier = !noFrontier } : null,
+    Routing = routes
+        ? new RoutingOptions
+        {
+            AllowFrontier = !noFrontier,
+            Classifier = smartClassifier
+                ? new LlmRequestClassifier(new OpenAiChatClient(new LlmChatAgentOptions
+                {
+                    Endpoint = new Uri(endpoint),
+                    Model = model,
+                    ApiKey = apiKey,
+                    // Classification is a gate on every message: a slow one stalls the room.
+                    Timeout = TimeSpan.FromSeconds(45),
+                    MaxOutputTokens = 200,
+                    Temperature = 0,
+                }))
+                : new Banter.Core.KeywordRequestClassifier(),
+        }
+        : null,
 };
 
 var llmOptions = new LlmChatAgentOptions

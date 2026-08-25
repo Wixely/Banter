@@ -58,6 +58,17 @@ public sealed class KeywordRequestClassifier : IRequestClassifier
         ("docs", ["document", "write up", "summarise", "summarize", "draft"]),
     ];
 
+    /// <summary>
+    /// The explicit sensitive term in <paramref name="text"/>, or null. Exposed so a smarter
+    /// classifier can treat these as a <b>veto it may not overturn</b>: a model can resolve
+    /// ambiguity, but "customer", "password" and "inbox" are not ambiguous.
+    /// </summary>
+    public static string? FindSensitiveSignal(string text)
+    {
+        var lower = " " + text.ToLowerInvariant() + " ";
+        return SensitiveSignals.FirstOrDefault(lower.Contains);
+    }
+
     public Task<RequestClassification> ClassifyAsync(string text, CancellationToken cancellationToken = default)
     {
         var lower = " " + text.ToLowerInvariant() + " ";
