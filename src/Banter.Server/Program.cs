@@ -26,10 +26,13 @@ if (await accounts.CountAsync() == 0)
 {
     // First run against an empty database: seed development users so the suite is usable
     // immediately. Real deployments create accounts via admin tooling (Banter.Cli, later).
-    Console.WriteLine("No accounts found - seeding development users alice/bob/dagger (password: banter).");
+    // Two agent accounts, because one agent cannot demonstrate delegation: election, hand-off
+    // and the local-vs-frontier rules all need a room with more than one candidate in it.
+    Console.WriteLine("No accounts found - seeding development users alice/bob and agents dagger/scout (password: banter).");
     await accounts.CreateUserAsync("alice", "banter");
     await accounts.CreateUserAsync("bob", "banter");
     await accounts.CreateUserAsync("dagger", "banter", isAgent: true);
+    await accounts.CreateUserAsync("scout", "banter", isAgent: true);
 }
 
 var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA") ?? "banter-data";

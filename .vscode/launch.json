@@ -72,6 +72,56 @@
       "stopAtEntry": false
     },
     {
+      // Local agent. Gets elected delegator in a room, because rooms default to sensitive
+      // and only local agents are eligible to read everything in one.
+      "name": "Agent (dagger, local)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Warden/bin/Debug/net10.0/banter-warden.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "dagger",
+        "--pass", "banter",
+        "--room", "#main",
+        "--llm", "http://localhost:1234/v1",
+        "--model", "liquid/lfm2.5-1.2b",
+        "--clearance", "sensitive",
+        "--skills", "chat,code",
+        "--system", "You are dagger, a local assistant in a group chat. Keep replies to a sentence or two."
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      // SIMULATED frontier agent: it is really the same local LM Studio endpoint, flagged
+      // --frontier so the election and routing rules treat it as third-party. Useful for
+      // watching "local is preferred" and "sensitive stays local" actually happen. No data
+      // leaves the machine when you run this.
+      "name": "Agent (scout, simulated frontier)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Warden/bin/Debug/net10.0/banter-warden.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "scout",
+        "--pass", "banter",
+        "--room", "#main",
+        "--llm", "http://localhost:1234/v1",
+        "--model", "qwen/qwen3-4b-2507",
+        "--frontier",
+        "--clearance", "public",
+        "--skills", "web,github,research",
+        "--cost", "5",
+        "--system", "You are scout, a research assistant in a group chat. Keep replies to a sentence or two."
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
       "name": "CLI client (bob)",
       "type": "coreclr",
       "request": "launch",
@@ -98,6 +148,25 @@
     {
       "name": "Server + alice",
       "configurations": ["Server", "Desktop app (alice)"],
+      "stopAll": true
+    },
+    {
+      // Chat with an agent: talk to dagger in #main. Needs LM Studio running on :1234.
+      "name": "Server + alice + agent",
+      "configurations": ["Server", "Desktop app (alice)", "Agent (dagger, local)"],
+      "stopAll": true
+    },
+    {
+      // The delegation demo: two agents, so one gets elected delegator and the other waits to
+      // be handed work. dagger (local) wins; scout (simulated frontier) is ineligible in a
+      // sensitive room and stays quiet until dagger names it.
+      "name": "Server + alice + two agents (delegation)",
+      "configurations": [
+        "Server",
+        "Desktop app (alice)",
+        "Agent (dagger, local)",
+        "Agent (scout, simulated frontier)"
+      ],
       "stopAll": true
     }
   ],
