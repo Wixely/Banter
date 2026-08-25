@@ -466,10 +466,28 @@ with ten tools cost 3,316 input tokens before any conversation, so small-context
 their MCP tool set trimmed. Also point `Agent:SummariserModel` at something larger than the chat
 model — compression summarises using the LLM itself, and a 1.2B writing the summary loses a lot.
 
-**The one gap that bites us:** the CLI session store is in-memory, so a Warden restart would
-silently drop every room's delegated-CLI context while the job itself resumes fine. Raised as
-[Wixely/DaggerAgent#6](https://github.com/Wixely/DaggerAgent/issues/6); until fixed, treat
-third-party-CLI room context as non-durable across restarts.
+**Resolved upstream in DaggerAgent v1.7.0 (2026-08-25) — all four gaps we raised are fixed:**
+
+| Raised | Shipped |
+|---|---|
+| [#3](https://github.com/Wixely/DaggerAgent/issues/3) shell/delegated runs buffered, partial output lost on timeout | timeouts now return partial output; delegated CLI runs bounded |
+| [#4](https://github.com/Wixely/DaggerAgent/issues/4) no tool-call events for hosts | `Tools/ToolCallSink.cs` — `ToolCallStarted`/`ToolCallCompleted` |
+| [#5](https://github.com/Wixely/DaggerAgent/issues/5) two NU1903 advisories | cleared |
+| [#6](https://github.com/Wixely/DaggerAgent/issues/6) CLI session store in-memory | persisted to SQLite |
+
+So **`AGENT_STATUS` is now buildable as designed**: subscribe to `IToolCallSink` and map
+`ToolCallStarted`/`Completed` to room status. `ToolCallEvent` carries `JobId` + `Depth` (so
+sub-agent activity attributes to the right conversation) and an `ArgsDigest` — argument *names*
+plus a hash of the values, never the values — which is exactly the shape a room can display
+safely. Errors carry the exception *type* only, deliberately not the message. The sink is a
+singleton, because sub-agents resolve from a child scope and a per-agent event would miss them.
+
+And **third-party-CLI room context is now durable across restarts**, so a Warden restart no
+longer silently amnesias a room's delegated CLI. Two follow-ups stay open upstream, neither
+blocking us: [#7](https://github.com/Wixely/DaggerAgent/issues/7) tool-level granularity *inside*
+a delegated CLI run (needs `stream-json`), and [#8](https://github.com/Wixely/DaggerAgent/issues/8)
+a Codex app-server / ACP adapter behind the same delegation surface — i.e. Path C, upstream,
+where it belongs.
 
 **The cheap intermediate we should take first.** Claude Code's headless mode
 ([docs](https://code.claude.com/docs/en/headless)) already gives most of what ACP would, without
@@ -495,8 +513,14 @@ endpoint with namespaced tools (`azdo_*`, `gh_*`, …). Rather than each DaggerA
 carrying its own MCP server list, agents get **one MCP endpoint: MCPHub**, co-located with the
 Banter server. Modifications to MCPHub (we control the repo):
 
-1. **Embeddable packages (plan handed to the MCPHub repo:
-   [MCPHUB-SPLIT-PLAN.md](https://github.com/Wixely/MCPHub/blob/main/MCPHUB-SPLIT-PLAN.md)).**
+1. **Embeddable packages — ✅ shipped in MCPHub v0.6.0 (2026-08-24)** (plan handed to the MCPHub
+   repo: [MCPHUB-SPLIT-PLAN.md](https://github.com/Wixely/MCPHub/blob/main/MCPHUB-SPLIT-PLAN.md)).
+   All three packages are on the Wixely feed, `MCPHub.Proxy`'s stray `MCPHub.Core` reference is
+   gone, the bearer-token tenancy seam and per-tenant `tools/list` filtering are in, two
+   `ProxyHost` instances run in one process, and `samples/EmbeddedHub` is a working consumer
+   smoke test. Seven of eight acceptance items are ticked; the outstanding one is the manual
+   "desktop release behaves identically to the pre-split build" pass — same shape as the Bantz
+   item, and not blocking Banter. **So Banter can embed the aggregated `/mcp` endpoint now.**
    MCPHub's layering already separates proxy core (`MCPHub.Proxy`: upstream registry +
    namespaced aggregated catalog), in-proc Kestrel host (`ProxyHost`), and process supervision
    from the desktop shell. Those ship as NuGet packages (`MCPHub.Proxy`, `MCPHub.Hosting`,
@@ -590,6 +614,8 @@ Two findings worth carrying forward. (1) DaggerAgent's "turn" is one *user messa
 HTTP call: `RunTurnAsync` hands the tool loop to MEAI's `FunctionInvokingChatClient`, so
 call→result→answer iterations happen inside a single logged turn. `AGENT_STATUS` therefore
 cannot be driven off turn boundaries — it needs the tool-call events, not the turn counter.
+(Raised as [#4](https://github.com/Wixely/DaggerAgent/issues/4) and **shipped in v1.7.0** as
+`IToolCallSink`; see §Path C for the resulting design.)
 (2) `exec_shell` is `ReadToEndAsync` + `WaitForExitAsync`: **fully buffered, no streaming, and
 a timeout returns an error string that discards whatever the child already printed.** So a
 wrapped CLI is one atomic tool call to a room — confirming Path C/ACP stays deferred on the
