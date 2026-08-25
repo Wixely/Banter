@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using Banter.Core;
 using Banter.Protocol;
 using Banter.Protocol.Transport;
@@ -15,14 +16,19 @@ public sealed class BanterServer(
     IAccountStore accounts,
     Persistence.IServerStore store,
     Files.FileStore files,
-    AgentGuardrails? guardrails = null) : IAsyncDisposable
+    AgentGuardrails? guardrails = null,
+    Persistence.TaskStore? tasks = null,
+    TaskLimits? taskLimits = null) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
-    private readonly RoomEngine _engine = new(store, guardrails);
+    private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
+    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits);
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, byte> _sessionTasks = new();
     private IBanterListener? _listener;
     private Task? _acceptLoop;
+    private Task? _leaseSweep;
+    private readonly bool _tasksEnabled = tasks is not null;
     private bool _disposed;
 
     public Uri Endpoint => _listener?.LocalEndpoint
@@ -38,6 +44,35 @@ public sealed class BanterServer(
         _listener = await transport.ListenAsync(endpoint, cancellationToken).ConfigureAwait(false);
         await _engine.StartAsync(cancellationToken).ConfigureAwait(false);
         _acceptLoop = Task.Run(AcceptLoopAsync, CancellationToken.None);
+
+        if (_tasksEnabled)
+        {
+            _leaseSweep = Task.Run(LeaseSweepAsync, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// Periodically reclaims tasks whose lease lapsed. The sweep only queues work onto the room
+    /// engine, so the actual reclaim is ordered against claims like every other mutation.
+    /// </summary>
+    private async Task LeaseSweepAsync()
+    {
+        using var timer = new PeriodicTimer(_taskLimits.SweepInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_stopping.Token).ConfigureAwait(false))
+            {
+                await _engine.SweepExpiredTasksAsync().ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
+        }
+        catch (ChannelClosedException)
+        {
+            // Engine stopped first; nothing left to sweep into.
+        }
     }
 
     private async Task AcceptLoopAsync()
@@ -78,6 +113,11 @@ public sealed class BanterServer(
         if (_acceptLoop is not null)
         {
             await _acceptLoop.ConfigureAwait(false);
+        }
+
+        if (_leaseSweep is not null)
+        {
+            await _leaseSweep.ConfigureAwait(false);
         }
 
         await Task.WhenAll(_sessionTasks.Keys).ConfigureAwait(false);

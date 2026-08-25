@@ -166,6 +166,45 @@ public sealed class BanterClient : IAsyncDisposable
         string nick, string room, string reason = "", CancellationToken cancellationToken = default) =>
         RequestAsync<OkPayload>(new AgentMovePayload(nick, room, reason), cancellationToken);
 
+    // ── Work ledger (PLAN §8b) ───────────────────────────────────────────────────────────────
+
+    /// <summary>Post work into a room. The reply carries the server-assigned task id.</summary>
+    public Task<TaskInfoPayload> PostTaskAsync(
+        string room, string title, string body = "", int leaseSeconds = 0,
+        CancellationToken cancellationToken = default) =>
+        RequestAsync<TaskInfoPayload>(new TaskPostPayload(room, title, body, leaseSeconds), cancellationToken);
+
+    /// <summary>Claim an open task. Throws <c>TASK_TAKEN</c> if another agent got there first.</summary>
+    public Task<TaskInfoPayload> ClaimTaskAsync(string taskId, CancellationToken cancellationToken = default) =>
+        RequestAsync<TaskInfoPayload>(new TaskClaimPayload(taskId), cancellationToken);
+
+    /// <summary>Assign a task to an agent. Delegator-only.</summary>
+    public Task<TaskInfoPayload> AssignTaskAsync(
+        string taskId, string nick, CancellationToken cancellationToken = default) =>
+        RequestAsync<TaskInfoPayload>(new TaskAssignPayload(taskId, nick), cancellationToken);
+
+    /// <summary>Post progress, which also renews the lease on a task you hold.</summary>
+    public Task UpdateTaskAsync(string taskId, string note, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new TaskUpdatePayload(taskId, note), cancellationToken);
+
+    /// <summary>Give a task back to the pool.</summary>
+    public Task ReleaseTaskAsync(
+        string taskId, string reason = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new TaskReleasePayload(taskId, reason), cancellationToken);
+
+    /// <summary>Finish a task you hold.</summary>
+    public Task CompleteTaskAsync(
+        string taskId, string result = "", bool success = true, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new TaskDonePayload(taskId, result, success), cancellationToken);
+
+    /// <summary>Tasks in a room; terminal ones excluded unless asked for.</summary>
+    public Task<TaskListPayload> ListTasksAsync(
+        string room, bool includeFinished = false, CancellationToken cancellationToken = default) =>
+        RequestAsync<TaskListPayload>(new TaskListPayload(room, [], includeFinished), cancellationToken);
+
+    /// <summary>Raised on every task state change in a room you are in.</summary>
+    public event Action<TaskInfoPayload>? TaskChanged;
+
     /// <summary>Raised when a room's delegator changes, including on join.</summary>
     public event Action<RoomDelegatorPayload>? DelegatorChanged;
 
@@ -475,6 +514,9 @@ public sealed class BanterClient : IAsyncDisposable
                         break;
                     case RoomModePayload roomMode:
                         RoomModeChanged?.Invoke(roomMode);
+                        break;
+                    case TaskInfoPayload task:
+                        TaskChanged?.Invoke(task);
                         break;
                     case MsgStreamStartPayload streamStart:
                         MessageStreamStarted?.Invoke(streamStart);

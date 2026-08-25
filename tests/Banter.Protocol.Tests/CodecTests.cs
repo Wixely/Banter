@@ -90,11 +90,11 @@ public sealed class CodecTests
     [Fact]
     public void ReservedMessageTypesAreLegalWithoutContracts()
     {
-        // The work-ledger area (§8b) is enum-reserved but contract-less until its phase.
-        // AgentMove and the other agent-control types gained contracts with §8a.
-        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.TaskPost));
-        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.TaskClaim));
+        // Agent pause/resume and MCP grants are still enum-reserved without contracts; the
+        // agent-control and work-ledger types gained theirs with §8a and §8b.
         Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentPause));
+        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentResume));
+        Assert.Null(PayloadRegistry.PayloadTypeFor(BanterMessageType.AgentMcpGrants));
     }
 
     [Fact]

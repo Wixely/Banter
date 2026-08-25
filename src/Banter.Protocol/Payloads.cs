@@ -366,6 +366,87 @@ public sealed record RoomModePayload(
     [property: Key(0)] string Room,
     [property: Key(1)] RoomDispatchMode Mode);
 
+// ---- Work ledger (PLAN §8b) ----
+
+/// <summary>Lifecycle of a unit of work. Terminal states are Done, Failed.</summary>
+public enum TaskState
+{
+    Open = 0,
+    Claimed = 1,
+    Assigned = 2,
+    Done = 3,
+    Failed = 4,
+}
+
+/// <summary>
+/// A task as the server holds it. <c>LeaseExpiresAt</c> is when the current claim lapses — the
+/// server releases the task at that point, so a crashed agent cannot sit on work forever.
+/// </summary>
+[MessagePackObject]
+public sealed record TaskInfoPayload(
+    [property: Key(0)] string TaskId,
+    [property: Key(1)] string Room,
+    [property: Key(2)] string Title,
+    [property: Key(3)] string Body,
+    [property: Key(4)] string Poster,
+    [property: Key(5)] TaskState State,
+    [property: Key(6)] string? Assignee,
+    [property: Key(7)] long CreatedAt,
+    [property: Key(8)] long? ClaimedAt,
+    [property: Key(9)] long? FinishedAt,
+    [property: Key(10)] long? LeaseExpiresAt,
+    [property: Key(11)] string? Result);
+
+/// <summary>
+/// Post work into a room. <see cref="TaskId"/> is empty on the request and filled by the server.
+/// </summary>
+[MessagePackObject]
+public sealed record TaskPostPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string Title,
+    [property: Key(2)] string Body = "",
+    [property: Key(3)] int LeaseSeconds = 0,
+    [property: Key(4)] string TaskId = "");
+
+/// <summary>Claim an open task. First claim wins; losers get a clean refusal.</summary>
+[MessagePackObject]
+public sealed record TaskClaimPayload([property: Key(0)] string TaskId);
+
+/// <summary>Assign a task to an agent. Delegator- or op-only.</summary>
+[MessagePackObject]
+public sealed record TaskAssignPayload(
+    [property: Key(0)] string TaskId,
+    [property: Key(1)] string Nick);
+
+/// <summary>Give a task back to the pool. Sent by the holder, or by the server on lease expiry.</summary>
+[MessagePackObject]
+public sealed record TaskReleasePayload(
+    [property: Key(0)] string TaskId,
+    [property: Key(1)] string Reason = "");
+
+/// <summary>Progress note. Also renews the lease, which is how a long job stays held.</summary>
+[MessagePackObject]
+public sealed record TaskUpdatePayload(
+    [property: Key(0)] string TaskId,
+    [property: Key(1)] string Note);
+
+/// <summary>Finish a task, successfully or not.</summary>
+[MessagePackObject]
+public sealed record TaskDonePayload(
+    [property: Key(0)] string TaskId,
+    [property: Key(1)] string Result = "",
+    [property: Key(2)] bool Success = true);
+
+/// <summary>
+/// Query tasks in a room; the reply carries them. <c>IncludeFinished</c> is a request filter —
+/// set it to see terminal tasks as well as live ones.
+/// </summary>
+[MessagePackObject]
+public sealed record TaskListPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] IReadOnlyList<TaskInfoPayload> Tasks,
+    [property: Key(2)] bool IncludeFinished = false);
+
 // ---- Generic ----
 
 [MessagePackObject]

@@ -11,9 +11,15 @@ namespace Banter.Server;
 /// Messages, rooms, and topics persist through <see cref="IServerStore"/>; store awaits happen
 /// inside the single-writer loop, which keeps history ordering identical to fan-out ordering.
 /// </summary>
-internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails = null)
+internal sealed class RoomEngine(
+    IServerStore store,
+    AgentGuardrails? guardrails = null,
+    TaskStore? tasks = null,
+    TaskLimits? taskLimits = null)
 {
     private readonly AgentGuardrails _guardrails = guardrails ?? AgentGuardrails.Default;
+    private readonly TaskStore? _tasks = tasks;
+    private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
 
     private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(
         new UnboundedChannelOptions { SingleReader = true });
@@ -243,6 +249,27 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
                 break;
             case AgentMovePayload move:
                 await HandleAgentMoveAsync(session, envelope, move).ConfigureAwait(false);
+                break;
+            case TaskPostPayload post:
+                await HandleTaskPostAsync(session, envelope, post).ConfigureAwait(false);
+                break;
+            case TaskClaimPayload claimTask:
+                await HandleTaskClaimAsync(session, envelope, claimTask).ConfigureAwait(false);
+                break;
+            case TaskAssignPayload assign:
+                await HandleTaskAssignAsync(session, envelope, assign).ConfigureAwait(false);
+                break;
+            case TaskUpdatePayload taskUpdate:
+                await HandleTaskUpdateAsync(session, envelope, taskUpdate).ConfigureAwait(false);
+                break;
+            case TaskReleasePayload release:
+                await HandleTaskReleaseAsync(session, envelope, release).ConfigureAwait(false);
+                break;
+            case TaskDonePayload done:
+                await HandleTaskDoneAsync(session, envelope, done).ConfigureAwait(false);
+                break;
+            case TaskListPayload taskList:
+                await HandleTaskListAsync(session, envelope, taskList).ConfigureAwait(false);
                 break;
             default:
                 session.Send(new ErrorPayload("UNSUPPORTED", $"{envelope.Type} is not supported yet."), replyTo: envelope.MsgId);
@@ -524,6 +551,247 @@ internal sealed class RoomEngine(IServerStore store, AgentGuardrails? guardrails
 
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
+
+    // ── Work ledger (PLAN §8b) ───────────────────────────────────────────────────────────────
+
+    private async ValueTask HandleTaskPostAsync(ClientSession session, BanterEnvelope envelope, TaskPostPayload post)
+    {
+        if (_tasks is null || !_rooms.TryGetValue(post.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {post.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(post.Title))
+        {
+            session.Send(new ErrorPayload("BAD_TASK", "A task needs a title."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var task = await _tasks.CreateAsync(room.Name, post.Title.Trim(), post.Body, session.Nick, post.LeaseSeconds)
+            .ConfigureAwait(false);
+
+        Broadcast(room, task);
+        await AnnounceSystemAsync(room, $"task {Short(task.TaskId)} posted by {session.Nick}: {task.Title}")
+            .ConfigureAwait(false);
+        session.Send(task, replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleTaskClaimAsync(ClientSession session, BanterEnvelope envelope, TaskClaimPayload claim)
+    {
+        var task = _tasks is null ? null : await _tasks.GetAsync(claim.TaskId).ConfigureAwait(false);
+        if (task is null || !_rooms.TryGetValue(task.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_TASK", "No such task in a room you are in."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAgent)
+        {
+            session.Send(new ErrorPayload("NOT_AN_AGENT", "Only agents claim tasks."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (await _tasks!.HeldCountAsync(session.Nick).ConfigureAwait(false) >= _taskLimits.MaxConcurrentPerAgent)
+        {
+            // Stops a greedy agent hoovering up the board and starving everyone else.
+            session.Send(
+                new ErrorPayload("TASK_LIMIT", $"You already hold {_taskLimits.MaxConcurrentPerAgent} task(s)."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var taken = await _tasks.TryTakeAsync(
+            claim.TaskId, session.Nick, TaskState.Claimed, _taskLimits.DefaultLeaseSeconds).ConfigureAwait(false);
+
+        if (taken is null)
+        {
+            // Lost the race, or it was never open. A clean refusal beats duplicate work.
+            session.Send(new ErrorPayload("TASK_TAKEN", "That task is no longer open."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        Broadcast(room, taken);
+        await AnnounceSystemAsync(room, $"task {Short(taken.TaskId)} claimed by {session.Nick}").ConfigureAwait(false);
+        session.Send(taken, replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleTaskAssignAsync(
+        ClientSession session, BanterEnvelope envelope, TaskAssignPayload assign)
+    {
+        var task = _tasks is null ? null : await _tasks.GetAsync(assign.TaskId).ConfigureAwait(false);
+        if (task is null || !_rooms.TryGetValue(task.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_TASK", "No such task in a room you are in."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        // Assignment is the delegator's power (PLAN §8b); claiming is everyone's.
+        if (!string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            session.Send(new ErrorPayload("NOT_DELEGATOR", $"Only {room.Name}'s delegator may assign tasks."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!room.Agents.ContainsKey(assign.Nick))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_USER", $"'{assign.Nick}' is not an agent in {room.Name}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var taken = await _tasks!.TryTakeAsync(
+            assign.TaskId, assign.Nick, TaskState.Assigned, _taskLimits.DefaultLeaseSeconds).ConfigureAwait(false);
+
+        if (taken is null)
+        {
+            session.Send(new ErrorPayload("TASK_TAKEN", "That task is no longer open."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        Broadcast(room, taken);
+        await AnnounceSystemAsync(room, $"task {Short(taken.TaskId)} assigned to {assign.Nick} by {session.Nick}")
+            .ConfigureAwait(false);
+        session.Send(taken, replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleTaskUpdateAsync(
+        ClientSession session, BanterEnvelope envelope, TaskUpdatePayload update)
+    {
+        var task = _tasks is null ? null : await _tasks.GetAsync(update.TaskId).ConfigureAwait(false);
+        if (task is null || !_rooms.TryGetValue(task.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_TASK", "No such task."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        // A progress note renews the lease: that is how a long job stays held without a separate
+        // heartbeat verb, and why going quiet is what loses the work.
+        if (!await _tasks!.TryRenewAsync(update.TaskId, session.Nick, _taskLimits.DefaultLeaseSeconds)
+            .ConfigureAwait(false))
+        {
+            session.Send(new ErrorPayload("NOT_HOLDER", "You do not hold that task."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        await AnnounceSystemAsync(room, $"task {Short(update.TaskId)}: {update.Note}").ConfigureAwait(false);
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleTaskReleaseAsync(
+        ClientSession session, BanterEnvelope envelope, TaskReleasePayload release)
+    {
+        var task = _tasks is null ? null : await _tasks.GetAsync(release.TaskId).ConfigureAwait(false);
+        if (task is null || !_rooms.TryGetValue(task.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_TASK", "No such task."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var isDelegator = string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase);
+        if (!await _tasks!.TryReleaseAsync(release.TaskId, isDelegator ? null : session.Nick).ConfigureAwait(false))
+        {
+            session.Send(new ErrorPayload("NOT_HOLDER", "You do not hold that task."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var released = await _tasks.GetAsync(release.TaskId).ConfigureAwait(false);
+        if (released is not null)
+        {
+            Broadcast(room, released);
+        }
+
+        await AnnounceSystemAsync(
+            room,
+            release.Reason.Length > 0
+                ? $"task {Short(release.TaskId)} released by {session.Nick}: {release.Reason}"
+                : $"task {Short(release.TaskId)} released by {session.Nick}").ConfigureAwait(false);
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleTaskDoneAsync(ClientSession session, BanterEnvelope envelope, TaskDonePayload done)
+    {
+        var task = _tasks is null ? null : await _tasks.GetAsync(done.TaskId).ConfigureAwait(false);
+        if (task is null || !_rooms.TryGetValue(task.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_TASK", "No such task."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!await _tasks!.TryFinishAsync(done.TaskId, session.Nick, done.Success, done.Result).ConfigureAwait(false))
+        {
+            session.Send(new ErrorPayload("NOT_HOLDER", "You do not hold that task."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var finished = await _tasks.GetAsync(done.TaskId).ConfigureAwait(false);
+        if (finished is not null)
+        {
+            Broadcast(room, finished);
+        }
+
+        await AnnounceSystemAsync(
+            room,
+            done.Success
+                ? $"task {Short(done.TaskId)} done by {session.Nick}{Suffix(done.Result)}"
+                : $"task {Short(done.TaskId)} FAILED for {session.Nick}{Suffix(done.Result)}").ConfigureAwait(false);
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    private async ValueTask HandleTaskListAsync(ClientSession session, BanterEnvelope envelope, TaskListPayload request)
+    {
+        if (_tasks is null || !_rooms.TryGetValue(request.Room, out var room) || !room.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var tasks = await _tasks.ListAsync(room.Name, request.IncludeFinished).ConfigureAwait(false);
+        session.Send(new TaskListPayload(room.Name, tasks, request.IncludeFinished), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Reclaim tasks whose lease lapsed. Runs on the engine loop like everything else, so a
+    /// reclaim cannot interleave with a claim and hand the same task to two agents.
+    /// </summary>
+    public ValueTask SweepExpiredTasksAsync() =>
+        _commands.Writer.WriteAsync(async () =>
+        {
+            if (_tasks is null)
+            {
+                return;
+            }
+
+            foreach (var expired in await _tasks.ExpiredAsync().ConfigureAwait(false))
+            {
+                if (!await _tasks.TryReleaseAsync(expired.TaskId, nick: null).ConfigureAwait(false))
+                {
+                    continue;
+                }
+
+                if (_rooms.TryGetValue(expired.Room, out var room))
+                {
+                    var released = await _tasks.GetAsync(expired.TaskId).ConfigureAwait(false);
+                    if (released is not null)
+                    {
+                        Broadcast(room, released);
+                    }
+
+                    await AnnounceSystemAsync(
+                        room,
+                        $"task {Short(expired.TaskId)} lease expired and was released " +
+                        $"(was held by {expired.Assignee})").ConfigureAwait(false);
+                }
+            }
+        });
+
+    /// <summary>Short id for announcements; the full id still travels on the payload.</summary>
+    private static string Short(string taskId) => taskId.Length <= 8 ? taskId : taskId[..8];
+
+    private static string Suffix(string result) => result.Length > 0 ? $": {result}" : "";
 
     private async ValueTask HandleRoomModeAsync(ClientSession session, BanterEnvelope envelope, RoomModePayload request)
     {

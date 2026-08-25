@@ -666,6 +666,17 @@ one mechanism rather than two.
 
 ### 8b. Work: delegation & claiming
 
+**Status (2026-08-25): implemented.** `TASK_*` verbs, SQLite persistence (migration 3), the
+claiming/assignment split, leases with a server-side reclaim sweep, and the per-agent concurrency
+cap are all in and covered by integration tests. Arbitration is a conditional update
+(`WHERE state = 0`), so a second claim updates zero rows and gets a clean `TASK_TAKEN` — two
+agents cannot both believe they hold the same work even if their writes interleave. A
+`TASK_UPDATE` renews the lease, which is why going quiet is what loses the work: a held task with
+no progress is indistinguishable from a crashed agent. Every transition is announced into the
+room, so the timeline is the audit trail as designed. Still to build: agents that actually use
+the ledger (the SDK exposes no task tools yet), and surfacing tasks in the app.
+
+
 Chat alone makes agents talk; a **work ledger** makes them accountable. Tasks are first-class,
 room-scoped server objects (like files, §5a) so "the main channel" doubles as a job board.
 

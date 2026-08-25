@@ -38,7 +38,10 @@ if (await accounts.CountAsync() == 0)
 var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA") ?? "banter-data";
 var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = dataDir });
 
-await using var server = new BanterServer(new TcpBanterTransport(), accounts, new DbServerStore(database), fileStore);
+await using var server = new BanterServer(
+    new TcpBanterTransport(), accounts, new DbServerStore(database), fileStore,
+    guardrails: null,
+    tasks: new TaskStore(database));
 await server.StartAsync(endpoint);
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");

@@ -214,5 +214,50 @@ public static class SchemaManifest
 
             CREATE INDEX ix_file_grants_room ON file_grants (room);
             """),
+        new(
+            3,
+            "work-ledger",
+            SqliteSql:
+            """
+            CREATE TABLE tasks (
+                task_id TEXT NOT NULL PRIMARY KEY,
+                room TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                poster TEXT NOT NULL,
+                state INTEGER NOT NULL DEFAULT 0,
+                assignee TEXT NULL,
+                created_at INTEGER NOT NULL,
+                claimed_at INTEGER NULL,
+                finished_at INTEGER NULL,
+                lease_expires_at INTEGER NULL,
+                lease_seconds INTEGER NOT NULL,
+                result TEXT NULL
+            );
+
+            CREATE INDEX ix_tasks_room_state ON tasks (room, state);
+            CREATE INDEX ix_tasks_lease ON tasks (lease_expires_at);
+            """,
+            PostgresSql:
+            """
+            CREATE TABLE tasks (
+                task_id TEXT NOT NULL PRIMARY KEY,
+                room TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                poster TEXT NOT NULL,
+                state INTEGER NOT NULL DEFAULT 0,
+                assignee TEXT NULL,
+                created_at BIGINT NOT NULL,
+                claimed_at BIGINT NULL,
+                finished_at BIGINT NULL,
+                lease_expires_at BIGINT NULL,
+                lease_seconds INTEGER NOT NULL,
+                result TEXT NULL
+            );
+
+            CREATE INDEX ix_tasks_room_state ON tasks (room, state);
+            CREATE INDEX ix_tasks_lease ON tasks (lease_expires_at);
+            """),
     ];
 }
