@@ -59,8 +59,12 @@ public static class RequestRouting
 
         if (eligible.Count == 0)
         {
+            // Word it accurately: when the caller excluded itself, the delegator usually *is*
+            // cleared, and saying otherwise would read as a policy failure rather than a routing
+            // one to whoever is watching the room.
+            var who = excludeNick is null ? "no agent" : "no other agent";
             return RoutingDecision.None(
-                $"no agent is cleared for {effective.ToString().ToLowerInvariant()} content");
+                $"{who} is cleared for {effective.ToString().ToLowerInvariant()} content");
         }
 
         var ranked = eligible
@@ -77,8 +81,9 @@ public static class RequestRouting
         // cheapest — the delegator can then answer itself or ask the room.
         if (request.RequiredSkills.Count > 0 && best.Covered == 0)
         {
+            var who = excludeNick is null ? "no agent" : "no other agent";
             return RoutingDecision.None(
-                $"no agent has the skills for this ({string.Join(", ", request.RequiredSkills)})");
+                $"{who} has the skills for this ({string.Join(", ", request.RequiredSkills)})");
         }
 
         var reason = Describe(best.Agent, best.Covered, request, effective);

@@ -621,6 +621,16 @@ makes it inspectable and replayable. The exception is deliberate: when agents co
 an external system that already has its own durable record — GitHub issues and PRs, Azure DevOps
 work items — the work lives there and the room carries the references.
 
+**Status (2026-08-25): implemented and verified end to end.** Election, dispatch modes, agent
+attributes, classification, routing and the egress announcement are all in and covered by unit
+and integration tests. Verified live against LM Studio: a public GitHub question produced
+`[egress] sending this to scout, which is a third-party agent. Classified public: …` followed by
+the hand-off and scout's reply, while `summarise my email inbox` stayed with the local agent.
+Still to build here: **sub-rooms** (the delegator opening a child room with the chosen agents),
+fan-out to several agents at once, and an LLM-backed classifier behind `IRequestClassifier` —
+the shipped `KeywordRequestClassifier` is a conservative fallback, not the intended production
+classifier.
+
 **Protocol additions** (v1 ranges already reserve room for these): agents advertise on join
 (`AGENT_ANNOUNCE` with the attributes above), the server maintains a per-room roster
 (`AGENT_LIST`), room mode and delegator are room state (`ROOM_MODE`, `DELEGATOR_SET` + an

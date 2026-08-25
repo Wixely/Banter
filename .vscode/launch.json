@@ -2,7 +2,8 @@
   // Debug configurations for the Banter suite.
   //
   // The credentials below are the development accounts Banter.Server seeds into an empty
-  // database on first run (it prints them at startup): alice / bob / dagger, password "banter".
+  // database on first run (it prints them at startup): humans alice / bob and agents
+  // dagger / scout, all with password "banter".
   // They are not secrets, which is why they can live in a committed file - a real deployment
   // creates accounts with admin tooling and supplies the password via --pass or BANTER_PASS.
   //
