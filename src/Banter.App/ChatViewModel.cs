@@ -24,6 +24,19 @@ public sealed class ChatViewModel
     /// <summary>Per-room backlog, so switching rooms doesn't lose what was said.</summary>
     private readonly Dictionary<string, List<MessageRow>> _rooms = [];
 
+    /// <summary>
+    /// Per-room paging cursor: the <c>NextCursor</c> from the last history page, i.e. the id to
+    /// ask <em>before</em> next. Absent means "not paged yet"; null means the room is exhausted.
+    /// </summary>
+    private readonly Dictionary<string, string?> _cursors = [];
+
+    /// <summary>
+    /// Rows prepended since the renderer last looked. The virtual list must be told
+    /// (<c>VirtualListInserted</c>) before the rebind, or inserting at the top scrolls the
+    /// viewport by exactly the height of what was inserted — the jump this avoids.
+    /// </summary>
+    private int _prepended;
+
     public ChatModel Model { get; } = new();
 
     /// <summary>How many messages a room keeps before the oldest are dropped. Older history is
@@ -47,6 +60,17 @@ public sealed class ChatViewModel
         }
 
         return any;
+    }
+
+    /// <summary>
+    /// Number of rows prepended to the visible room since the last call, and resets. The app
+    /// hands this to <c>CupriDocument.VirtualListInserted</c> before refreshing.
+    /// </summary>
+    public int TakePrependedCount()
+    {
+        var n = _prepended;
+        _prepended = 0;
+        return n;
     }
 
     // ── Mutations. All are called on the render thread, via Post. ────────────────────────────
@@ -114,6 +138,11 @@ public sealed class ChatViewModel
         // than the list itself keeps the binding path (`Messages`) stable.
         Model.Messages.Clear();
         Model.Messages.AddRange(_rooms[room]);
+
+        // The switch is a wholesale rebind, not an insertion — any pending prepend count belongs
+        // to the room we just left and would misalign this room's scroll anchor.
+        _prepended = 0;
+        RefreshLoadOlderVisibility();
     }
 
     public void SetTopic(string room, string topic)
@@ -124,10 +153,11 @@ public sealed class ChatViewModel
         }
     }
 
-    public MessageRow Append(string room, string sender, string text, long timestamp, string rowClass = "line")
+    public MessageRow Append(string room, string sender, string text, long timestamp, string rowClass = "line", string id = "")
     {
         var row = new MessageRow
         {
+            Id = id,
             Sender = sender,
             Text = text,
             Time = FormatTime(timestamp),
@@ -162,6 +192,83 @@ public sealed class ChatViewModel
     }
 
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
+
+    // ── Older history ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Records where the next page of history starts. <paramref name="cursor"/> null means the
+    /// server has nothing older, which is what hides the load-earlier control.
+    /// </summary>
+    public void SetHistoryCursor(string room, string? cursor)
+    {
+        _cursors[room] = cursor;
+        if (room == Model.ActiveRoom)
+        {
+            RefreshLoadOlderVisibility();
+        }
+    }
+
+    /// <summary>The cursor to pass as <c>beforeMessageId</c>, or null when there is no more.</summary>
+    public string? HistoryCursor(string room) => _cursors.GetValueOrDefault(room);
+
+    public bool CanLoadOlder(string room) => _cursors.GetValueOrDefault(room) is not null;
+
+    /// <summary>
+    /// Insert a page of older messages above what is already shown, oldest first. Returns how many
+    /// rows were actually added to the <em>visible</em> list — messages already present by id are
+    /// skipped, so a page that overlaps the live feed cannot duplicate anything.
+    /// </summary>
+    public int Prepend(string room, IReadOnlyList<(string Id, string Sender, string Text, long Timestamp)> older)
+    {
+        if (!_rooms.TryGetValue(room, out var backlog))
+        {
+            return 0;
+        }
+
+        var known = backlog.Where(r => r.Id.Length > 0).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
+        var rows = new List<MessageRow>(older.Count);
+        foreach (var (id, sender, text, timestamp) in older)
+        {
+            if (id.Length > 0 && !known.Add(id))
+            {
+                continue;
+            }
+
+            rows.Add(new MessageRow
+            {
+                Id = id,
+                Sender = sender,
+                Text = text,
+                Time = FormatTime(timestamp),
+                RowClass = sender == Model.Nick ? "line own" : "line",
+            });
+        }
+
+        if (rows.Count == 0)
+        {
+            return 0;
+        }
+
+        backlog.InsertRange(0, rows);
+
+        if (room != Model.ActiveRoom)
+        {
+            return 0;
+        }
+
+        Model.Messages.InsertRange(0, rows);
+
+        // Deliberately not trimming to RoomScrollback here: the user has just asked to see
+        // further back, so dropping the oldest rows would undo the very thing they requested.
+        _prepended += rows.Count;
+        return rows.Count;
+    }
+
+    private void RefreshLoadOlderVisibility()
+    {
+        var can = CanLoadOlder(Model.ActiveRoom);
+        Model.LoadOlderClass = can ? "loadmore" : "loadmore hidden";
+    }
 
     // ── Streaming: START opens an empty row, deltas grow it, END replaces it authoritatively ──
 

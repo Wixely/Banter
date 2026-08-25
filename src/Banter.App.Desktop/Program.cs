@@ -78,8 +78,9 @@ var app = new BanterChatApp(vm)
 {
     SendAsync = session.SendAsync,
     // Room switching is local — the backlog is already held per room, and history was
-    // back-filled at join. A future paged scrollback hooks in here.
+    // back-filled at join.
     RoomSelected = _ => { },
+    LoadOlderAsync = room => session.LoadOlderAsync(room),
 };
 
 DesktopHost.Run(app, _ => { });

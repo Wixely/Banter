@@ -9,6 +9,10 @@ namespace Banter.App;
 [CupriBindable]
 public sealed partial class MessageRow
 {
+    /// <summary>Server message id, when there is one. Used to keep a page of older history from
+    /// duplicating a message the live feed already delivered. Empty for local system lines.</summary>
+    public string Id { get; set; } = "";
+
     public string Sender { get; set; } = "";
     public string Text { get; set; } = "";
     public string Time { get; set; } = "";
@@ -42,6 +46,11 @@ public sealed partial class ChatModel
     public string StatusClass { get; set; } = "status off";
     public string Composer { get; set; } = "";
     public string Nick { get; set; } = "";
+
+    /// <summary>Label for the load-earlier control; also carries its own visibility class.</summary>
+    public string LoadOlderClass { get; set; } = "loadmore hidden";
+    public string LoadOlderText { get; set; } = "Load earlier messages";
+
     public List<RoomRow> Rooms { get; set; } = [];
     public List<MessageRow> Messages { get; set; } = [];
 }

@@ -14,7 +14,29 @@ public sealed class BanterChatSession : IDisposable
 {
     private readonly BanterClient _client;
     private readonly ChatViewModel _vm;
+
+    /// <summary>Rooms with a history page in flight. Guarded by the lock below because the
+    /// control can be clicked from the render thread while a fetch completes on another.</summary>
+    private readonly HashSet<string> _loadingRooms = [];
+
     private bool _disposed;
+
+    /// <summary>Try to claim the "loading older history" slot for a room.</summary>
+    private bool BeginLoad(string room)
+    {
+        lock (_loadingRooms)
+        {
+            return _loadingRooms.Add(room);
+        }
+    }
+
+    private void EndLoad(string room)
+    {
+        lock (_loadingRooms)
+        {
+            _loadingRooms.Remove(room);
+        }
+    }
 
     public BanterChatSession(BanterClient client, ChatViewModel viewModel)
     {
@@ -52,9 +74,50 @@ public sealed class BanterChatSession : IDisposable
         {
             foreach (var m in page.Messages)
             {
-                _vm.Append(room, m.Sender, m.Text, m.Timestamp);
+                _vm.Append(room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? "");
             }
+
+            _vm.SetHistoryCursor(room, page.NextCursor);
         });
+    }
+
+    /// <summary>
+    /// Fetch the next page of older history and splice it above what is shown. Re-entrancy is
+    /// guarded per room: the control stays clickable, but a second click while a page is still in
+    /// flight would page past the cursor and leave a hole in the timeline.
+    /// </summary>
+    public async Task LoadOlderAsync(string room, int limit = 100, CancellationToken cancellationToken = default)
+    {
+        var cursor = _vm.HistoryCursor(room);
+        if (cursor is null || !BeginLoad(room))
+        {
+            return;
+        }
+
+        try
+        {
+            var page = await _client
+                .GetHistoryAsync(room, beforeMessageId: cursor, limit: limit, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            var older = page.Messages
+                .Select(m => (Id: m.MessageId ?? "", m.Sender, m.Text, m.Timestamp))
+                .ToList();
+
+            _vm.Post(() =>
+            {
+                _vm.Prepend(room, older);
+                _vm.SetHistoryCursor(room, page.NextCursor);
+            });
+        }
+        catch (Exception ex)
+        {
+            _vm.Post(() => _vm.System(room, $"could not load earlier messages: {ex.Message}"));
+        }
+        finally
+        {
+            EndLoad(room);
+        }
     }
 
     public Task PartAsync(string room, CancellationToken cancellationToken = default)
@@ -66,8 +129,10 @@ public sealed class BanterChatSession : IDisposable
     public Task SendAsync(string room, string text) =>
         _client.SendMessageAsync(room, text).AsTask();
 
+    // The id matters beyond display: it is what stops a page of older history re-adding a
+    // message the live feed already delivered.
     private void OnMessage(Protocol.MsgPayload m) =>
-        _vm.Post(() => _vm.Append(m.Room, m.Sender, m.Text, m.Timestamp));
+        _vm.Post(() => _vm.Append(m.Room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? ""));
 
     private void OnJoined(Protocol.JoinPayload j) =>
         _vm.Post(() => _vm.System(j.Room, $"{j.Nick} joined"));

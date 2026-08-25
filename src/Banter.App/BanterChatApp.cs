@@ -25,6 +25,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Called when the user selects a room tab. Hook so the head can fetch history.</summary>
     public Action<string> RoomSelected { get; init; } = _ => { };
 
+    /// <summary>Called when the user asks for older history in a room.</summary>
+    public Func<string, Task> LoadOlderAsync { get; init; } = _ => Task.CompletedTask;
+
     public override string Title => "Banter";
     public override object Model => ViewModel.Model;
     public override int Width => 1100;
@@ -54,6 +57,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <span class="room-name">{{ActiveRoom}}</span>
               <span class="topic">{{Topic}}</span>
             </div>
+            <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
               <div class="{{RowClass}}" data-repeat="Messages">
                 <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span><span class="text">{{Text}}</span>
@@ -87,6 +91,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .header { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         .room-name { font-weight: bold; padding-right: 12px; }
         .topic { color: #8b93a1; }
+
+        .loadmore { padding: 6px 14px; color: #7fa7ff; font-size: 12px; background: #191c22; }
+        .loadmore.hidden { display: none; }
 
         .timeline { flex: 1; padding: 6px 0; }
         /* No fixed height: rows wrap and the virtual list measures them (CupriFace 0.4.0). */
@@ -127,6 +134,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             RoomSelected(room);
             return true;
         });
+
+        doc.OnAction("data-load-older", _ =>
+        {
+            LoadOlder();
+            return true;
+        });
+    }
+
+    /// <summary>
+    /// Fetch the next page of older history for the active room. An explicit control rather than
+    /// a scroll-position trigger: it works identically on desktop and touch, and it keeps the
+    /// request deliberate instead of firing every time a fling overshoots the top.
+    /// </summary>
+    public void LoadOlder()
+    {
+        var room = ViewModel.Model.ActiveRoom;
+        if (room.Length == 0 || !ViewModel.CanLoadOlder(room))
+        {
+            return;
+        }
+
+        _ = LoadOlderAsync(room);
     }
 
     /// <summary>
@@ -139,6 +168,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     {
         if (ViewModel.ApplyPending())
         {
+            // Order matters: the virtual list must learn about rows inserted at the top *before*
+            // the rebind, so it can move its scroll anchor by the same amount. Refresh first and
+            // the viewport jumps down by the height of the page just loaded.
+            var prepended = ViewModel.TakePrependedCount();
+            if (prepended > 0)
+            {
+                _doc?.VirtualListInserted("Messages", 0, prepended);
+            }
+
             _doc?.Refresh();
         }
 
