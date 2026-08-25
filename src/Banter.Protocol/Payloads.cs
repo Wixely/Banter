@@ -254,6 +254,94 @@ public sealed record FileRevokePayload(
 [MessagePackObject]
 public sealed record FileDeletePayload([property: Key(0)] string FileId);
 
+// ---- Agent control (PLAN §8a) ----
+
+/// <summary>
+/// Where an agent runs, which is really "does data leave the building". The single most
+/// important routing attribute: a <see cref="Frontier"/> agent is a third party, so anything
+/// sent to it has left our control the moment the request is made.
+/// </summary>
+public enum AgentLocality
+{
+    /// <summary>Unstated. Treated as <see cref="Frontier"/> when routing, because assuming an
+    /// unknown agent is local is the mistake that leaks data.</summary>
+    Unknown = 0,
+
+    /// <summary>Runs on hardware we control (a local model, an on-prem endpoint).</summary>
+    Local = 1,
+
+    /// <summary>A third-party hosted model — Claude, Codex, Copilot.</summary>
+    Frontier = 2,
+}
+
+/// <summary>The most sensitive data an agent may be given.</summary>
+public enum DataSensitivity
+{
+    /// <summary>Unstated. Routing treats this as <see cref="Sensitive"/> — fail closed.</summary>
+    Unknown = 0,
+    Public = 1,
+    Internal = 2,
+    Sensitive = 3,
+}
+
+/// <summary>How a room dispatches human messages to agents.</summary>
+public enum RoomDispatchMode
+{
+    /// <summary>Default: one elected delegator acts and routes to suitable agents.</summary>
+    Delegated = 0,
+
+    /// <summary>Every agent answers when its own nick is mentioned.</summary>
+    Mention = 1,
+}
+
+/// <summary>
+/// Agent → server on join: what this agent is and what it may be trusted with. The delegator
+/// routes on exactly these fields (PLAN §8a).
+/// </summary>
+[MessagePackObject]
+public sealed record AgentAnnouncePayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] AgentLocality Locality,
+    [property: Key(2)] DataSensitivity Clearance,
+    [property: Key(3)] IReadOnlyList<string> Skills,
+    [property: Key(4)] string Description = "",
+    [property: Key(5)] int CostTier = 1,
+    [property: Key(6)] bool WantsDelegator = false);
+
+/// <summary>One roster entry, as the server holds it.</summary>
+[MessagePackObject]
+public sealed record AgentInfoPayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] AgentLocality Locality,
+    [property: Key(2)] DataSensitivity Clearance,
+    [property: Key(3)] IReadOnlyList<string> Skills,
+    [property: Key(4)] string Description,
+    [property: Key(5)] int CostTier,
+    [property: Key(6)] bool IsDelegator);
+
+/// <summary>Server → client: the agents in a room and their attributes.</summary>
+[MessagePackObject]
+public sealed record AgentListPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] IReadOnlyList<AgentInfoPayload> Agents);
+
+/// <summary>
+/// Server → room: who the delegator is. <see cref="Nick"/> is null when a room has no agents to
+/// elect from. <see cref="Reason"/> records why this agent won, so the election is auditable
+/// from the timeline rather than being an invisible server decision.
+/// </summary>
+[MessagePackObject]
+public sealed record RoomDelegatorPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string? Nick,
+    [property: Key(2)] string Reason = "");
+
+/// <summary>Get (Mode omitted by convention) or set a room's dispatch mode.</summary>
+[MessagePackObject]
+public sealed record RoomModePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] RoomDispatchMode Mode);
+
 // ---- Generic ----
 
 [MessagePackObject]

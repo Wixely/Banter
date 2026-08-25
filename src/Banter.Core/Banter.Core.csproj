@@ -1,5 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The agent attributes the delegator elects on (AgentLocality, DataSensitivity) are wire
+         contracts, so the policy that consumes them lives downstream of Banter.Protocol. -->
+    <ProjectReference Include="../Banter.Protocol/Banter.Protocol.csproj" />
+  </ItemGroup>
 </Project>

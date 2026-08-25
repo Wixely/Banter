@@ -61,6 +61,15 @@ public enum BanterMessageType : ushort
     AgentStatus = 64,
     AgentMcpGrants = 65,
 
+    /// <summary>Agent → server on join: the attributes the delegator routes on (PLAN §8a).</summary>
+    AgentAnnounce = 66,
+
+    /// <summary>Server → room: who the delegator is, or none.</summary>
+    RoomDelegator = 67,
+
+    /// <summary>Get or set a room's dispatch mode (delegated / mention).</summary>
+    RoomMode = 68,
+
     // Work ledger (70–79) — payloads land in Phase 5
     TaskPost = 70,
     TaskClaim = 71,
