@@ -632,8 +632,11 @@ what stops "open a sub-room" being a way to launder a sensitive conversation som
 agent is eligible to read it — moving an uncleared agent in is refused with `NOT_CLEARED`. Only the
 room's delegator may move agents, humans are never moved, and the new room is announced in the
 parent so the side channel stays auditable from the main conversation.
-Still to build here: fan-out to several agents at once (`ChooseAll` exists and is tested, but the
-delegator only routes to one), and an LLM-backed classifier behind `IRequestClassifier` —
+**Fan-out is in:** a request containing a phrase like "what does everyone think" goes to every
+eligible agent rather than the single best. Deliberately an explicit opt-in per request rather
+than something the delegator infers — fanning out multiplies cost and room noise — and the same
+clearance filter applies, so asking everyone never widens who may see the data.
+Still to build here: an LLM-backed classifier behind `IRequestClassifier` —
 the shipped `KeywordRequestClassifier` is a conservative fallback, not the intended production
 classifier.
 

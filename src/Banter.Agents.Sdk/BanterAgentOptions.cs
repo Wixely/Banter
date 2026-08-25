@@ -99,4 +99,15 @@ public sealed record RoutingOptions
     /// this only controls the ordinary, non-egress explanations.
     /// </summary>
     public bool ExplainDecisions { get; init; } = true;
+
+    /// <summary>
+    /// Phrases that ask for more than one agent's answer. Matching one fans the request out to
+    /// every eligible agent instead of picking the single best.
+    ///
+    /// <para>Deliberately an explicit opt-in per request rather than something the delegator
+    /// decides on its own: fanning out multiplies cost and room noise, and the same clearance
+    /// filter still applies, so it never widens who may see the data.</para>
+    /// </summary>
+    public IReadOnlyList<string> FanOutPhrases { get; init; } =
+        ["everyone", "all of you", "both of you", "each of you", "opinions", "second opinion"];
 }

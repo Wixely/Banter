@@ -214,6 +214,19 @@ public abstract class BanterAgent : IAsyncDisposable
 
     private bool Addressed(MsgPayload m) => m.Text.Contains(Nick, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Whether a rostered agent is a frontier one, for naming recipients in an egress
+    /// notice. Unknown locality counts as frontier, as everywhere else.</summary>
+    private bool IsFrontier(string nick)
+    {
+        lock (_roomStateLock)
+        {
+            return _rosters.Values
+                .SelectMany(r => r)
+                .Any(a => string.Equals(a.Nick, nick, StringComparison.OrdinalIgnoreCase)
+                          && a.Locality != AgentLocality.Local);
+        }
+    }
+
     /// <summary>
     /// Whether a message came from another agent. Known agents are those the roster reports, so
     /// this is best-effort: an unrostered sender is treated as human, which risks an extra reply
@@ -294,10 +307,15 @@ public abstract class BanterAgent : IAsyncDisposable
             .ConfigureAwait(false);
 
         var roster = RosterFor(m.Room);
-        var decision = RequestRouting.Choose(
-            roster,
-            new RoutingRequest(classification.Sensitivity, classification.Skills, routing.AllowFrontier),
-            excludeNick: Nick);
+        var routingRequest = new RoutingRequest(
+            classification.Sensitivity, classification.Skills, routing.AllowFrontier);
+
+        var wantsEveryone = routing.FanOutPhrases.Any(
+            phrase => m.Text.Contains(phrase, StringComparison.OrdinalIgnoreCase));
+
+        var decision = wantsEveryone
+            ? RequestRouting.ChooseAll(roster, routingRequest, excludeNick: Nick)
+            : RequestRouting.Choose(roster, routingRequest, excludeNick: Nick);
 
         if (!decision.HasRecipients)
         {
@@ -311,24 +329,31 @@ public abstract class BanterAgent : IAsyncDisposable
             return false;
         }
 
-        var chosen = decision.Agents[0];
-
         // Data leaving our systems is the most consequential thing this room does, so it is
-        // announced before it happens and never folded into the hand-off line.
+        // announced before it happens, names every recipient, and is never folded into a
+        // hand-off line where it could be skimmed past.
         if (decision.CrossesEgressBoundary)
         {
+            var leaving = decision.Agents.Where(IsFrontier).ToList();
             await SayAsync(
                 m.Room,
-                $"[egress] sending this to {chosen}, which is a third-party agent. " +
+                $"[egress] sending this to {string.Join(", ", leaving)}, " +
+                $"{(leaving.Count == 1 ? "which is a third-party agent" : "which are third-party agents")}. " +
                 $"Classified {classification.Sensitivity.ToString().ToLowerInvariant()}: {classification.Rationale}.")
                 .ConfigureAwait(false);
         }
 
-        await SayAsync(m.Room, $"{chosen}: {StripAddress(m.Text)}").ConfigureAwait(false);
+        var prompt = StripAddress(m.Text);
+        foreach (var agent in decision.Agents)
+        {
+            await SayAsync(m.Room, $"{agent}: {prompt}").ConfigureAwait(false);
+        }
 
         if (routing.ExplainDecisions && !decision.CrossesEgressBoundary)
         {
-            await SayAsync(m.Room, $"(routed to {chosen} - {decision.Reason})").ConfigureAwait(false);
+            await SayAsync(
+                m.Room,
+                $"(routed to {string.Join(", ", decision.Agents)} - {decision.Reason})").ConfigureAwait(false);
         }
 
         return true;

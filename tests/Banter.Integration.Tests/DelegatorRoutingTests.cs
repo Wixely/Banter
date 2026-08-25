@@ -205,6 +205,46 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AskingEveryoneFansOutToAllEligibleAgents()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var claude = new MarkerAgent(Frontier(), "FRONTIER-ANSWERED");
+        await claude.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // Public, so both are eligible, and the phrase asks for more than one answer.
+        await human.SendMessageAsync("#main", "what does everyone think about this public github issue");
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "FRONTIER-ANSWERED"));
+
+        // The egress notice must name the frontier recipient even in a fan-out.
+        var egress = await WaitForAsync(human, m => m.Text.StartsWith("[egress]"));
+        Assert.NotNull(egress);
+        Assert.Contains("claude", egress.Text);
+    }
+
+    [Fact]
+    public async Task FanningOutStillExcludesAgentsThatAreNotCleared()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var claude = new MarkerAgent(Frontier(), "FRONTIER-ANSWERED");
+        await claude.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // Sensitive: asking everyone must not widen who may see it.
+        await human.SendMessageAsync("#main", "what does everyone think about my email inbox problem");
+
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text == "FRONTIER-ANSWERED", within: TimeSpan.FromSeconds(3)));
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text.StartsWith("[egress]"), within: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
     public async Task ADelegatorAloneAnswersItselfRatherThanStalling()
     {
         await using var human = await ReadyRoomAsync();
