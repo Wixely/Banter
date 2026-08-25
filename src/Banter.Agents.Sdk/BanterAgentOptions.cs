@@ -38,6 +38,12 @@ public sealed record BanterAgentOptions
 
     /// <summary>Ask to be this room's delegator. Only honoured for agents that are eligible.</summary>
     public bool WantsDelegator { get; init; }
+
+    /// <summary>
+    /// When set, this agent routes as delegator rather than answering everything itself. Null
+    /// keeps the simpler behaviour, which is what a single-agent room wants.
+    /// </summary>
+    public RoutingOptions? Routing { get; init; }
 }
 
 public sealed record LlmChatAgentOptions
@@ -67,4 +73,30 @@ public sealed record LlmChatAgentOptions
     public int MaxOutputTokens { get; init; } = 512;
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(5);
+}
+
+/// <summary>
+/// Turns an agent into a routing delegator (PLAN §8a). When present on
+/// <see cref="BanterAgentOptions.Routing"/>, an elected delegator classifies each human request
+/// and hands it to the best-suited agent instead of answering everything itself.
+/// </summary>
+public sealed record RoutingOptions
+{
+    /// <summary>
+    /// Decides sensitivity and required skills. Defaults to the model-free keyword classifier,
+    /// which fails closed — anything it does not recognise as public stays local.
+    /// </summary>
+    public Banter.Core.IRequestClassifier Classifier { get; init; } = new Banter.Core.KeywordRequestClassifier();
+
+    /// <summary>
+    /// Static policy: when false, no request is ever routed to a frontier agent regardless of how
+    /// it was classified. This is the setting that beats the model's judgement.
+    /// </summary>
+    public bool AllowFrontier { get; init; } = true;
+
+    /// <summary>
+    /// Say why a request was routed the way it was. Egress announcements are made regardless —
+    /// this only controls the ordinary, non-egress explanations.
+    /// </summary>
+    public bool ExplainDecisions { get; init; } = true;
 }

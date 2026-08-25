@@ -1,4 +1,5 @@
 using Banter.Client.Core;
+using Banter.Core;
 using Banter.Protocol;
 using Banter.Protocol.Transport;
 
@@ -229,20 +230,38 @@ public abstract class BanterAgent : IAsyncDisposable
     private readonly HashSet<string> _knownAgents = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Refresh the set of agent nicks for a room, so the delegator can tell a human message from
-    /// another agent's. Called after joins and whenever the delegator changes.
+    /// Refresh the roster for a room: who the agents are, and the attributes a delegator routes
+    /// on. Called after joins and whenever anyone joins afterwards.
     /// </summary>
     protected async Task RefreshRosterAsync(string room, CancellationToken cancellationToken = default)
     {
         var roster = await Client.GetAgentsAsync(room, cancellationToken).ConfigureAwait(false);
         lock (_roomStateLock)
         {
+            var candidates = new List<AgentCandidate>(roster.Agents.Count);
+            long order = 0;
             foreach (var agent in roster.Agents)
             {
                 _knownAgents.Add(agent.Nick);
+                candidates.Add(new AgentCandidate(
+                    agent.Nick, agent.Locality, agent.Clearance, agent.Skills, agent.CostTier, order++));
             }
+
+            _rosters[room] = candidates;
         }
     }
+
+    /// <summary>Agents in a room with their routing attributes, as last read from the server.</summary>
+    protected IReadOnlyList<AgentCandidate> RosterFor(string room)
+    {
+        lock (_roomStateLock)
+        {
+            return _rosters.TryGetValue(room, out var roster) ? roster : [];
+        }
+    }
+
+    private readonly Dictionary<string, List<AgentCandidate>> _rosters =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The agents currently known in any joined room, excluding this one.</summary>
     protected IReadOnlyCollection<string> KnownAgents
@@ -256,6 +275,65 @@ public abstract class BanterAgent : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// As delegator, decide who should handle this and hand it over. Returns true when the
+    /// request was routed elsewhere, so this agent should not also answer it.
+    ///
+    /// <para>The hand-off happens as an ordinary room message naming the chosen agent — that is
+    /// what the receiving agent listens for, and it keeps the routing decision visible to the
+    /// humans in the room rather than on a side channel.</para>
+    /// </summary>
+    private async Task<bool> TryRouteAsync(MsgPayload m)
+    {
+        if (Options.Routing is not { } routing || !IsDelegatorFor(m.Room))
+        {
+            return false;
+        }
+
+        var classification = await routing.Classifier.ClassifyAsync(StripAddress(m.Text), _stopping.Token)
+            .ConfigureAwait(false);
+
+        var roster = RosterFor(m.Room);
+        var decision = RequestRouting.Choose(
+            roster,
+            new RoutingRequest(classification.Sensitivity, classification.Skills, routing.AllowFrontier),
+            excludeNick: Nick);
+
+        if (!decision.HasRecipients)
+        {
+            // Nobody better than us: answer it ourselves. Reporting why keeps a silent fallback
+            // from looking like the routing simply did not run.
+            if (routing.ExplainDecisions)
+            {
+                await SayAsync(m.Room, $"({decision.Reason}; handling this myself)").ConfigureAwait(false);
+            }
+
+            return false;
+        }
+
+        var chosen = decision.Agents[0];
+
+        // Data leaving our systems is the most consequential thing this room does, so it is
+        // announced before it happens and never folded into the hand-off line.
+        if (decision.CrossesEgressBoundary)
+        {
+            await SayAsync(
+                m.Room,
+                $"[egress] sending this to {chosen}, which is a third-party agent. " +
+                $"Classified {classification.Sensitivity.ToString().ToLowerInvariant()}: {classification.Rationale}.")
+                .ConfigureAwait(false);
+        }
+
+        await SayAsync(m.Room, $"{chosen}: {StripAddress(m.Text)}").ConfigureAwait(false);
+
+        if (routing.ExplainDecisions && !decision.CrossesEgressBoundary)
+        {
+            await SayAsync(m.Room, $"(routed to {chosen} - {decision.Reason})").ConfigureAwait(false);
+        }
+
+        return true;
+    }
+
     private async Task TakeTurnAsync(MsgPayload m)
     {
         // One turn at a time. Two overlapping streams from one agent interleave in the room and
@@ -267,6 +345,13 @@ public abstract class BanterAgent : IAsyncDisposable
 
         try
         {
+            // Routing first: if the work belongs to another agent, hand it over and stop. The
+            // turn gate is still held, so a second message cannot start a competing hand-off.
+            if (await TryRouteAsync(m).ConfigureAwait(false))
+            {
+                return;
+            }
+
             TurnStarted?.Invoke(m.Room, m.Sender);
             var prompt = StripAddress(m.Text);
 

@@ -25,6 +25,8 @@ var clearance = (Arg("--clearance") ?? "sensitive").ToLowerInvariant() switch
 };
 var skills = (Arg("--skills") ?? "chat").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var costTier = int.TryParse(Arg("--cost"), out var parsedCost) ? parsedCost : 1;
+var routes = Has("--route");
+var noFrontier = Has("--no-frontier");
 
 if (pass is null || model is null || Has("--help") || Has("-h"))
 {
@@ -46,6 +48,10 @@ if (pass is null || model is null || Has("--help") || Has("-h"))
           --skills a,b,c        capability tags the delegator matches on (default chat)
           --cost <n>            lower is cheaper; a tie-break only
           --delegator           ask to be this room's delegator
+          --route               when elected delegator, classify each request and hand it to
+                                the best-suited agent instead of answering everything
+          --no-frontier         never route anything to a frontier agent, whatever the
+                                classification says. Static policy beats the model.
 
         --pass also reads BANTER_PASS; --model reads BANTER_MODEL; --llm reads BANTER_LLM.
         """);
@@ -66,6 +72,7 @@ var agentOptions = new BanterAgentOptions
     Description = Arg("--description") ?? $"{model} via {endpoint}",
     CostTier = costTier,
     WantsDelegator = Has("--delegator"),
+    Routing = routes ? new RoutingOptions { AllowFrontier = !noFrontier } : null,
 };
 
 var llmOptions = new LlmChatAgentOptions
@@ -95,6 +102,12 @@ catch (Exception ex)
 
 Console.WriteLine($"{user} is in {string.Join(", ", rooms)} using {model} at {endpoint}");
 Console.WriteLine($"Announced as {locality}, clearance {clearance}, skills [{string.Join(", ", skills)}].");
+if (routes)
+{
+    Console.WriteLine(noFrontier
+        ? "Routing as delegator; frontier agents are blocked by policy."
+        : "Routing as delegator; frontier hand-offs will be announced in the room.");
+}
 Console.WriteLine("Press Ctrl+C to stop.");
 
 using var stopping = new CancellationTokenSource();

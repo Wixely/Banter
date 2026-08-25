@@ -88,6 +88,7 @@
         "--model", "liquid/lfm2.5-1.2b",
         "--clearance", "sensitive",
         "--skills", "chat,code",
+        "--route",
         "--system", "You are dagger, a local assistant in a group chat. Keep replies to a sentence or two."
       ],
       "cwd": "${workspaceFolder}",

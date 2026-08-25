@@ -4,5 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.Client.Core/Banter.Client.Core.csproj" />
+    <!-- Election and routing policy: the decisions a delegator makes. -->
+    <ProjectReference Include="../Banter.Core/Banter.Core.csproj" />
   </ItemGroup>
 </Project>
