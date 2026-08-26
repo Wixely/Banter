@@ -14,7 +14,7 @@ namespace Banter.App;
 /// <para>Nothing here references CupriFace, so the whole of the client's behaviour is testable
 /// without a document, a window, or a server.</para>
 /// </summary>
-public sealed class ChatViewModel
+public sealed partial class ChatViewModel
 {
     private readonly ConcurrentQueue<Action> _pending = new();
 

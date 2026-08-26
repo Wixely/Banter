@@ -129,6 +129,10 @@ foreach (var room in rooms)
     }
 }
 
+// Probe for tools once, so the "Manage tools" control appears only for an account the server
+// would actually let manage them. Anyone else is simply refused here and never sees the button.
+await session.LoadToolsAsync("");
+
 // Only persist a configuration that actually worked, and only when asked.
 if (save)
 {
@@ -145,6 +149,8 @@ var app = new BanterChatApp(vm)
     CommandAsync = session.CommandAsync,
     DownloadAsync = session.DownloadAsync,
     JoinRoomAsync = room => session.JoinAsync(room, settings.HistoryPageSize),
+    ToolsOpenAsync = session.LoadToolsAsync,
+    ToolsSaveAsync = session.SaveToolsAsync,
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
 };
 

@@ -10,7 +10,7 @@ namespace Banter.App;
 /// <para>Kept separate from <see cref="BanterChatApp"/> so the app has no transport dependency and
 /// the tests can exercise the timeline without a server.</para>
 /// </summary>
-public sealed class BanterChatSession : IDisposable
+public sealed partial class BanterChatSession : IDisposable
 {
     private readonly BanterClient _client;
     private readonly ChatViewModel _vm;
@@ -320,10 +320,24 @@ public sealed class BanterChatSession : IDisposable
             case "part":
                 await Guard(room, () => PartAsync(room)).ConfigureAwait(false);
                 break;
+            case "tools":
+                // The panel is the real surface; the command is here so it is reachable without
+                // hunting for a button, and so it works on a head that has no roster on screen.
+                _vm.Post(() =>
+                {
+                    if (rest.Length > 0)
+                    {
+                        _vm.SelectToolAgent(rest);
+                    }
+
+                    _vm.ShowToolPanel(true);
+                });
+                await LoadToolsAsync(rest).ConfigureAwait(false);
+                break;
             case "help":
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
-                    "/join #room | /rooms | /topic <text> | /part | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));

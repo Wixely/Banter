@@ -97,6 +97,39 @@ public sealed partial class RoomRow
     public string Badge { get; set; } = "";
 }
 
+/// <summary>
+/// One tool the server has connected, in the grants panel. Tools run on the server, so this row
+/// is an operator control — nothing here gives the client any access of its own (PLAN §8).
+/// </summary>
+[CupriBindable]
+public sealed partial class ToolRow
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>Which upstream serves it, so an operator can see what they are opening up.</summary>
+    public string Server { get; set; } = "";
+
+    public string Description { get; set; } = "";
+
+    /// <summary>Tick when the selected agent holds this tool, blank when it does not.</summary>
+    public string Mark { get; set; } = "";
+
+    /// <summary>Drives styling: <c>tool</c> or <c>tool granted</c>.</summary>
+    public string RowClass { get; set; } = "tool";
+}
+
+/// <summary>An agent whose grants can be edited, in the panel's left column.</summary>
+[CupriBindable]
+public sealed partial class ToolAgentRow
+{
+    public string Nick { get; set; } = "";
+
+    /// <summary>"3 of 12 tools" — enough to see at a glance who is holding a lot.</summary>
+    public string Summary { get; set; } = "";
+
+    public string RowClass { get; set; } = "tool-agent";
+}
+
 /// <summary>A room on the server the user is not in, offered for joining.</summary>
 [CupriBindable]
 public sealed partial class BrowseRow
@@ -139,4 +172,20 @@ public sealed partial class ChatModel
     public List<BrowseRow> Browse { get; set; } = [];
     public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
+
+    /// <summary>The tool-grants panel. Hidden until an operator opens it.</summary>
+    public string ToolsClass { get; set; } = "toolpanel hidden";
+
+    /// <summary>The entry point into the panel. Hidden for anyone the server refused a catalogue
+    /// to, which is everyone except an admin — an inert button would only invite a refusal.</summary>
+    public string ToolsButtonClass { get; set; } = "tools-open hidden";
+
+    /// <summary>Whose grants are being edited.</summary>
+    public string ToolsAgent { get; set; } = "";
+
+    /// <summary>What just happened: saved, refused, or what the panel is waiting on.</summary>
+    public string ToolsStatus { get; set; } = "";
+
+    public List<ToolAgentRow> ToolAgents { get; set; } = [];
+    public List<ToolRow> ToolCatalog { get; set; } = [];
 }

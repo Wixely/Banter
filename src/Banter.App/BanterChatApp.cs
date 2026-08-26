@@ -43,6 +43,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public Func<string, Task> JoinRoomAsync { get; init; } = _ => Task.CompletedTask;
 
     /// <summary>
+    /// Called when the tool-grants panel opens, and again whenever a different agent is selected
+    /// in it — the argument is that agent's nick, or empty when the panel is merely opening. The
+    /// head answers by fetching the catalogue and that agent's grants.
+    /// </summary>
+    public Func<string, Task> ToolsOpenAsync { get; init; } = _ => Task.CompletedTask;
+
+    /// <summary>Called when the operator saves: the selected agent and its complete new grant set.</summary>
+    public Func<string, IReadOnlyList<string>, Task> ToolsSaveAsync { get; init; } =
+        (_, _) => Task.CompletedTask;
+
+    /// <summary>
     /// The system clipboard. Defaults to a no-op so the app runs headlessly; the desktop head
     /// supplies a real one.
     /// </summary>
@@ -101,7 +112,32 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-button class="send">Send</cupri-button>
             </div>
           </div>
+          <div class="{{ToolsClass}}">
+            <div class="toolpanel-inner">
+              <div class="toolpanel-head">
+                <span class="toolpanel-title">Tools &#183; {{ToolsAgent}}</span>
+                <span class="toolpanel-status">{{ToolsStatus}}</span>
+                <cupri-button class="tools-save">Save</cupri-button>
+                <cupri-button class="tools-close">Close</cupri-button>
+              </div>
+              <div class="toolpanel-body">
+                <div class="tool-agents">
+                  <div class="{{RowClass}}" data-tool-agent="{{Nick}}" data-repeat="ToolAgents">
+                    <div class="tool-agent-nick">{{Nick}}</div>
+                    <div class="tool-agent-count">{{Summary}}</div>
+                  </div>
+                </div>
+                <cupri-virtual class="tool-list" height="440" item-height="46">
+                  <div class="{{RowClass}}" data-tool="{{Name}}" data-repeat="ToolCatalog">
+                    <div class="tool-line"><span class="tool-mark">{{Mark}}</span><span class="tool-name">{{Name}}</span><span class="tool-server">{{Server}}</span></div>
+                    <div class="tool-desc">{{Description}}</div>
+                  </div>
+                </cupri-virtual>
+              </div>
+            </div>
+          </div>
           <div class="roster">
+            <div class="{{ToolsButtonClass}}" data-tools-open="1">Manage tools</div>
             <div class="{{TasksClass}}">
               <div class="roster-title">Work</div>
               <div class="{{RowClass}}" data-repeat="Tasks">
@@ -207,6 +243,41 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line.egress .text { color: #e0a56a; }
         .line.egress .sender { color: #e0a56a; }
 
+        .tools-open { font-size: 11px; color: #7fa7ff; background: #1f2530; border-radius: 4px;
+                      padding: 4px 6px; margin-bottom: 12px; text-align: center; }
+        .tools-open.hidden { display: none; }
+
+        /* An overlay rather than another column: granting tools is a deliberate, occasional act,
+           and it wants the width to show what each tool actually is. */
+        .toolpanel { position: absolute; left: 0; top: 0; width: 1100px; height: 760px;
+                     background: #0d0f13; padding: 40px 60px; }
+        .toolpanel.hidden { display: none; }
+        .toolpanel-inner { display: flex; flex-direction: column; height: 680px;
+                           background: #14161a; border-radius: 6px; padding: 16px; }
+        .toolpanel-head { display: flex; flex-direction: row; padding-bottom: 12px; }
+        .toolpanel-title { flex: 1; font-weight: bold; }
+        .toolpanel-status { color: #8b93a1; font-size: 12px; padding-right: 12px; }
+        .tools-save { width: 80px; margin-right: 8px; }
+        .tools-close { width: 80px; }
+        .toolpanel-body { display: flex; flex-direction: row; flex: 1; }
+
+        .tool-agents { width: 180px; padding-right: 12px; }
+        .tool-agent { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #1b1e24; }
+        .tool-agent.active { background: #2b313b; }
+        .tool-agent-nick { font-size: 13px; }
+        .tool-agent-count { color: #8b93a1; font-size: 11px; }
+
+        .tool-list { flex: 1; }
+        .tool { padding: 5px 8px; border-radius: 4px; margin-bottom: 4px; background: #1b1e24; }
+        /* Granted tools are marked as clearly as frontier agents are, and for the same reason:
+           what an agent can reach is the thing an operator most needs to see at a glance. */
+        .tool.granted { background: #16301c; }
+        .tool-line { display: flex; flex-direction: row; }
+        .tool-mark { width: 24px; color: #7fd88f; font-size: 11px; }
+        .tool-name { flex: 1; font-size: 13px; }
+        .tool-server { color: #8b93a1; font-size: 11px; }
+        .tool-desc { color: #8b93a1; font-size: 11px; padding-left: 24px; }
+
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         .composer { flex: 1; min-height: 44px; max-height: 120px; }
         .send { width: 90px; margin-left: 8px; }
@@ -281,6 +352,40 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _ = JoinRoomAsync(e.Value);
             return true;
         });
+
+        doc.OnAction("data-tools-open", _ =>
+        {
+            OpenTools();
+            return true;
+        });
+
+        doc.OnAction("data-tool-agent", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            var agent = e.Value;
+            ViewModel.Post(() => ViewModel.SelectToolAgent(agent));
+            _ = ToolsOpenAsync(agent);
+            return true;
+        });
+
+        doc.OnAction("data-tool", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            var tool = e.Value;
+            ViewModel.Post(() => ViewModel.ToggleTool(tool));
+            return true;
+        });
+
+        doc.OnClick(".tools-save", _ => SaveTools());
+        doc.OnClick(".tools-close", _ => ViewModel.Post(() => ViewModel.ShowToolPanel(false)));
 
         doc.OnAction("data-file", e =>
         {
@@ -372,6 +477,29 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         {
             Clipboard.SetText(path);
         }
+    }
+
+    /// <summary>
+    /// Open the tool-grants panel and ask the head to fill it. Tools run on the server, so
+    /// everything this panel does is a request the server is free to refuse.
+    /// </summary>
+    public void OpenTools()
+    {
+        ViewModel.Post(() => ViewModel.ShowToolPanel(true));
+        _ = ToolsOpenAsync(ViewModel.Model.ToolsAgent);
+    }
+
+    /// <summary>Send the selected agent's complete grant set to the server.</summary>
+    public void SaveTools()
+    {
+        var agent = ViewModel.Model.ToolsAgent;
+        if (agent.Length == 0)
+        {
+            ViewModel.Post(() => ViewModel.ToolGrantsFailed("Pick an agent first."));
+            return;
+        }
+
+        _ = ToolsSaveAsync(agent, ViewModel.PendingGrants);
     }
 
     /// <summary>Send the composer's contents to the active room and clear it.</summary>
