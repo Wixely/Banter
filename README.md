@@ -48,6 +48,28 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: agent roster panel, delegator/mode header, egress styling (§8a made visible) | implemented, tested |
 | `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented, needs a manual run against a live server |
 
+## Running the server
+
+```
+docker compose up -d          # or: dotnet run --project src/Banter.Server
+```
+
+An **`admin`** account is created on first run and is always an admin — the oversight rule
+(PLAN §8a) puts admins into every room an agent opens, so a deployment without one has agents
+holding conversations nobody is watching.
+
+Its password defaults to `admin`, and the server says so loudly on startup. Set one of, in order
+of precedence:
+
+| Setting | Notes |
+|---|---|
+| `BANTER_ADMIN_PASSWORD_FILE` | Path to a file holding the password. Preferred: keeps it out of `docker inspect` and shell history. Trailing newline trimmed. |
+| `--admin-password <secret>` | Command line. |
+| `BANTER_ADMIN_PASSWORD` | Environment variable; what `compose.yaml` wires up. |
+
+An unreadable secret file warns and falls back rather than refusing to start, so a mount typo
+does not turn into a crash loop.
+
 ## Building
 
 Requires the .NET 10 SDK. Wixely-family packages (CupriNet, CupriFace, Bantz.*) restore from the

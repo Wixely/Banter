@@ -58,6 +58,24 @@ public sealed class DbAccountStore(BanterDatabase database) : IAccountStore
             }).ConfigureAwait(false);
     }
 
+    /// <summary>Whether an account exists, without needing its password.</summary>
+    public async Task<bool> ExistsAsync(string username, CancellationToken cancellationToken = default)
+    {
+        await using var connection = database.CreateConnection();
+        return await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM accounts WHERE username = @username", new { username })
+            .ConfigureAwait(false) > 0;
+    }
+
+    /// <summary>Set or clear the admin flag on an existing account.</summary>
+    public async Task SetAdminAsync(string username, bool isAdmin, CancellationToken cancellationToken = default)
+    {
+        await using var connection = database.CreateConnection();
+        await connection.ExecuteAsync(
+            "UPDATE accounts SET is_admin = @IsAdmin WHERE username = @Username",
+            new { Username = username, IsAdmin = isAdmin }).ConfigureAwait(false);
+    }
+
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);

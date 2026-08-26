@@ -22,13 +22,44 @@ var database = new BanterDatabase(storage);
 await database.InitializeAsync();
 var accounts = new DbAccountStore(database);
 
-if (await accounts.CountAsync() == 0)
+// The admin account always exists. It is the account the oversight rule in PLAN §8a depends on:
+// admins are added to every room an agent opens, so a deployment with no admin has agents
+// holding conversations nobody is watching.
+// _FILE first: reading a secret from a mounted file keeps it out of `docker inspect`, the
+// process environment and shell history, which an environment variable cannot manage.
+var adminPassword = ReadSecretFile(Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD_FILE"))
+    ?? Arg("--admin-password")
+    ?? Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD")
+    ?? "admin";
+
+if (!await accounts.ExistsAsync("admin"))
+{
+    await accounts.CreateUserAsync("admin", adminPassword, isAgent: false, isAdmin: true);
+    Console.WriteLine("Created the 'admin' account.");
+}
+else
+{
+    // An upgrade from before admins existed, or an operator who cleared the flag by hand.
+    await accounts.SetAdminAsync("admin", isAdmin: true);
+}
+
+if (adminPassword == "admin")
+{
+    // Loud, not a footnote: a default admin password on a reachable server is the whole
+    // deployment's security, and the fix is one environment variable.
+    Console.WriteLine();
+    Console.WriteLine("  *** WARNING: the 'admin' account is using the default password. ***");
+    Console.WriteLine("  Set BANTER_ADMIN_PASSWORD (or --admin-password) before exposing this server.");
+    Console.WriteLine();
+}
+
+if (await accounts.CountAsync() <= 1)
 {
     // First run against an empty database: seed development users so the suite is usable
     // immediately. Real deployments create accounts via admin tooling (Banter.Cli, later).
     // Two agent accounts, because one agent cannot demonstrate delegation: election, hand-off
     // and the local-vs-frontier rules all need a room with more than one candidate in it.
-    Console.WriteLine("No accounts found - seeding development users alice/bob and agents dagger/scout (password: banter).");
+    Console.WriteLine("No user accounts found - seeding development users alice/bob and agents dagger/scout (password: banter).");
     await accounts.CreateUserAsync("alice", "banter");
     await accounts.CreateUserAsync("bob", "banter");
     await accounts.CreateUserAsync("dagger", "banter", isAgent: true);
@@ -54,6 +85,29 @@ Console.CancelKeyPress += (_, e) =>
 };
 await stop.Task;
 return 0;
+
+static string? ReadSecretFile(string? path)
+{
+    if (string.IsNullOrWhiteSpace(path))
+    {
+        return null;
+    }
+
+    try
+    {
+        // Trailing newlines are what an editor or `echo` leaves behind, and a password that
+        // silently includes one is a very confusing failure.
+        var value = File.ReadAllText(path).Trim();
+        return value.Length > 0 ? value : null;
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        // Refusing to start would be worse: the server still comes up, with the default and its
+        // warning, rather than a container that crash-loops over a mount typo.
+        Console.Error.WriteLine($"warning: could not read {path}: {ex.Message}");
+        return null;
+    }
+}
 
 string? Arg(string name)
 {

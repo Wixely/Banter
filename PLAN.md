@@ -721,7 +721,10 @@ not after the parent: a room list of identifiers is unreadable, a room list of t
 is a status board. Filler words are dropped, punctuation can never reach the name, and a short
 suffix keeps two similar requests from colliding.
 
-**An admin is in every room an agent opens.** Accounts carry `IsAdmin`, and the server adds every
+**An admin is in every room an agent opens.** The server creates an `admin` account on first run
+(password from `BANTER_ADMIN_PASSWORD_FILE` / `--admin-password` / `BANTER_ADMIN_PASSWORD`,
+defaulting to `admin` with a loud startup warning), and existing databases have the flag set on
+upgrade. Accounts carry `IsAdmin`, and the server adds every
 connected admin to a room created by an agent, announcing it like any other join. An agent that
 could open a room humans cannot see would be able to hold the whole conversation somewhere nobody
 is watching, which defeats the point of the timeline being the audit trail. A room opened by a

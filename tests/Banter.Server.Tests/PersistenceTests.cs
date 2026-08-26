@@ -135,4 +135,40 @@ public sealed class PersistenceTests : IAsyncLifetime
         Assert.Throws<ArgumentException>(() => BanterStorageOptions.Parse("postgres", null));
         Assert.Throws<ArgumentException>(() => BanterStorageOptions.Parse("mysql", "x"));
     }
+
+    [Fact]
+    public async Task AnAdminAccountRoundTripsItsFlag()
+    {
+        var accounts = new DbAccountStore(_database);
+
+        await accounts.CreateUserAsync("admin", "pw", isAgent: false, isAdmin: true);
+        await accounts.CreateUserAsync("alice", "pw");
+
+        Assert.True((await accounts.AuthenticateAsync("admin", "pw"))!.IsAdmin);
+        Assert.False((await accounts.AuthenticateAsync("alice", "pw"))!.IsAdmin);
+    }
+
+    [Fact]
+    public async Task ExistenceIsCheckableWithoutThePassword()
+    {
+        var accounts = new DbAccountStore(_database);
+        await accounts.CreateUserAsync("admin", "pw", isAdmin: true);
+
+        Assert.True(await accounts.ExistsAsync("admin"));
+        Assert.False(await accounts.ExistsAsync("nobody"));
+    }
+
+    [Fact]
+    public async Task TheAdminFlagCanBeSetOnAnExistingAccount()
+    {
+        var accounts = new DbAccountStore(_database);
+
+        // The upgrade path: a database created before admins existed still gets one.
+        await accounts.CreateUserAsync("admin", "pw");
+        Assert.False((await accounts.AuthenticateAsync("admin", "pw"))!.IsAdmin);
+
+        await accounts.SetAdminAsync("admin", isAdmin: true);
+
+        Assert.True((await accounts.AuthenticateAsync("admin", "pw"))!.IsAdmin);
+    }
 }

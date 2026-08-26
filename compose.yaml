@@ -1,0 +1,38 @@
+services:
+  banter:
+    build: .
+    image: banter-server
+    restart: unless-stopped
+    ports:
+      - "7770:7770"
+    environment:
+      # The admin account is created on first run and is always an admin: the oversight rule
+      # (PLAN §8a) puts admins into every room an agent opens.
+      #
+      # CHANGE THIS. It defaults to "admin", and the server says so loudly on startup.
+      # Prefer a secret over a literal here - see the commented block below.
+      BANTER_ADMIN_PASSWORD: ${BANTER_ADMIN_PASSWORD:-admin}
+
+      # SQLite by default. For hosted PostgreSQL:
+      #   BANTER_DB: postgres
+      #   BANTER_CONNECTION: "Host=db;Database=banter;Username=banter;Password=..."
+      BANTER_DB: sqlite
+      BANTER_CONNECTION: "Data Source=/data/banter.db"
+      BANTER_DATA: /data/files
+    volumes:
+      # Rooms, history, the work ledger and uploaded files. Without this a restart is a wipe.
+      - banter-data:/data
+
+    # Reading the password from a file keeps it out of `docker inspect` and shell history.
+    # Uncomment both blocks and drop the value into ./secrets/admin-password.
+    # environment:
+    #   BANTER_ADMIN_PASSWORD_FILE: /run/secrets/admin-password
+    # secrets:
+    #   - admin-password
+
+volumes:
+  banter-data:
+
+# secrets:
+#   admin-password:
+#     file: ./secrets/admin-password
