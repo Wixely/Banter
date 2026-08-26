@@ -38,6 +38,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: room hierarchy in the sidebar, browse/join other rooms, `/join` and `/rooms` | implemented, tested |
 | App: multi-line messages (`white-space: pre-wrap`, needs CupriFace 0.5.0) | implemented, tested |
 | App: inline image previews (cached, size-capped, aspect preserved) | implemented, tested |
+| App: right-click menu, copy selected text and copy image to the clipboard | implemented, tested; right-click needs a real window to confirm |
 | Fan-out to several agents on request, clearance filter unchanged (§8a) | implemented, tested |
 | LLM classifier with keyword veto and fail-closed paths (§8a) | implemented, tested |
 | Work ledger (§8b: `TASK_*`, claim arbitration, leases, concurrency cap) | implemented, tested |

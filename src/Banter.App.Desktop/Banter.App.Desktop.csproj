@@ -11,5 +11,8 @@
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <ProjectReference Include="../Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
     <PackageReference Include="CupriFace.Shell" Version="0.5.0" />
+    <!-- Decoding a cached preview into a clipboard DIB. Transitive via CupriFace, declared
+         because this project uses it directly. -->
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
   </ItemGroup>
 </Project>

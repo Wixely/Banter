@@ -145,6 +145,7 @@ var app = new BanterChatApp(vm)
     CommandAsync = session.CommandAsync,
     DownloadAsync = session.DownloadAsync,
     JoinRoomAsync = room => session.JoinAsync(room, settings.HistoryPageSize),
+    Clipboard = new Banter.App.Desktop.SystemClipboard(),
 };
 
 DesktopHost.Run(app, _ => { });

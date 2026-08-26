@@ -42,6 +42,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Called when the user picks a room from the browse list.</summary>
     public Func<string, Task> JoinRoomAsync { get; init; } = _ => Task.CompletedTask;
 
+    /// <summary>
+    /// The system clipboard. Defaults to a no-op so the app runs headlessly; the desktop head
+    /// supplies a real one.
+    /// </summary>
+    public IClipboard Clipboard { get; init; } = NullClipboard.Instance;
+
     public override string Title => "Banter";
     public override object Model => ViewModel.Model;
     public override int Width => 1100;
@@ -79,12 +85,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <span class="dispatch">{{DispatchMode}} &#183; {{Delegator}}</span>
             </div>
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
-            <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
-              <div class="{{RowClass}}" data-repeat="Messages">
-                <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
-                <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
-              </div>
-            </cupri-virtual>
+            <cupri-context-menu class="timeline-menu">
+              <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
+                <div class="{{RowClass}}" data-repeat="Messages">
+                  <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
+                  <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
+                </div>
+              </cupri-virtual>
+              <cupri-menu-item class="copy-selection">Copy</cupri-menu-item>
+              <cupri-menu-item class="copy-image">Copy image</cupri-menu-item>
+              <cupri-menu-item class="copy-room">Copy room name</cupri-menu-item>
+            </cupri-context-menu>
             <div class="composer-row">
               <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
               <cupri-button class="send">Send</cupri-button>
@@ -139,6 +150,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .loadmore { padding: 6px 14px; color: #7fa7ff; font-size: 12px; background: #191c22; }
         .loadmore.hidden { display: none; }
 
+        .timeline-menu { display: flex; flex-direction: column; flex: 1; }
         .timeline { flex: 1; padding: 6px 0; }
         /* No fixed height: rows wrap and the virtual list measures them (CupriFace 0.4.0). */
         .line { display: flex; flex-direction: row; padding: 3px 14px; }
@@ -230,6 +242,35 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        // Right-click menu items. CupriFace opens the menu at the pointer and leaves the
+        // clipboard to the host, so every one of these ends in a call through IClipboard.
+        doc.OnClick(".copy-selection", _ => CopySelection());
+        doc.OnClick(".copy-image", _ => CopyMostRecentImage());
+        doc.OnClick(".copy-room", _ => Clipboard.SetText(ViewModel.Model.ActiveRoom));
+
+        // The engine's own Cut/Copy/Paste menu over a text field raises this instead of showing
+        // one of ours; it does not touch the clipboard itself.
+        doc.ContextRequested += command =>
+        {
+            switch (command)
+            {
+                case CupriFace.Interaction.ContextCommand.Copy:
+                    CopySelection();
+                    break;
+                case CupriFace.Interaction.ContextCommand.Cut:
+                    var cut = doc.CutSelection() ?? "";
+                    if (cut.Length > 0)
+                    {
+                        Clipboard.SetText(cut);
+                    }
+
+                    break;
+            }
+        };
+
+        // Ctrl+C with a selection, for people who never open a menu.
+        doc.OnShortcut(KeyMods.Ctrl, "C", CopySelection);
+
         doc.OnAction("data-join", e =>
         {
             if (string.IsNullOrEmpty(e.Value))
@@ -293,6 +334,44 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         return base.Present(width, height);
+    }
+
+    /// <summary>
+    /// Copy the current selection. Falls back to the newest message when nothing is selected,
+    /// because "Copy" with an empty selection doing nothing at all reads as a broken menu.
+    /// </summary>
+    public void CopySelection()
+    {
+        var selected = _doc?.CopySelection() ?? "";
+        if (selected.Length == 0)
+        {
+            selected = ViewModel.Model.Messages.LastOrDefault()?.Text ?? "";
+        }
+
+        if (selected.Length > 0)
+        {
+            Clipboard.SetText(selected);
+        }
+    }
+
+    /// <summary>
+    /// Copy the most recently shown image in this room. Where the platform cannot put a bitmap on
+    /// the clipboard, its path goes on as text instead — pasteable somewhere useful rather than
+    /// nothing happening.
+    /// </summary>
+    public void CopyMostRecentImage()
+    {
+        var image = ViewModel.Model.Messages.LastOrDefault(m => m.ImageSrc.Length > 0);
+        if (image is null)
+        {
+            return;
+        }
+
+        var path = new Uri(image.ImageSrc).LocalPath;
+        if (!Clipboard.TrySetImage(path))
+        {
+            Clipboard.SetText(path);
+        }
     }
 
     /// <summary>Send the composer's contents to the active room and clear it.</summary>
