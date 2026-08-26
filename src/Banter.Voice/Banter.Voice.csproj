@@ -1,5 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The shared STT contract (PLAN §6a): Banter's remote engines implement the same
+         interface Bantz's local Whisper engine does, so the app never learns which is which.
+         Abstractions is dependency-free, which keeps this assembly loadable on every head. -->
+    <PackageReference Include="Bantz.Speech.Abstractions" Version="0.2.3" />
+  </ItemGroup>
 </Project>
