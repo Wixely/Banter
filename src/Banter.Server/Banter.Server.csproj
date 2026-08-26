@@ -7,6 +7,8 @@
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
+    <!-- Tools run server-side, so the MCP client lives here and agents never hold credentials. -->
+    <PackageReference Include="MCPHub.Proxy" Version="0.6.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.Core/Banter.Core.csproj" />

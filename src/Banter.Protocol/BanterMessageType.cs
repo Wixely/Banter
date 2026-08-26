@@ -83,6 +83,20 @@ public enum BanterMessageType : ushort
     TaskFail = 76,
     TaskList = 77,
 
+    // Agent tools, server-side execution (80–89)
+    /// <summary>Agent → server: which tools may I use? Server answers with the granted set.</summary>
+    ToolList = 80,
+
+    /// <summary>Agent → server: run this tool. The server holds the credentials, not the agent.</summary>
+    ToolCall = 81,
+
+    /// <summary>Server → agent: the result of a tool call.</summary>
+    ToolResult = 82,
+
+    /// <summary>Operator: read or change which tools an agent may use.</summary>
+    ToolGrants = 83,
+
+
     // Generic (250–255)
     Error = 250,
     Ok = 251,

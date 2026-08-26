@@ -2,6 +2,7 @@ using Banter.Protocol.Transport;
 using Banter.Server;
 using Banter.Server.Files;
 using Banter.Server.Persistence;
+using Banter.Server.Tools;
 
 var endpoint = new Uri(Arg("--endpoint") ?? "tcp://127.0.0.1:7770");
 BanterStorageOptions storage;
@@ -69,10 +70,24 @@ if (await accounts.CountAsync() <= 1)
 var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA") ?? "banter-data";
 var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = dataDir });
 
+// Tools run here, on the server, never on the agent (PLAN §8). The upstream credentials live
+// with this process; agents only ever ask it to act.
+var mcpConfig = Arg("--mcp") ?? Environment.GetEnvironmentVariable("BANTER_MCP_CONFIG") ?? "mcp.json";
+var mcpOptions = McpConfigFile.Load(mcpConfig);
+await using var toolBroker = new McpToolBroker(mcpOptions, new ToolGrantStore(database));
+if (mcpOptions.Upstreams.Count > 0)
+{
+    await toolBroker.StartAsync();
+    Console.WriteLine(
+        $"MCP: {toolBroker.Upstreams.Count}/{mcpOptions.Upstreams.Count} upstream(s) connected, " +
+        $"{toolBroker.AllTools().Count} tool(s) available to grant.");
+}
+
 await using var server = new BanterServer(
     new TcpBanterTransport(), accounts, new DbServerStore(database), fileStore,
     guardrails: null,
-    tasks: new TaskStore(database));
+    tasks: new TaskStore(database),
+    tools: toolBroker);
 await server.StartAsync(endpoint);
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");

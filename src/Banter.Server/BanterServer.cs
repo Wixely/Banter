@@ -18,11 +18,12 @@ public sealed class BanterServer(
     Files.FileStore files,
     AgentGuardrails? guardrails = null,
     Persistence.TaskStore? tasks = null,
-    TaskLimits? taskLimits = null) : IAsyncDisposable
+    TaskLimits? taskLimits = null,
+    Tools.IToolBroker? tools = null) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
-    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits);
+    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits, tools);
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, byte> _sessionTasks = new();
     private IBanterListener? _listener;

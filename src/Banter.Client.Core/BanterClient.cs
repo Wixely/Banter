@@ -207,6 +207,35 @@ public sealed class BanterClient : IAsyncDisposable
         string room, bool includeFinished = false, CancellationToken cancellationToken = default) =>
         RequestAsync<TaskListPayload>(new TaskListPayload(room, [], includeFinished), cancellationToken);
 
+    /// <summary>
+    /// The tools available to you. An agent gets the set it was granted; an admin gets the whole
+    /// connected catalogue, which is what the management panel grants from.
+    /// </summary>
+    public Task<ToolListPayload> ListToolsAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync<ToolListPayload>(new ToolListPayload([]), cancellationToken);
+
+    /// <summary>
+    /// Ask the server to run a tool. The server executes it — this client never holds the
+    /// upstream's credentials (PLAN §8). Name the room and the call is announced there, so the
+    /// operator watching can see what the agent reached for.
+    /// </summary>
+    public Task<ToolResultPayload> CallToolAsync(
+        string name, string arguments = "", string room = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<ToolResultPayload>(new ToolCallPayload(name, arguments, room), cancellationToken);
+
+    /// <summary>Read an agent's tool grants. Admin only.</summary>
+    public Task<ToolGrantsPayload> GetToolGrantsAsync(
+        string agent, CancellationToken cancellationToken = default) =>
+        RequestAsync<ToolGrantsPayload>(new ToolGrantsPayload(agent, [], Replace: false), cancellationToken);
+
+    /// <summary>
+    /// Replace an agent's tool grants. Admin only, and wholesale: the list you send becomes the
+    /// list it holds, so an empty list revokes everything.
+    /// </summary>
+    public Task<ToolGrantsPayload> SetToolGrantsAsync(
+        string agent, IReadOnlyList<string> tools, CancellationToken cancellationToken = default) =>
+        RequestAsync<ToolGrantsPayload>(new ToolGrantsPayload(agent, tools, Replace: true), cancellationToken);
+
     /// <summary>Raised on every task state change in a room you are in.</summary>
     public event Action<TaskInfoPayload>? TaskChanged;
 

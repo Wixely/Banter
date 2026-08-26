@@ -57,6 +57,10 @@ public static class PayloadRegistry
         [BanterMessageType.TaskDone] = typeof(TaskDonePayload),
         [BanterMessageType.TaskList] = typeof(TaskListPayload),
         [BanterMessageType.TaskFail] = typeof(TaskInfoPayload),
+        [BanterMessageType.ToolList] = typeof(ToolListPayload),
+        [BanterMessageType.ToolCall] = typeof(ToolCallPayload),
+        [BanterMessageType.ToolResult] = typeof(ToolResultPayload),
+        [BanterMessageType.ToolGrants] = typeof(ToolGrantsPayload),
         [BanterMessageType.Error] = typeof(ErrorPayload),
         [BanterMessageType.Ok] = typeof(OkPayload),
     };

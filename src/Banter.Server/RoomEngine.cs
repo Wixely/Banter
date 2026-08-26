@@ -15,11 +15,13 @@ internal sealed class RoomEngine(
     IServerStore store,
     AgentGuardrails? guardrails = null,
     TaskStore? tasks = null,
-    TaskLimits? taskLimits = null)
+    TaskLimits? taskLimits = null,
+    Tools.IToolBroker? tools = null)
 {
     private readonly AgentGuardrails _guardrails = guardrails ?? AgentGuardrails.Default;
     private readonly TaskStore? _tasks = tasks;
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
+    private readonly Tools.IToolBroker? _tools = tools;
 
     private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(
         new UnboundedChannelOptions { SingleReader = true });
@@ -277,6 +279,15 @@ internal sealed class RoomEngine(
                 break;
             case TaskListPayload taskList:
                 await HandleTaskListAsync(session, envelope, taskList).ConfigureAwait(false);
+                break;
+            case ToolListPayload:
+                await HandleToolListAsync(session, envelope).ConfigureAwait(false);
+                break;
+            case ToolCallPayload call:
+                HandleToolCall(session, envelope, call);
+                break;
+            case ToolGrantsPayload grants:
+                await HandleToolGrantsAsync(session, envelope, grants).ConfigureAwait(false);
                 break;
             default:
                 session.Send(new ErrorPayload("UNSUPPORTED", $"{envelope.Type} is not supported yet."), replyTo: envelope.MsgId);
@@ -817,6 +828,150 @@ internal sealed class RoomEngine(
 
         var tasks = await _tasks.ListAsync(room.Name, request.IncludeFinished).ConfigureAwait(false);
         session.Send(new TaskListPayload(room.Name, tasks, request.IncludeFinished), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Answer "what tools do I have?". An agent sees only what it was granted; an admin sees the
+    /// whole connected catalogue, which is what the management UI lists to grant from. Nobody
+    /// else gets an answer at all — a human client has no business calling tools (PLAN §8).
+    /// </summary>
+    private async ValueTask HandleToolListAsync(ClientSession session, BanterEnvelope envelope)
+    {
+        if (_tools is null)
+        {
+            session.Send(new ErrorPayload("NO_TOOLS", "This server has no tool backend."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (session.IsAdmin)
+        {
+            session.Send(new ToolListPayload(_tools.AllTools()), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAgent)
+        {
+            session.Send(new ErrorPayload("NOT_AN_AGENT", "Tools are for agents."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var granted = await _tools.ToolsForAsync(session.Nick).ConfigureAwait(false);
+        session.Send(new ToolListPayload(granted), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Run a tool on behalf of an agent.
+    ///
+    /// <para>Deliberately <b>not</b> awaited on the engine loop. A tool call may run for minutes,
+    /// and this loop is the single writer for every room on the server — awaiting here would stop
+    /// all chat until the tool returned. The call runs off-loop and the result goes straight to
+    /// the caller's outbox; the audit line comes back through the loop to reach the room safely.</para>
+    /// </summary>
+    private void HandleToolCall(ClientSession session, BanterEnvelope envelope, ToolCallPayload call)
+    {
+        if (_tools is null)
+        {
+            session.Send(new ErrorPayload("NO_TOOLS", "This server has no tool backend."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAgent)
+        {
+            // Clients never call tools. The server holds the credentials precisely so that a
+            // compromised or careless client cannot reach anything with them.
+            session.Send(new ErrorPayload("NOT_AN_AGENT", "Tools are for agents."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var replyTo = envelope.MsgId;
+        var agent = session.Nick;
+        var room = call.Room;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var result = await _tools.CallAsync(agent, call, audit: line => AuditToRoom(room, line))
+                    .ConfigureAwait(false);
+                session.Send(result, replyTo);
+            }
+            catch (Exception ex)
+            {
+                // The agent is waiting on a reply; a silent failure would hang its turn forever.
+                session.Send(new ToolResultPayload(call.Name, ex.Message, IsError: true), replyTo);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Put a tool-use line in front of the operator. Tool calls are the one place an agent reaches
+    /// outside the chat, so they are announced in the room rather than only logged — the point of
+    /// the admin being in every room is to be able to see this happen.
+    /// </summary>
+    private void AuditToRoom(string room, string line)
+    {
+        Console.Error.WriteLine($"tool: {line}");
+        if (room.Length == 0)
+        {
+            return;
+        }
+
+        _commands.Writer.TryWrite(() =>
+        {
+            if (_rooms.TryGetValue(room, out var target))
+            {
+                Broadcast(target, new MsgPayload(
+                    target.Name, "server", $"[tool] {line}",
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    null,
+                    Guid.NewGuid().ToString("N")));
+            }
+
+            return ValueTask.CompletedTask;
+        });
+    }
+
+    /// <summary>
+    /// Read or replace an agent's grants. Admin only, and the read is admin-only too: an agent
+    /// that could read other agents' grants would learn the shape of the tool estate it was
+    /// deliberately not given.
+    /// </summary>
+    private async ValueTask HandleToolGrantsAsync(
+        ClientSession session, BanterEnvelope envelope, ToolGrantsPayload grants)
+    {
+        if (_tools is null)
+        {
+            session.Send(new ErrorPayload("NO_TOOLS", "This server has no tool backend."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAdmin)
+        {
+            session.Send(new ErrorPayload("NOT_ADMIN", "Only an admin may read or change tool grants."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (grants.Agent.Length == 0)
+        {
+            session.Send(new ErrorPayload("BAD_AGENT", "Name the agent whose grants you mean."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (grants.Replace)
+        {
+            // Only ever grant tools the server actually has: a grant for a name nothing serves is
+            // a silent lie in the UI, and it would quietly come alive if an upstream later
+            // published that name.
+            var known = _tools.AllTools().Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
+            var wanted = grants.Tools.Where(known.Contains).ToList();
+            await _tools.SetGrantsAsync(grants.Agent, wanted).ConfigureAwait(false);
+            Console.Error.WriteLine($"tool: {session.Nick} set {grants.Agent}'s grants to {wanted.Count} tool(s)");
+        }
+
+        var current = await _tools.GrantsForAsync(grants.Agent).ConfigureAwait(false);
+        session.Send(new ToolGrantsPayload(grants.Agent, current, Replace: false), replyTo: envelope.MsgId);
     }
 
     /// <summary>

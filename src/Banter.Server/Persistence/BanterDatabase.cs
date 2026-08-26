@@ -264,5 +264,24 @@ public static class SchemaManifest
             "admin-accounts",
             SqliteSql: "ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;",
             PostgresSql: "ALTER TABLE accounts ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE;"),
+        new(
+            5,
+            "agent-tool-grants",
+            SqliteSql:
+            """
+            CREATE TABLE tool_grants (
+                agent TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                PRIMARY KEY (agent, tool)
+            );
+            """,
+            PostgresSql:
+            """
+            CREATE TABLE tool_grants (
+                agent TEXT NOT NULL,
+                tool TEXT NOT NULL,
+                PRIMARY KEY (agent, tool)
+            );
+            """),
     ];
 }

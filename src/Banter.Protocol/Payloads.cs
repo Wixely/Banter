@@ -453,6 +453,58 @@ public sealed record TaskListPayload(
     [property: Key(1)] IReadOnlyList<TaskInfoPayload> Tasks,
     [property: Key(2)] bool IncludeFinished = false);
 
+// ---- Agent tools (PLAN §8: MCP access) ----
+
+/// <summary>
+/// One tool an agent may call. <c>Schema</c> is the raw JSON Schema for its arguments, passed
+/// through to the model unchanged — the server does not reinterpret it.
+/// </summary>
+[MessagePackObject]
+public sealed record ToolDescriptorPayload(
+    [property: Key(0)] string Name,
+    [property: Key(1)] string Description,
+    [property: Key(2)] string Schema,
+    [property: Key(3)] string ServerKey);
+
+/// <summary>
+/// Agent → server: the tools this agent is granted. Sent empty; the reply carries the set.
+///
+/// <para>An ungranted tool is absent from the list rather than merely refused on call, so an
+/// agent cannot discover what it is not allowed to use.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record ToolListPayload(
+    [property: Key(0)] IReadOnlyList<ToolDescriptorPayload> Tools);
+
+/// <summary>
+/// Agent → server: run a tool. <c>Arguments</c> is JSON as the model produced it.
+///
+/// <para>Tools run on the server because that is where the credentials are: an agent holding an
+/// API token could use it outside anything Banter can see or audit.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record ToolCallPayload(
+    [property: Key(0)] string Name,
+    [property: Key(1)] string Arguments,
+    [property: Key(2)] string Room = "");
+
+/// <summary>Server → agent: what the tool returned, or why it did not run.</summary>
+[MessagePackObject]
+public sealed record ToolResultPayload(
+    [property: Key(0)] string Name,
+    [property: Key(1)] string Content,
+    [property: Key(2)] bool IsError);
+
+/// <summary>
+/// Operator: which tools an agent may use. Sent with <c>Tools</c> empty to read the current set,
+/// or populated to replace it. <c>Agent</c> empty means the default grant for agents with none.
+/// </summary>
+[MessagePackObject]
+public sealed record ToolGrantsPayload(
+    [property: Key(0)] string Agent,
+    [property: Key(1)] IReadOnlyList<string> Tools,
+    [property: Key(2)] bool Replace = false);
+
 // ---- Generic ----
 
 [MessagePackObject]
