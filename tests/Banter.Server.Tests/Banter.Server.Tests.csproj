@@ -12,5 +12,6 @@
     <ProjectReference Include="../../src/Banter.Core/Banter.Core.csproj" />
     <ProjectReference Include="../../src/Banter.Server/Banter.Server.csproj" />
     <ProjectReference Include="../../src/Banter.Agents.Sdk/Banter.Agents.Sdk.csproj" />
+    <ProjectReference Include="../../src/Banter.Warden/Banter.Warden.csproj" />
   </ItemGroup>
 </Project>

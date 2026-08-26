@@ -28,6 +28,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | DaggerAgent spike (LM Studio endpoint: turns, tool calls, `spawn_subagent`, driving an external agent CLI) | green — Path C/ACP stays deferred (PLAN Phase 0) |
 | `Banter.Agents.Sdk` (`BanterAgent`, `LlmChatAgent`, streaming replies, per-room context) | implemented, tested |
 | `Banter.Warden` (runs an LLM agent as a Banter user) | implemented, verified against LM Studio |
+| Warden fleet: config-driven supervision, restart with backoff, config validation | implemented, tested (`samples/fleet.json`) |
 | Delegator election + room dispatch modes (§8a) | implemented, tested |
 | Request classification + routing with announced egress (§8a) | implemented, tested |
 | Sub-rooms: child room inherits parent sensitivity, `AGENT_MOVE` clearance-gated (§8a) | implemented, tested |

@@ -155,7 +155,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ⬜ | ⬜ | ✅ |
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
-| Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | 🔨 |
+| Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
 | MCP access via embedded MCPHub | – | ⬜ | – | – | – | – | ⬜ |
 | ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
@@ -585,7 +585,20 @@ on the DaggerAgent side as [Wixely/DaggerAgent#3](https://github.com/Wixely/Dagg
 
 **`Banter.Warden`** is the supervisor daemon for whatever agents run: starts DaggerAgent
 instances and `LlmChatAgent`s from config, restarts with backoff, applies per-room throttles
-cooperatively, reports fleet status to the server. If we end up running exactly one DaggerAgent
+cooperatively, reports fleet status to the server.
+
+*Fleet mode implemented 2026-08-26* (`--fleet <config.json>`, sample at `samples/fleet.json`).
+One file describes the whole room — a local delegator that routes, a specialist that works the
+task board, a frontier researcher — and each agent gets its own supervision loop, so one failing
+does not disturb the others. **No secrets in the file**: passwords come from
+`BANTER_AGENT_<USER>_PASSWORD`, because a fleet config is exactly the kind of thing that gets
+committed, and a test asserts the config type never grows a secret-shaped field. Backoff resets
+after an agent has run for a minute, so an ordinary disconnect does not inherit a crash-loop's
+delay, and supervision **gives up loudly** after N failures rather than retrying forever — a
+fleet that silently retries looks healthy while one of its members has been absent all day.
+Validation reports every problem at once and catches the combinations that misbehave quietly:
+a frontier agent cleared for sensitive data, a delegator that is not local, the same account
+twice. If we end up running exactly one DaggerAgent
 service (it already deploys as a Windows Service/Docker), Warden can shrink to a thin config
 + supervision layer — don't over-build it.
 

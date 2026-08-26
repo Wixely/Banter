@@ -1,9 +1,17 @@
 using Banter.Agents.Sdk;
+using Banter.Warden;
 using Banter.Protocol;
 using Banter.Protocol.Transport;
 
 // Banter.Warden - agent supervisor. Today it runs a single LlmChatAgent from the command line;
 // the config-driven fleet described in PLAN is the next step.
+
+// Fleet mode: one config file, many agents, supervised. Falls through to the single-agent
+// command line below when no --fleet is given.
+if (Arg("--fleet") is { Length: > 0 } fleetPath)
+{
+    return await RunFleetAsync(fleetPath);
+}
 
 var server = Arg("--server") ?? "tcp://127.0.0.1:7770";
 var user = Arg("--user") ?? "dagger";
@@ -36,7 +44,8 @@ if (pass is null || model is null || Has("--help") || Has("-h"))
     Console.Error.WriteLine("""
         banter-warden - run an LLM agent as a Banter user
 
-          banter-warden --user dagger --pass <secret> --model <id>
+          banter-warden --fleet <fleet.json>          run a supervised fleet
+          banter-warden --user dagger --pass <secret> --model <id>   run one agent
                         [--server tcp://127.0.0.1:7770] [--rooms #main,#dev]
                         [--llm http://localhost:1234/v1] [--api-key <key>]
                         [--system "<system prompt>"] [--answer-all]
@@ -154,6 +163,62 @@ Console.CancelKeyPress += (_, e) =>
 
 await agent.RunAsync(stopping.Token);
 return 0;
+
+async Task<int> RunFleetAsync(string path)
+{
+    FleetConfig fleet;
+    try
+    {
+        fleet = FleetConfig.Load(path);
+    }
+    catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or InvalidDataException)
+    {
+        Console.Error.WriteLine($"error: could not read {path}: {ex.Message}");
+        return 1;
+    }
+
+    // Report every problem, not just the first: fixing a config one error per run is miserable.
+    var problems = fleet.Validate();
+    if (problems.Count > 0)
+    {
+        Console.Error.WriteLine($"error: {path} has {problems.Count} problem(s):");
+        foreach (var problem in problems)
+        {
+            Console.Error.WriteLine($"  - {problem}");
+        }
+
+        return 1;
+    }
+
+    var supervisor = new FleetSupervisor(fleet, agentConfig =>
+    {
+        var (options, llm) = FleetSupervisor.BuildOptions(fleet, agentConfig);
+        return new LlmChatAgent(options, llm);
+    });
+
+    supervisor.Reported += message => Console.WriteLine($"[warden] {message}");
+
+    Console.WriteLine($"Fleet: {fleet.Agents.Count} agent(s) against {fleet.Server}");
+    Console.WriteLine("Press Ctrl+C to stop.");
+
+    using var fleetStopping = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        fleetStopping.Cancel();
+    };
+
+    try
+    {
+        await supervisor.RunAsync(() => new TcpBanterTransport(), fleetStopping.Token);
+    }
+    catch (OperationCanceledException)
+    {
+        // Ctrl+C.
+    }
+
+    return 0;
+}
 
 string? Arg(string name)
 {

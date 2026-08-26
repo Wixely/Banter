@@ -1,0 +1,55 @@
+{
+  // A realistic room: a local delegator that routes, a local specialist that works the task
+  // board, and a frontier researcher for public questions.
+  //
+  // No secrets here. Each agent's password comes from BANTER_AGENT_<USER>_PASSWORD, so this file
+  // is safe to commit - which matters, because a fleet config is exactly the kind of thing that
+  // gets committed.
+  //
+  //   banter-warden --fleet samples/fleet.json
+  "server": "tcp://127.0.0.1:7770",
+  "llm": "http://localhost:1234/v1",
+
+  "restart": {
+    "initialDelaySeconds": 2,
+    "maxDelaySeconds": 60,
+    "maxAttempts": 10
+  },
+
+  "agents": [
+    {
+      "user": "dagger",
+      "model": "liquid/lfm2.5-1.2b",
+      "rooms": ["#main"],
+      "locality": "local",
+      "clearance": "sensitive",
+      "skills": ["chat", "email"],
+      "delegator": true,
+      "route": true,
+      "system": "You are dagger, the local assistant in a group chat. Keep replies short."
+    },
+    {
+      "user": "scout",
+      "model": "qwen/qwen3-4b-2507",
+      "rooms": ["#main"],
+      // Flagged frontier so the routing rules treat it as third-party. Point "llm" at a real
+      // hosted endpoint to make that true rather than simulated.
+      "locality": "frontier",
+      "clearance": "public",
+      "skills": ["web", "github", "research"],
+      "cost": 5,
+      "system": "You are scout, a research assistant. Keep replies short."
+    },
+    {
+      "user": "coder",
+      "model": "qwen/qwen3-4b-2507",
+      "rooms": ["#main"],
+      "locality": "local",
+      "clearance": "sensitive",
+      "skills": ["code", "github"],
+      "cost": 2,
+      "workTasks": true,
+      "system": "You are coder. You take on code tasks. Keep replies short."
+    }
+  ]
+}
