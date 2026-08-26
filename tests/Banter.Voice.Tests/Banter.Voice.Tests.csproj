@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Banter.Voice/Banter.Voice.csproj" />
+    <ProjectReference Include="../../src/Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
   </ItemGroup>
 </Project>
