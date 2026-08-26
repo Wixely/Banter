@@ -229,7 +229,14 @@ internal sealed class RoomEngine(
                 break;
             case RoomListPayload:
                 session.Send(new RoomListPayload(
-                    _rooms.Values.Select(r => new RoomSummary(r.Name, r.Topic, r.Members.Count)).ToArray()),
+                    _rooms.Values
+                        .Select(r => new RoomSummary(
+                            r.Name,
+                            r.Topic,
+                            // Count people, not connections: a user on two devices is one member.
+                            r.Members.Select(m => m.Nick).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                            r.ParentRoom))
+                        .ToArray()),
                     replyTo: envelope.MsgId);
                 break;
             case RoomMembersPayload members:

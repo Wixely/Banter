@@ -144,6 +144,7 @@ var app = new BanterChatApp(vm)
     LoadOlderAsync = room => session.LoadOlderAsync(room, settings.HistoryPageSize),
     CommandAsync = session.CommandAsync,
     DownloadAsync = session.DownloadAsync,
+    JoinRoomAsync = room => session.JoinAsync(room, settings.HistoryPageSize),
 };
 
 DesktopHost.Run(app, _ => { });

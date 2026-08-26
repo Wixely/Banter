@@ -39,6 +39,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Called when the user clicks an attachment.</summary>
     public Func<string, Task> DownloadAsync { get; init; } = _ => Task.CompletedTask;
 
+    /// <summary>Called when the user picks a room from the browse list.</summary>
+    public Func<string, Task> JoinRoomAsync { get; init; } = _ => Task.CompletedTask;
+
     public override string Title => "Banter";
     public override object Model => ViewModel.Model;
     public override int Width => 1100;
@@ -58,7 +61,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="{{StatusClass}}">{{Status}}</div>
             <div class="rooms">
               <div class="{{TabClass}}" data-repeat="Rooms" data-room="{{Name}}">
-                <span class="tab-name">{{Name}}</span><span class="badge">{{Badge}}</span>
+                <span class="tab-name">{{Label}}</span><span class="badge">{{Badge}}</span>
+              </div>
+              <div class="{{BrowseClass}}">
+                <div class="browse-title">Other rooms</div>
+                <div class="browse-row" data-repeat="Browse" data-join="{{Name}}">
+                  <span class="browse-name">{{Label}}</span><span class="browse-members">{{Members}}</span>
+                </div>
               </div>
             </div>
             <div class="nick">{{Nick}}</div>
@@ -114,6 +123,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .tab-name { flex: 1; }
         .badge { color: #14161a; background: #7fa7ff; border-radius: 8px; padding: 0 6px; font-size: 11px; }
         .nick { font-size: 12px; color: #8b93a1; padding-top: 8px; }
+
+        .browse { padding-top: 14px; }
+        .browse.hidden { display: none; }
+        .browse-title { font-size: 11px; color: #5d6572; padding-bottom: 4px; }
+        .browse-row { display: flex; flex-direction: row; padding: 4px 8px; border-radius: 4px; }
+        .browse-name { flex: 1; color: #8b93a1; font-size: 12px; }
+        .browse-members { color: #5d6572; font-size: 11px; }
 
         .main { display: flex; flex-direction: column; flex: 1; }
         .header { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
@@ -197,6 +213,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-load-older", _ =>
         {
             LoadOlder();
+            return true;
+        });
+
+        doc.OnAction("data-join", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = JoinRoomAsync(e.Value);
             return true;
         });
 

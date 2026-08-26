@@ -85,6 +85,25 @@ public sealed class BanterChatSession : IDisposable
 
         await RefreshAgentsAsync(room, cancellationToken).ConfigureAwait(false);
         await RefreshTasksAsync(room, cancellationToken).ConfigureAwait(false);
+        await RefreshRoomsAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Re-read the server's room list. Also called when someone joins, because that is how a
+    /// room an agent just opened - or one an admin was put into - shows up without a restart.
+    /// </summary>
+    public async Task RefreshRoomsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var listing = await _client.ListRoomsAsync(cancellationToken).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetRoomListing(
+                listing.Rooms.Select(r => (r.Name, r.ParentRoom, r.MemberCount))));
+        }
+        catch (Exception)
+        {
+            // Best effort; the list is a view.
+        }
     }
 
     /// <summary>Load the room's live task board. Terminal tasks are left out: the panel answers
@@ -224,6 +243,12 @@ public sealed class BanterChatSession : IDisposable
             case "task":
                 _vm.Post(() => _vm.System(room, "usage: /task <title> [-- details]"));
                 break;
+            case "rooms":
+                await RefreshRoomsAsync().ConfigureAwait(false);
+                break;
+            case "join" when rest.Length > 0:
+                await Guard(room, () => JoinAsync(rest.Trim())).ConfigureAwait(false);
+                break;
             case "tasks":
                 await RefreshTasksAsync(room).ConfigureAwait(false);
                 await ShowTasksAsync(room).ConfigureAwait(false);
@@ -237,7 +262,7 @@ public sealed class BanterChatSession : IDisposable
             case "help":
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
-                    "/topic <text> | /part | /help"));
+                    "/join #room | /rooms | /topic <text> | /part | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
@@ -457,6 +482,21 @@ public sealed class BanterChatSession : IDisposable
     {
         _vm.Post(() => _vm.System(j.Room, $"{j.Nick} joined"));
         _ = RefreshAgentsAsync(j.Room);
+
+        // Being put into a room by the admin rule or a delegator arrives as a join for us, with
+        // no JoinAsync of our own to hang the setup off.
+        if (string.Equals(j.Nick, _client.Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = AdoptRoomAsync(j.Room);
+        }
+    }
+
+    /// <summary>Set up a room the server put us in, rather than one we asked to join.</summary>
+    private async Task AdoptRoomAsync(string room)
+    {
+        _vm.Post(() => _vm.AddRoom(room));
+        await RefreshRoomsAsync().ConfigureAwait(false);
+        await RefreshTasksAsync(room).ConfigureAwait(false);
     }
 
     private void OnParted(Protocol.PartPayload p)

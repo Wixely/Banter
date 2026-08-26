@@ -92,7 +92,7 @@ public sealed class ChatViewModel
 
         if (!Model.Rooms.Any(r => r.Name == room))
         {
-            Model.Rooms.Add(new RoomRow { Name = room });
+            Model.Rooms.Add(new RoomRow { Name = room, Label = room });
         }
 
         if (Model.ActiveRoom.Length == 0)
@@ -341,6 +341,54 @@ public sealed class ChatViewModel
         row.Time = FormatTime(timestamp);
         row.RowClass = row.RowClass.Replace(" streaming", "");
     }
+
+    // ── Room list ────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Parent of each room the server told us about, for showing the list as a tree.</summary>
+    private readonly Dictionary<string, string?> _roomParents = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Take the server's room listing: label joined rooms with their parentage, and offer the
+    /// rest for joining. A room you were put into by an agent or an admin rule appears here the
+    /// same as any other, which is the point — nothing an agent opens is hidden from you.
+    /// </summary>
+    public void SetRoomListing(IEnumerable<(string Name, string? Parent, int Members)> rooms)
+    {
+        var joined = Model.Rooms.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Model.Browse.Clear();
+
+        foreach (var (name, parent, members) in rooms.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            _roomParents[name] = parent;
+
+            if (joined.Contains(name))
+            {
+                continue;
+            }
+
+            Model.Browse.Add(new BrowseRow
+            {
+                Name = name,
+                Label = Label(name, parent),
+                Members = members == 1 ? "1 member" : $"{members} members",
+            });
+        }
+
+        Model.BrowseClass = Model.Browse.Count > 0 ? "browse" : "browse hidden";
+        RelabelJoinedRooms();
+    }
+
+    private void RelabelJoinedRooms()
+    {
+        foreach (var row in Model.Rooms)
+        {
+            row.Label = Label(row.Name, _roomParents.GetValueOrDefault(row.Name));
+        }
+    }
+
+    /// <summary>A sub-room is shown indented under its parent rather than as a peer.</summary>
+    private static string Label(string name, string? parent) =>
+        parent is { Length: > 0 } ? "  └ " + name : name;
 
     // ── Agent roster (PLAN §8a) ──────────────────────────────────────────────────────────────
 

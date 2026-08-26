@@ -74,11 +74,17 @@ public sealed record PartPayload(
 public sealed record RoomListPayload(
     [property: Key(0)] IReadOnlyList<RoomSummary> Rooms);
 
+/// <summary>
+/// One room in a listing. <c>ParentRoom</c> is set for a sub-room, so a client can show the room
+/// list as a hierarchy rather than a flat set of names with no relationship between them.
+/// Additive key: an older peer simply does not send it.
+/// </summary>
 [MessagePackObject]
 public sealed record RoomSummary(
     [property: Key(0)] string Name,
     [property: Key(1)] string? Topic,
-    [property: Key(2)] int MemberCount);
+    [property: Key(2)] int MemberCount,
+    [property: Key(3)] string? ParentRoom = null);
 
 [MessagePackObject]
 public sealed record RoomMembersPayload(

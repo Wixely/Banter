@@ -73,8 +73,21 @@ public sealed partial class TaskRow
 public sealed partial class RoomRow
 {
     public string Name { get; set; } = "";
+
+    /// <summary>Indented and prefixed for a sub-room, so parentage is visible in the list.</summary>
+    public string Label { get; set; } = "";
+
     public string TabClass { get; set; } = "tab";
     public string Badge { get; set; } = "";
+}
+
+/// <summary>A room on the server the user is not in, offered for joining.</summary>
+[CupriBindable]
+public sealed partial class BrowseRow
+{
+    public string Name { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Members { get; set; } = "";
 }
 
 /// <summary>
@@ -105,5 +118,9 @@ public sealed partial class ChatModel
     public List<RoomRow> Rooms { get; set; } = [];
     public List<AgentRow> Agents { get; set; } = [];
     public List<TaskRow> Tasks { get; set; } = [];
+
+    /// <summary>Rooms on the server the user has not joined. Hidden when there are none.</summary>
+    public List<BrowseRow> Browse { get; set; } = [];
+    public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
 }
