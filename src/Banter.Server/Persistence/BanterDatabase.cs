@@ -259,5 +259,10 @@ public static class SchemaManifest
             CREATE INDEX ix_tasks_room_state ON tasks (room, state);
             CREATE INDEX ix_tasks_lease ON tasks (lease_expires_at);
             """),
+        new(
+            4,
+            "admin-accounts",
+            SqliteSql: "ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;",
+            PostgresSql: "ALTER TABLE accounts ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE;"),
     ];
 }

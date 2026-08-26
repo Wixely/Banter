@@ -32,6 +32,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Request classification + routing with announced egress (§8a) | implemented, tested |
 | Sub-rooms: child room inherits parent sensitivity, `AGENT_MOVE` clearance-gated (§8a) | implemented, tested |
 | Delegator opens sub-rooms for local fan-outs; third-party fan-outs stay in-room | implemented, tested |
+| Agent-opened rooms named after the work; admins auto-joined to them | implemented, tested |
+| One user, many clients: per-account presence, per-session delivery | implemented, tested |
 | Fan-out to several agents on request, clearance filter unchanged (§8a) | implemented, tested |
 | LLM classifier with keyword veto and fail-closed paths (§8a) | implemented, tested |
 | Work ledger (§8b: `TASK_*`, claim arbitration, leases, concurrency cap) | implemented, tested |

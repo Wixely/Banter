@@ -85,6 +85,26 @@ Banter.sln
 All projects target **.NET 10** (CupriNet and CupriFace require it; the Android head is plain
 `net10.0-android`).
 
+### 2b. Identity: one user, several clients
+
+**Banter does not use IRC's `alice` / `alice^mobile` convention.** IRC needs it because identity
+there *is* the connection; Banter separates the two, and CupriNet reinforces the split — each
+device has its own node identity and Sigil, but the thing that owns rooms, history and permissions
+is the **account**. So one user may hold any number of live sessions, and the rules are:
+
+| Concern | Granularity | Why |
+|---|---|---|
+| Identity, permissions, room membership | **account** | One person is one participant, however many devices they are signed in on. |
+| Message delivery | **session** | Every device sees the room, so a conversation continues when you pick up your phone. |
+| `JOIN` announcement | first session only | A second device is not a second person arriving. |
+| `PART` announcement | last session only | Shutting a laptop is not leaving the room. |
+| Explicit `/part` | all sessions | Leaving on your laptop and still receiving the room on your phone would be baffling. |
+| Member list | deduplicated by nick | One entry per person. |
+
+The practical consequence is that a "device" is not a first-class concept: nothing is addressed to
+one, and nothing needs a per-device nick. If a per-device label is ever wanted it is presentation
+on top of the session list, not a second identity.
+
 ### 2a. Where the work lands
 
 Which component owns each capability, and how far along it is.
@@ -696,6 +716,17 @@ what stops "open a sub-room" being a way to launder a sensitive conversation som
 agent is eligible to read it — moving an uncleared agent in is refused with `NOT_CLEARED`. Only the
 room's delegator may move agents, humans are never moved, and the new room is announced in the
 parent so the side channel stays auditable from the main conversation.
+**Rooms agents open are named after the work** (`#fix-parser-9c55`, `#thompson-matter-ccff`),
+not after the parent: a room list of identifiers is unreadable, a room list of things being done
+is a status board. Filler words are dropped, punctuation can never reach the name, and a short
+suffix keeps two similar requests from colliding.
+
+**An admin is in every room an agent opens.** Accounts carry `IsAdmin`, and the server adds every
+connected admin to a room created by an agent, announcing it like any other join. An agent that
+could open a room humans cannot see would be able to hold the whole conversation somewhere nobody
+is watching, which defeats the point of the timeline being the audit trail. A room opened by a
+*person* does not conscript admins — the rule is about agent oversight.
+
 **Sub-rooms are used, not just available:** with `SubRoomForFanOut`, a multi-agent request moves
 into a child room and the parent is told where it went. **A fan-out involving a third party always
 stays in the main room**, for two reasons that point the same way — the sub-room inherits the

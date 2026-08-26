@@ -17,6 +17,7 @@ public sealed class DbAccountStore(BanterDatabase database) : IAccountStore
         public byte[] PasswordSalt { get; set; } = [];
         public int Iterations { get; set; }
         public bool IsAgent { get; set; }
+        public bool IsAdmin { get; set; }
     }
 
     public async ValueTask<BanterAccount?> AuthenticateAsync(
@@ -26,25 +27,25 @@ public sealed class DbAccountStore(BanterDatabase database) : IAccountStore
         var row = await connection.QuerySingleOrDefaultAsync<AccountRow>(
             """
             SELECT username AS Username, password_hash AS PasswordHash, password_salt AS PasswordSalt,
-                   iterations AS Iterations, is_agent AS IsAgent
+                   iterations AS Iterations, is_agent AS IsAgent, is_admin AS IsAdmin
             FROM accounts WHERE username = @Username
             """,
             new { Username = Normalize(username) }).ConfigureAwait(false);
 
         return row is not null && PasswordHasher.Verify(secret, row.PasswordHash, row.PasswordSalt, row.Iterations)
-            ? new BanterAccount(row.Username, row.IsAgent)
+            ? new BanterAccount(row.Username, row.IsAgent, row.IsAdmin)
             : null;
     }
 
     public async Task CreateUserAsync(
-        string username, string secret, bool isAgent = false, CancellationToken cancellationToken = default)
+        string username, string secret, bool isAgent = false, bool isAdmin = false, CancellationToken cancellationToken = default)
     {
         var (hash, salt) = PasswordHasher.Hash(secret);
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await connection.ExecuteAsync(
             """
-            INSERT INTO accounts (username, password_hash, password_salt, iterations, is_agent)
-            VALUES (@Username, @Hash, @Salt, @Iterations, @IsAgent)
+            INSERT INTO accounts (username, password_hash, password_salt, iterations, is_agent, is_admin)
+            VALUES (@Username, @Hash, @Salt, @Iterations, @IsAgent, @IsAdmin)
             """,
             new
             {
@@ -53,6 +54,7 @@ public sealed class DbAccountStore(BanterDatabase database) : IAccountStore
                 Salt = salt,
                 Iterations = PasswordHasher.DefaultIterations,
                 IsAgent = isAgent,
+                IsAdmin = isAdmin,
             }).ConfigureAwait(false);
     }
 

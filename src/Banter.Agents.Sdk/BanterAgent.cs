@@ -225,7 +225,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// </summary>
     private async Task<bool> TryOpenSubRoomAsync(string parent, string prompt, IReadOnlyList<string> agents)
     {
-        var name = $"{parent}-{Guid.NewGuid().ToString("N")[..6]}";
+        var name = SubRoomName(parent, prompt);
         try
         {
             await Client.CreateSubRoomAsync(name, parent, Summarise(prompt), _stopping.Token).ConfigureAwait(false);
@@ -247,6 +247,41 @@ public abstract partial class BanterAgent : IAsyncDisposable
             return false;
         }
     }
+
+    /// <summary>
+    /// A room name derived from the work, so the room list reads as a list of things being done
+    /// rather than a wall of identifiers. A short random suffix keeps two similar requests from
+    /// colliding, but the readable part comes first.
+    /// </summary>
+    public static string SubRoomName(string parent, string prompt)
+    {
+        // Split on anything that is not a letter or digit, so a generated name can never pick up
+        // a character the server would reject as an invalid room name.
+        var words = new string(prompt.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : ' ').ToArray())
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(w => w.Length > 2 && !Filler.Contains(w))
+            .Take(4)
+            .ToList();
+
+        var slug = string.Join('-', words);
+        if (slug.Length > 32)
+        {
+            slug = slug[..32].TrimEnd('-');
+        }
+
+        // Nothing usable in the request: fall back to the parent's name rather than an empty slug.
+        var stem = slug.Length > 0 ? slug : parent.TrimStart('#');
+        return $"#{stem}-{Guid.NewGuid().ToString("N")[..4]}";
+    }
+
+    /// <summary>Words that carry no meaning in a room name.</summary>
+    private static readonly HashSet<string> Filler = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "and", "or", "but", "for", "with", "about", "into", "from", "this",
+        "that", "these", "those", "can", "you", "your", "our", "please", "what", "does", "did",
+        "how", "why", "when", "who", "everyone", "all", "think", "would", "could", "should",
+        "here", "there", "some", "any", "get", "got", "let", "make", "need", "want", "have",
+    };
 
     /// <summary>A room topic should be a label, not the whole request.</summary>
     private static string Summarise(string prompt)

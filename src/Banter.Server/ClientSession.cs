@@ -23,6 +23,9 @@ internal sealed class ClientSession(
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
 
+    /// <summary>Operator account: added to every room an agent opens (PLAN §8a).</summary>
+    public bool IsAdmin { get; private set; }
+
     /// <summary>
     /// Attributes this agent announced (PLAN §8a), or null if it has not announced. Held on the
     /// session so a re-join re-applies them without the agent having to announce again, and only
@@ -154,6 +157,7 @@ internal sealed class ClientSession(
 
         Nick = account.Username;
         IsAgent = account.IsAgent;
+        IsAdmin = account.IsAdmin;
         await engine.RegisterAsync(this).ConfigureAwait(false);
         Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent), replyTo: envelope.MsgId);
     }

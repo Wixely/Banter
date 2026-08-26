@@ -290,7 +290,9 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
 
         // The parent room must say where the conversation went - a side channel the humans
         // cannot find is one they cannot follow.
-        var pointer = await WaitForAsync(human, m => m.Text.StartsWith("Taking this to #main-"));
+        // The room is named after the work, not the parent: a room list of identifiers is
+        // unreadable, a room list of things being done is a status board.
+        var pointer = await WaitForAsync(human, m => m.Text.StartsWith("Taking this to #"));
         if (pointer is null)
         {
             var dump = await human.GetHistoryAsync("#main", limit: 100);

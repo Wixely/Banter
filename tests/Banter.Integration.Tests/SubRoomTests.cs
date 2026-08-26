@@ -19,6 +19,7 @@ public sealed class SubRoomTests : IAsyncLifetime
     private readonly TcpBanterTransport _transport = new();
     private readonly InMemoryAccountStore _accounts = new InMemoryAccountStore()
         .AddUser("human", "pw")
+        .AddUser("admin", "pw", isAgent: false, isAdmin: true)
         .AddUser("local", "pw", isAgent: true)
         .AddUser("local-2", "pw", isAgent: true)
         .AddUser("claude", "pw", isAgent: true);
@@ -192,6 +193,53 @@ public sealed class SubRoomTests : IAsyncLifetime
             local.MoveAgentAsync("human", "#task-4"));
 
         Assert.Equal("NOT_AN_AGENT", error.Code);
+    }
+
+    [Fact]
+    public async Task AnAdminIsPutIntoEveryRoomAnAgentOpens()
+    {
+        await using var admin = await ConnectAsync("admin");
+        await admin.JoinAsync("#main");
+
+        await using var local = await ConnectAsync("local");
+        await local.AnnounceAgentAsync(Announce("local", AgentLocality.Local, DataSensitivity.Sensitive));
+        await local.JoinAsync("#main");
+        await WaitForDelegatorAsync(admin, "#main", "local");
+
+        await local.CreateRoomAsync("#parser-work", parentRoom: "#main", purpose: "fix the parser");
+
+        // An agent that could open a room humans cannot see would be able to hold the whole
+        // conversation somewhere nobody is watching.
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var members = await admin.GetMembersAsync("#parser-work");
+            if (members.Members.Any(m => m.Nick == "admin"))
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.Fail("The admin was not added to the room the agent opened.");
+    }
+
+    [Fact]
+    public async Task ARoomOpenedByAHumanDoesNotConscriptAdmins()
+    {
+        await using var admin = await ConnectAsync("admin");
+        await admin.JoinAsync("#main");
+        await using var human = await ConnectAsync("human");
+        await human.JoinAsync("#main");
+
+        // The rule is about agent oversight; a person opening a room is just a person opening
+        // a room, and dragging every operator into it would be surprising.
+        await human.CreateRoomAsync("#human-room", parentRoom: "#main");
+        await Task.Delay(400);
+
+        var members = await human.GetMembersAsync("#human-room");
+        Assert.DoesNotContain(members.Members, m => m.Nick == "admin");
     }
 
     [Fact]

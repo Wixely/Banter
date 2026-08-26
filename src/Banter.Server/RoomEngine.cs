@@ -292,7 +292,11 @@ internal sealed class RoomEngine(
             await store.UpsertRoomAsync(room.Name, null).ConfigureAwait(false);
         }
 
-        if (room.Members.Add(session))
+        // Presence is per USER, delivery is per SESSION. Banter does not use IRC's
+        // alice / alice^mobile convention: identity is the account, and a session is one of its
+        // connections, so a second device must not read as a second person arriving.
+        var alreadyPresent = HasSessionInRoom(room, session.Nick);
+        if (room.Members.Add(session) && !alreadyPresent)
         {
             Broadcast(room, new JoinPayload(room.Name, session.Nick));
 
@@ -320,18 +324,64 @@ internal sealed class RoomEngine(
 
     private async ValueTask HandlePartAsync(ClientSession session, BanterEnvelope envelope, PartPayload part)
     {
-        if (_rooms.TryGetValue(part.Room, out var room) && room.Members.Remove(session))
+        if (_rooms.TryGetValue(part.Room, out var room))
         {
-            Broadcast(room, new PartPayload(room.Name, part.Reason, session.Nick));
-            session.Send(new PartPayload(room.Name, part.Reason, session.Nick));
-
-            if (room.Agents.Remove(session.Nick))
+            // An explicit part is the person leaving, not the device: leaving on your laptop and
+            // still receiving the room on your phone would be baffling. So every session of this
+            // account leaves together.
+            var leaving = SessionsFor(session.Nick).Where(room.Members.Contains).ToList();
+            if (leaving.Count > 0)
             {
-                await ReelectAsync(room).ConfigureAwait(false);
+                foreach (var other in leaving)
+                {
+                    room.Members.Remove(other);
+                }
+
+                Broadcast(room, new PartPayload(room.Name, part.Reason, session.Nick));
+                foreach (var other in leaving)
+                {
+                    other.Send(new PartPayload(room.Name, part.Reason, session.Nick));
+                }
+
+                if (room.Agents.Remove(session.Nick))
+                {
+                    await ReelectAsync(room).ConfigureAwait(false);
+                }
             }
         }
 
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>Every live session for a nick, including ones not in any room.</summary>
+    private IEnumerable<ClientSession> SessionsFor(string nick) =>
+        _sessionsByNick.TryGetValue(nick, out var sessions) ? sessions.ToList() : [];
+
+    /// <summary>Whether this account already has a session in the room.</summary>
+    private static bool HasSessionInRoom(Room room, string nick, ClientSession? excluding = null) =>
+        room.Members.Any(m => !ReferenceEquals(m, excluding)
+                              && string.Equals(m.Nick, nick, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Put every connected admin into a room and announce it. Silent addition would be worse than
+    /// none: an operator should be able to see that they are watching, and so should the agents.
+    /// </summary>
+    private void AddAdmins(Room room)
+    {
+        foreach (var admin in _sessionsByNick.Values.SelectMany(s => s).Where(s => s.IsAdmin).ToList())
+        {
+            if (HasSessionInRoom(room, admin.Nick))
+            {
+                continue;
+            }
+
+            if (room.Members.Add(admin))
+            {
+                Broadcast(room, new JoinPayload(room.Name, admin.Nick));
+                admin.Send(new RoomModePayload(room.Name, room.Mode));
+                admin.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+            }
+        }
     }
 
     private static AgentCandidate ToCandidate(AgentAnnouncePayload a, long joinSequence) =>
@@ -462,6 +512,15 @@ internal sealed class RoomEngine(
                 ? ToCandidate(announced, _joinSequence++)
                 : new AgentCandidate(session.Nick, AgentLocality.Unknown, DataSensitivity.Unknown,
                     [], CostTier: 1, JoinSequence: _joinSequence++);
+        }
+
+        // Oversight rule (PLAN §8a): every room an agent opens has the operators in it. An agent
+        // that could open a room humans cannot see would be able to hold the whole conversation
+        // somewhere nobody is watching, which defeats the point of the timeline being the audit
+        // trail.
+        if (session.IsAgent)
+        {
+            AddAdmins(room);
         }
 
         await ReelectAsync(room).ConfigureAwait(false);
@@ -1086,7 +1145,11 @@ internal sealed class RoomEngine(
 
         session.Send(new RoomMembersPayload(
             room.Name,
-            room.Members.Select(m => new MemberInfo(m.Nick, m.IsAgent, "")).ToArray()),
+            // One person is one entry, however many devices they are logged in on.
+            room.Members
+                .GroupBy(m => m.Nick, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new MemberInfo(g.Key, g.First().IsAgent, ""))
+                .ToArray()),
             replyTo: envelope.MsgId);
     }
 
@@ -1106,6 +1169,13 @@ internal sealed class RoomEngine(
         foreach (var room in _rooms.Values)
         {
             if (!room.Members.Remove(session))
+            {
+                continue;
+            }
+
+            // Only announce when the account's LAST session leaves: shutting a laptop while the
+            // phone is still connected is not leaving the room.
+            if (HasSessionInRoom(room, session.Nick))
             {
                 continue;
             }
