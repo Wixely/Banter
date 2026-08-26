@@ -213,6 +213,67 @@ public sealed class BanterChatSession : IDisposable
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
     /// <summary>
+    /// Where image previews are cached. Separate from downloads: these are fetched automatically
+    /// rather than asked for, so they do not belong in the user's Downloads folder.
+    /// </summary>
+    public string ImageCacheDirectory { get; init; } =
+        Path.Combine(Path.GetTempPath(), "banter-images");
+
+    /// <summary>
+    /// Largest image fetched automatically for a preview. Everything above it stays a chip the
+    /// user can click - showing a picture is not worth spending someone's bandwidth without
+    /// being asked.
+    /// </summary>
+    public long MaxInlineImageBytes { get; init; } = 8 * 1024 * 1024;
+
+    /// <summary>Images already fetched or being fetched, so a re-render cannot re-download.</summary>
+    private readonly HashSet<string> _fetchedImages = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Fetch an image attachment for inline display, if it is one and small enough. Best effort
+    /// throughout: a preview that fails to load is a missing picture, not a broken timeline.
+    /// </summary>
+    private async Task TryFetchInlineImageAsync(Protocol.FileInfoPayload info)
+    {
+        if (!MimeTypes.IsImage(info.MimeType) || info.Size > MaxInlineImageBytes)
+        {
+            return;
+        }
+
+        lock (_fetchedImages)
+        {
+            if (!_fetchedImages.Add(info.FileId))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            Directory.CreateDirectory(ImageCacheDirectory);
+
+            // Keyed by file id, which is content-addressed server-side, so a cached preview can
+            // never be a different picture than the one the message refers to.
+            var cached = Path.Combine(ImageCacheDirectory, info.FileId + Path.GetExtension(info.Name));
+            if (!File.Exists(cached))
+            {
+                var bytes = await _client.DownloadFileAsync(info.FileId).ConfigureAwait(false);
+                await File.WriteAllBytesAsync(cached, bytes).ConfigureAwait(false);
+            }
+
+            _vm.Post(() => _vm.SetInlineImage(info.FileId, cached));
+        }
+        catch (Exception)
+        {
+            // Allow a retry on the next mention of this file rather than never trying again.
+            lock (_fetchedImages)
+            {
+                _fetchedImages.Remove(info.FileId);
+            }
+        }
+    }
+
+    /// <summary>
     /// Handle composer input starting with <c>/</c>. Unknown commands report themselves rather
     /// than being sent to the room as text, so a typo cannot leak a half-typed command to everyone.
     /// </summary>
@@ -292,6 +353,20 @@ public sealed class BanterChatSession : IDisposable
                 .ConfigureAwait(false);
 
             _vm.Post(() => _vm.SetAttachmentInfo(info.FileId, info.Name, info.Size));
+
+            // Show our own upload inline too, from the bytes we already have - no round trip.
+            if (MimeTypes.IsImage(info.MimeType) && bytes.LongLength <= MaxInlineImageBytes)
+            {
+                Directory.CreateDirectory(ImageCacheDirectory);
+                var cached = Path.Combine(ImageCacheDirectory, info.FileId + Path.GetExtension(info.Name));
+                await File.WriteAllBytesAsync(cached, bytes).ConfigureAwait(false);
+                lock (_fetchedImages)
+                {
+                    _fetchedImages.Add(info.FileId);
+                }
+
+                _vm.Post(() => _vm.SetInlineImage(info.FileId, cached));
+            }
         }
         catch (Exception ex)
         {
@@ -373,6 +448,11 @@ public sealed class BanterChatSession : IDisposable
                     // Rendered as a real attachment row, so it is clickable like any other.
                     _vm.Append(room, "*", $"{f.Uploader} shared", f.CreatedAt, "line system", fileId: f.FileId);
                     _vm.SetAttachmentInfo(f.FileId, f.Name, f.Size);
+                }
+
+                foreach (var f in list.Files)
+                {
+                    _ = TryFetchInlineImageAsync(f);
                 }
             });
         }
@@ -471,6 +551,7 @@ public sealed class BanterChatSession : IDisposable
         {
             var info = await _client.GetFileInfoAsync(fileId).ConfigureAwait(false);
             _vm.Post(() => _vm.SetAttachmentInfo(info.FileId, info.Name, info.Size));
+            await TryFetchInlineImageAsync(info).ConfigureAwait(false);
         }
         catch (Exception)
         {

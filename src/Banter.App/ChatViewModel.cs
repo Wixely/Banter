@@ -207,6 +207,25 @@ public sealed class ChatViewModel
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
 
     /// <summary>
+    /// Show a downloaded image inline. Applies to every room, since the same file can be granted
+    /// to more than one.
+    /// </summary>
+    public void SetInlineImage(string fileId, string localPath)
+    {
+        if (fileId.Length == 0 || localPath.Length == 0)
+        {
+            return;
+        }
+
+        var src = new Uri(localPath).AbsoluteUri;
+        foreach (var row in _rooms.Values.SelectMany(rows => rows).Where(r => r.FileId == fileId))
+        {
+            row.ImageSrc = src;
+            row.ImageClass = "inline-image";
+        }
+    }
+
+    /// <summary>
     /// Fill in an attachment's name and size once the server has described it. Applies to every
     /// room, because the same file can be granted to more than one.
     /// </summary>

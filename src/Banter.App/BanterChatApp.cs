@@ -82,7 +82,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
               <div class="{{RowClass}}" data-repeat="Messages">
                 <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
-                <span class="text">{{Text}}<span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span></span>
+                <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
               </div>
             </cupri-virtual>
             <div class="composer-row">
@@ -144,10 +144,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line { display: flex; flex-direction: row; padding: 3px 14px; }
         .time { color: #5d6572; font-size: 12px; width: 44px; }
         .sender { color: #7fa7ff; width: 110px; }
+        .text { flex: 1; display: flex; flex-direction: column; }
         /* pre-wrap is load-bearing: messages carry hard newlines (agent replies are mostly
            paragraphs and code), and the CSS default would collapse them into one run-on line.
-           Long lines still wrap. Requires CupriFace 0.5.0 or later. */
-        .text { flex: 1; white-space: pre-wrap; }
+           Long lines still wrap. Requires CupriFace 0.5.0 or later.
+
+           It is confined to the message body, and the row above is written on ONE line, because
+           pre-wrap makes the markup's own indentation significant - a newline and two spaces
+           between elements become visible whitespace in every message. */
+        .body { white-space: pre-wrap; }
         .line.own .sender { color: #7fd88f; }
         .line.system { color: #8b93a1; font-style: italic; }
         .line.system .sender { color: #8b93a1; }
@@ -155,6 +160,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .attach { color: #7fa7ff; background: #1f2530; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
         .attach.hidden { display: none; }
+
+        /* Width only: height follows the source's aspect ratio. Capped so one large screenshot
+           cannot push the rest of the conversation off the screen - the chip above it still
+           gives the real name and size, and clicking downloads the original. */
+        .inline-image { width: 320px; margin-top: 4px; border-radius: 4px; }
+        .inline-image.hidden { display: none; }
 
         .dispatch { flex: 1; text-align: right; color: #8b93a1; font-size: 12px; }
 

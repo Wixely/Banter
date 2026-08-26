@@ -38,6 +38,15 @@ public sealed partial class MessageRow
 
     /// <summary>Name and size, filled in once the server's file metadata arrives.</summary>
     public string AttachText { get; set; } = "";
+
+    /// <summary>
+    /// <c>file://</c> URI of a downloaded image attachment, shown inline. Empty for everything
+    /// else — a PDF or a zip stays a chip, because a preview of it would be a grey box.
+    /// </summary>
+    public string ImageSrc { get; set; } = "";
+
+    /// <summary>Hidden until an image has actually been fetched and written to the cache.</summary>
+    public string ImageClass { get; set; } = "inline-image hidden";
 }
 
 /// <summary>
