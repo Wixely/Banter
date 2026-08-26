@@ -1,0 +1,25 @@
+{
+  // Upstream MCP servers the Banter server aggregates. Tools run here, on the server, so the
+  // credentials these servers need live with this process and never reach an agent.
+  //
+  // Point the server at this file with --mcp <path> or BANTER_MCP_CONFIG. A missing file simply
+  // means no tools: most deployments have none, and refusing to start would be the wrong default.
+  //
+  // Connecting a server does NOT grant anything. Every tool starts ungranted; an admin hands
+  // them out per agent from the client's "Manage tools" panel, or with /tools <agent>.
+  "upstreams": [
+    {
+      // MCPHub aggregates its own upstreams, so one entry here can carry a whole estate.
+      "key": "mcphub",
+      "displayName": "MCPHub",
+      "url": "http://127.0.0.1:5800/mcp"
+    }
+    // A stdio server instead of HTTP: give "command" and "arguments" and leave "url" out.
+    // {
+    //   "key": "fs",
+    //   "displayName": "Filesystem",
+    //   "command": "npx",
+    //   "arguments": ["-y", "@modelcontextprotocol/server-filesystem", "C:/work"]
+    // }
+  ]
+}

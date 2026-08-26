@@ -44,6 +44,9 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Work ledger (§8b: `TASK_*`, claim arbitration, leases, concurrency cap) | implemented, tested |
 | Agents working the ledger (skill-matched claims, lease renewal, result reporting) | implemented, tested |
 | App: task board panel, `/task` and `/tasks` commands | implemented, tested |
+| Tools executed server-side, per-agent grants, room-announced calls (§8c) | implemented, tested; verified live against the desktop MCPHub (453 tools) |
+| Agent tool loop over granted tools (streamed `tool_calls`, bounded rounds) | implemented, tested |
+| App: tool-grants panel, `/tools [agent]` | implemented, tested |
 | Upstream gaps found by the spike | all four fixed in [DaggerAgent v1.7.0](https://github.com/Wixely/DaggerAgent/releases/tag/v1.7.0): tool-call events, durable CLI sessions, partial output on timeout, NU1903 cleared |
 | Embeddable MCP (MCPHub split) | shipped in [MCPHub v0.6.0](https://github.com/Wixely/MCPHub/releases/tag/v0.6.0) — three packages on the feed, tenancy seam in |
 | `Banter.App` (shared CupriApp: rooms, wrapping timeline, streaming, composer) | implemented, tested headlessly |

@@ -157,7 +157,8 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
-| MCP access via embedded MCPHub | – | ⬜ | – | – | – | – | ⬜ |
+| MCP tools executed server-side, agent tool loop (§8c) | ✅ | ✅ | ⬜ | – | – | – | ✅ |
+| Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
 | ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
 | **Phase 6 — hardening** |
 | Ops/admin tooling, account management | – | ⬜ | ⬜ | ⬜ | – | – | – |
@@ -835,6 +836,47 @@ room-scoped server objects (like files, §5a) so "the main channel" doubles as a
   model as tools (`banter_task_claim`, `banter_task_done`, …) alongside its MCP tools; the
   delegator is just a DaggerAgent instance with a routing system prompt and `TASK_ASSIGN`
   permission — no new runtime.
+
+### 8c. Tools: executed by the server, granted per agent — ✅ shipped
+
+The rule the whole design falls out of: **an agent never holds a credential.** MCP upstreams carry
+PATs, connection strings and SQL logins. An agent that held them could act outside anything Banter
+can see or audit, and a third-party agent that held them has been handed the estate. So the server
+connects the upstreams, and agents ask it to act.
+
+- **Wire (`80–89`).** `TOOL_LIST` (what may I use?), `TOOL_CALL` (run this), `TOOL_RESULT`,
+  `TOOL_GRANTS` (operator read/write). Clients are refused `TOOL_CALL` outright — `NOT_AN_AGENT`.
+- **Broker.** `Banter.Server/Tools/McpToolBroker` wraps `MCPHub.Proxy`'s `UpstreamRegistry`, so one
+  entry in `mcp.json` can point at a running MCPHub and pick up its whole aggregated catalogue.
+  Measured against the desktop MCPHub on this machine: **453 tools from one upstream.** One
+  upstream failing to connect does not take away the others.
+- **Grants are per agent account and default to nothing.** A new agent inherits no access. An
+  ungranted tool is *absent* from that agent's `TOOL_LIST` rather than refused on call, and the
+  refusal text is identical whether a tool is ungranted or simply not connected — otherwise an
+  agent could map the estate it was deliberately kept out of. Grants are replaced wholesale, in
+  one transaction, so a revoke cannot half-apply. Reading them is admin-only too.
+- **Calls run off the engine loop.** The room engine is the single writer for every room; awaiting
+  a two-minute tool call on it would stop all chat until it returned. The result goes straight to
+  the caller's outbox, and the audit line comes back through the loop to reach the room safely.
+- **Every call and refusal is announced in the room** as a `[tool]` line. This is what the
+  admin-in-every-room rule of §8a is *for*: tool use is the one place an agent reaches outside the
+  chat, so it is visible rather than merely logged.
+- **Agent side.** `LlmChatAgent` attaches its granted catalogue to each turn and loops:
+  stream → tool calls → server executes → results back → stream again, bounded by
+  `MaxToolRounds` (default 5) with the cut-off said out loud in the room. Content deltas keep
+  flowing during the loop, because a model that says "let me check" and goes quiet reads as a
+  broken agent rather than a busy one. With nothing granted, the request on the wire is
+  byte-for-byte what it was before tools existed — some local servers reject an empty `tools`
+  array.
+- **Management is in the client**, not a separate dashboard, because the server will eventually
+  serve this same UI as WASM from its own HTTP server. "Manage tools" (or `/tools <agent>`) opens
+  an overlay: agents down the left, catalogue grouped by upstream on the right, edits held locally
+  until Save sends the complete set. The button only appears once a catalogue has actually come
+  back, so an account that would only ever be refused never sees it.
+
+Still open: per-agent MCPHub tokens (grants live in Banter's own `tool_grants` table today, not in
+MCPHub's tenancy seam), and a persisted audit log — the audit is currently a room message plus a
+stderr line.
 
 ## 9. Build order & milestones
 
