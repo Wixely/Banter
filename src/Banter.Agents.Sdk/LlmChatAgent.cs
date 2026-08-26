@@ -72,11 +72,50 @@ public sealed class LlmChatAgent : BanterAgent
             }
         }
 
+        // The catalogue the server granted this agent. Empty on a server with no tool backend,
+        // which collapses the loop below to exactly the one-shot stream it used to be.
+        var specs = Tools.Select(t => new ToolSpec(t.Name, t.Description, t.Schema)).ToList();
+
         var reply = new System.Text.StringBuilder();
-        await foreach (var delta in _client.StreamAsync(messages, cancellationToken).ConfigureAwait(false))
+        for (var round = 1; ; round++)
         {
-            reply.Append(delta);
-            yield return delta;
+            var calls = new List<ToolCallRequest>();
+            var said = new System.Text.StringBuilder();
+
+            await foreach (var delta in _client.StreamAsync(messages, specs, calls, cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                // Yielded as it arrives even mid-tool-loop: a model that says "let me check" and
+                // then goes quiet for thirty seconds reads as a broken agent, not a busy one.
+                said.Append(delta);
+                reply.Append(delta);
+                yield return delta;
+            }
+
+            if (calls.Count == 0)
+            {
+                break;
+            }
+
+            if (round >= _llm.MaxToolRounds)
+            {
+                // Say so in the room rather than truncating silently: an answer that stopped
+                // short of the tools it wanted is a different thing from a finished one.
+                var note = $"\n(stopped after {_llm.MaxToolRounds} rounds of tool calls)";
+                reply.Append(note);
+                yield return note;
+                break;
+            }
+
+            messages.Add(ChatTurn.AssistantCalls(said.ToString(), calls));
+            foreach (var call in calls)
+            {
+                // The server runs it. A refusal comes back as an ordinary error result, which the
+                // model can read and work around — it must not look like the tool crashed.
+                var result = await CallToolAsync(call.Name, call.Arguments, room, cancellationToken)
+                    .ConfigureAwait(false);
+                messages.Add(ChatTurn.Tool(call.Id, result.Content));
+            }
         }
 
         // Record what we actually said, so the next turn sees it. Observe() would also catch this

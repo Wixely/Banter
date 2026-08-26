@@ -63,6 +63,9 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 Options.Description, Options.CostTier, Options.WantsDelegator),
             cancellationToken).ConfigureAwait(false);
 
+        // Before joining anything, so the first message in a room can already use tools.
+        await RefreshToolsAsync(cancellationToken).ConfigureAwait(false);
+
         foreach (var room in Options.Rooms)
         {
             await _client.JoinAsync(room, cancellationToken).ConfigureAwait(false);

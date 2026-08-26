@@ -79,6 +79,13 @@ public sealed record LlmChatAgentOptions
     public int MaxOutputTokens { get; init; } = 512;
 
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How many rounds of tool calls one reply may take. A model that keeps calling the same tool
+    /// on a result it does not like would otherwise loop until the room, the upstream, or the
+    /// token budget gave out — so the loop is bounded and the model is told when it was cut off.
+    /// </summary>
+    public int MaxToolRounds { get; init; } = 5;
 }
 
 /// <summary>
