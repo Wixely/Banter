@@ -43,13 +43,18 @@ public sealed class OpenAiTranscriptionEngine : ITranscriptionEngine, IDisposabl
     /// <summary>
     /// A no-op that reports completion. The contract exists for engines that download a model;
     /// here the model is already somewhere else, which is the entire point of this adapter.
+    ///
+    /// <para>ValueTask, matching the interface exactly. <see cref="ITranscriptionEngine"/> gives
+    /// this member a default implementation, so a near-miss on the signature does not fail to
+    /// compile — it quietly leaves the default in place for everyone holding the interface, and
+    /// only the concrete type sees this one.</para>
     /// </summary>
-    public Task InitializeAsync(
+    public ValueTask InitializeAsync(
         IProgress<TranscriptionInitializationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         progress?.Report(new TranscriptionInitializationProgress(TranscriptionInitializationStage.Ready));
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     public async Task<TranscriptionResult> TranscribeAsync(PcmAudio audio, CancellationToken cancellationToken = default)

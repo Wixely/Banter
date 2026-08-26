@@ -166,9 +166,13 @@ public sealed class OpenAiTranscriptionEngineTests
     public async Task InitializeReportsReadyWithoutTouchingTheNetwork()
     {
         var handler = StubHandler.Json("""{"text":"x"}""");
-        using var engine = new OpenAiTranscriptionEngine(Options(), handler);
+        using var concrete = new OpenAiTranscriptionEngine(Options(), handler);
         var stages = new List<Bantz.Speech.TranscriptionInitializationStage>();
 
+        // Through the interface deliberately. ITranscriptionEngine gives this member a default
+        // implementation, so a signature that is merely close compiles fine and leaves every
+        // interface-typed caller — which is all of them — talking to the default instead.
+        Bantz.Speech.ITranscriptionEngine engine = concrete;
         await engine.InitializeAsync(new Progress<Bantz.Speech.TranscriptionInitializationProgress>(
             p => stages.Add(p.Stage)));
 
