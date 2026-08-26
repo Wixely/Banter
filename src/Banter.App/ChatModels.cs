@@ -3,18 +3,8 @@ using CupriFace.Binding;
 namespace Banter.App;
 
 /// <summary>
-/// One physical line of a message. Messages render a line at a time because the engine collapses
-/// newlines in bound text and ignores <c>white-space</c> — see <see cref="MessageRow.Text"/>.
-/// </summary>
-[CupriBindable]
-public sealed partial class TextLine
-{
-    public string Value { get; set; } = "";
-}
-
-/// <summary>
-/// One rendered row in the timeline. Rows wrap to their own height — CupriFace 0.4.0 measures
-/// realised rows and replaces the <c>item-height</c> estimate, so nothing here needs a fixed size.
+/// One rendered row in the timeline. Rows wrap to their own height — CupriFace measures realised
+/// rows and replaces the <c>item-height</c> estimate, so nothing here needs a fixed size.
 /// </summary>
 [CupriBindable]
 public sealed partial class MessageRow
@@ -26,37 +16,11 @@ public sealed partial class MessageRow
     public string Sender { get; set; } = "";
 
     /// <summary>
-    /// The message as sent. Assigning re-splits <see cref="Lines"/>, which is what actually gets
-    /// rendered: CupriFace collapses newlines in bound text and ignores <c>white-space</c>, so a
-    /// multi-line message drawn as one bound value comes out as a single run-on line.
+    /// The message as sent, newlines included. Rendered directly: the timeline styles it
+    /// <c>white-space: pre-wrap</c>, which CupriFace 0.5.0 honours, so hard breaks survive and
+    /// long lines still wrap. Measured: <c>\n</c>, <c>\r\n</c> and a bare <c>\r</c> all break.
     /// </summary>
-    public string Text
-    {
-        get => _text;
-        set
-        {
-            _text = value;
-            SetLines(value);
-        }
-    }
-
-    private string _text = "";
-
-    /// <summary>The message split for rendering. One entry even for a single-line message.</summary>
-    public List<TextLine> Lines { get; set; } = [];
-
-    /// <summary>Non-breaking space: a blank line still has to take up height, or paragraph
-    /// breaks vanish. An ordinary space collapses away; this does not.</summary>
-    private const string BlankLine = "\u00a0";
-
-    private void SetLines(string value)
-    {
-        Lines.Clear();
-        foreach (var line in value.ReplaceLineEndings("\n").Split('\n'))
-        {
-            Lines.Add(new TextLine { Value = line.Length == 0 ? BlankLine : line });
-        }
-    }
+    public string Text { get; set; } = "";
 
     public string Time { get; set; } = "";
 

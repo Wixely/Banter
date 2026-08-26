@@ -6,13 +6,12 @@ using Xunit.Abstractions;
 namespace Banter.App.Tests;
 
 /// <summary>
-/// Multi-line messages.
+/// Multi-line messages. Agent replies are mostly paragraphs and code, so hard newlines have to
+/// survive rendering; the timeline styles message text <c>white-space: pre-wrap</c>.
 ///
-/// <para>CupriFace collapses newlines in bound text and ignores <c>white-space</c> entirely
-/// (measured: <c>pre</c>, <c>pre-wrap</c> and <c>pre-line</c> all lay out identically to no rule
-/// at all), so a message drawn as a single bound value comes out as one run-on line. The timeline
-/// therefore renders a message a line at a time. These tests measure real laid-out height, because
-/// that is the only thing that would have caught the original bug.</para>
+/// <para>These measure real laid-out height rather than model state, because that is the only
+/// thing that would have caught the original bug: a test asserting the text was stored correctly
+/// passed happily while the screen showed one run-on line (CupriFace#69, fixed in 0.5.0).</para>
 /// </summary>
 public sealed class MultiLineMessageTests(ITestOutputHelper output)
 {
@@ -74,7 +73,7 @@ public sealed class MultiLineMessageTests(ITestOutputHelper output)
         var multiHeight = RowHeight(multi);
         output.WriteLine($"single line: {singleHeight:F1}px, three lines: {multiHeight:F1}px");
 
-        // Before the fix these were identical: the newlines collapsed to spaces.
+        // Before white-space was honoured these were identical: the newlines collapsed to spaces.
         Assert.True(
             multiHeight > singleHeight * 2,
             $"A three-line message ({multiHeight:F1}px) should be far taller than one line ({singleHeight:F1}px).");
@@ -96,59 +95,63 @@ public sealed class MultiLineMessageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void EveryLineIsPreservedInOrder()
+    public void TheTextIsKeptExactlyAsSent()
     {
         var vm = Room();
 
         var row = vm.Append("#main", "dagger", "first\nsecond\nthird", 0);
 
-        Assert.Equal(["first", "second", "third"], row.Lines.Select(l => l.Value));
+        // Rendered directly now, so the model holds the message verbatim.
+        Assert.Equal("first\nsecond\nthird", row.Text);
     }
 
-    [Fact]
-    public void WindowsAndUnixLineEndingsBothSplit()
+    [Theory]
+    [InlineData("a\nb")]
+    [InlineData("a\r\nb")]
+    [InlineData("a\rb")]
+    public void EveryLineEndingBreaks(string text)
     {
-        var vm = Room();
-
-        var windows = vm.Append("#main", "bob", "a\r\nb", 0);
-        var unix = vm.Append("#main", "bob", "a\nb", 0);
-
         // A message typed on Windows must not render as one line with a stray character.
-        Assert.Equal(2, windows.Lines.Count);
-        Assert.Equal(2, unix.Lines.Count);
-        Assert.Equal("a", windows.Lines[0].Value);
-        Assert.Equal("b", windows.Lines[1].Value);
+        var single = Room();
+        single.Append("#main", "bob", "ab", 0);
+
+        var broken = Room();
+        broken.Append("#main", "bob", text, 0);
+
+        Assert.True(RowHeight(broken) > RowHeight(single), "This line ending should break the line.");
     }
 
     [Fact]
     public void ASingleLineMessageIsStillOneLine()
     {
-        var vm = Room();
+        var oneLine = Room();
+        oneLine.Append("#main", "bob", "just text", 0);
 
-        var row = vm.Append("#main", "bob", "just text", 0);
+        var twoLines = Room();
+        twoLines.Append("#main", "bob", "just\ntext", 0);
 
-        Assert.Equal("just text", Assert.Single(row.Lines).Value);
+        Assert.True(RowHeight(twoLines) > RowHeight(oneLine));
     }
 
     [Fact]
-    public void AStreamedReplyResplitsAsItGrows()
+    public void AStreamedReplyGrowsTallerAsLinesArrive()
     {
         var vm = Room();
         vm.StreamStart("#main", "dagger", "s1");
+        vm.StreamDelta("s1", "Here you go:");
+        var afterOneLine = RowHeight(vm);
 
-        vm.StreamDelta("s1", "Here you go:\n");
-        vm.StreamDelta("s1", "  line two\n");
-        vm.StreamDelta("s1", "  line three");
+        vm.StreamDelta("s1", "\n  line two");
+        vm.StreamDelta("s1", "\n  line three");
 
-        // Agent replies are the main source of multi-line text, and they arrive a token at a
-        // time, so the split has to keep up rather than happen once at the end.
-        var row = Assert.Single(vm.Model.Messages);
-        Assert.Equal(3, row.Lines.Count);
-        Assert.Equal("  line three", row.Lines[2].Value);
+        // Agent replies arrive a token at a time, so rendering has to keep up rather than only
+        // be right once the stream ends.
+        Assert.True(RowHeight(vm) > afterOneLine, "A streamed reply should grow as lines arrive.");
+        Assert.Contains("line three", Assert.Single(vm.Model.Messages).Text);
     }
 
     [Fact]
-    public void AnAuthoritativeStreamEndResplitsToo()
+    public void AnAuthoritativeStreamEndReplacesTheText()
     {
         var vm = Room();
         vm.StreamStart("#main", "dagger", "s1");
@@ -156,6 +159,8 @@ public sealed class MultiLineMessageTests(ITestOutputHelper output)
 
         vm.StreamEnd("s1", "final\nwith\nthree lines", 0);
 
-        Assert.Equal(3, Assert.Single(vm.Model.Messages).Lines.Count);
+        var row = Assert.Single(vm.Model.Messages);
+        Assert.Equal("final\nwith\nthree lines", row.Text);
+        Assert.True(RowHeight(vm) > 40, "Three lines should be taller than one.");
     }
 }

@@ -193,15 +193,23 @@ upstream — **raised as [Wixely/CupriFace#66](https://github.com/Wixely/CupriFa
 a measurement hook. Not blocking: decide between (1) and (2) when the timeline UI is built, and
 adopt (3) if it lands. The measurement says either path performs.
 
+> **Resolved in CupriFace v0.5.0 (2026-08-26).** `white-space: pre | pre-wrap | pre-line` are
+> honoured and newlines in bound values are hard breaks; a no-break space is no longer collapsed
+> (it was being treated as collapsible because .NET's `char.IsWhiteSpace` counts U+00A0 and CSS
+> does not). Verified here: `pre-wrap` lays a three-line string out at 50.4px against 16.8px for
+> one, a blank line takes height, long lines still wrap, and `
+`, `
+` and a bare `` all
+> break. **The per-line workaround has been removed** — message text is bound directly again with
+> `white-space: pre-wrap`, which also removed a re-split on every streamed token. The original
+> finding is kept for the record:
+
 **Second constraint found (2026-08-26): newlines in bound text are collapsed and `white-space` is
 ignored** — `pre`, `pre-wrap` and `pre-line` all lay out identically to no rule at all, so a
 multi-line string rendered as one bound value comes out as a single run-on line. Wrapping itself
 works; this is specifically explicit newlines. A non-breaking space is stripped too, which removes
 the obvious way to keep a blank line's height. Raised as
-[Wixely/CupriFace#69](https://github.com/Wixely/CupriFace/issues/69). **Worked around** by splitting
-messages in the view model and rendering a line at a time with a nested `data-repeat` (which works,
-including inside `<cupri-virtual>`), with `min-height` on the line element for blank lines. Worth
-knowing for any other multi-line label in the app.
+[Wixely/CupriFace#69](https://github.com/Wixely/CupriFace/issues/69).
 
 Still outstanding from this list: WASM host round-trip, and everything on-device Android
 (scrollback feel, soft-keyboard IME, GL/foreground-service endurance).
