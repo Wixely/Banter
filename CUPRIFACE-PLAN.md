@@ -193,6 +193,16 @@ upstream — **raised as [Wixely/CupriFace#66](https://github.com/Wixely/CupriFa
 a measurement hook. Not blocking: decide between (1) and (2) when the timeline UI is built, and
 adopt (3) if it lands. The measurement says either path performs.
 
+**Second constraint found (2026-08-26): newlines in bound text are collapsed and `white-space` is
+ignored** — `pre`, `pre-wrap` and `pre-line` all lay out identically to no rule at all, so a
+multi-line string rendered as one bound value comes out as a single run-on line. Wrapping itself
+works; this is specifically explicit newlines. A non-breaking space is stripped too, which removes
+the obvious way to keep a blank line's height. Raised as
+[Wixely/CupriFace#69](https://github.com/Wixely/CupriFace/issues/69). **Worked around** by splitting
+messages in the view model and rendering a line at a time with a nested `data-repeat` (which works,
+including inside `<cupri-virtual>`), with `min-height` on the line element for blank lines. Worth
+knowing for any other multi-line label in the app.
+
 Still outstanding from this list: WASM host round-trip, and everything on-device Android
 (scrollback feel, soft-keyboard IME, GL/foreground-service endurance).
 

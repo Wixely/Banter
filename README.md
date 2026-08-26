@@ -35,6 +35,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Agent-opened rooms named after the work; admins auto-joined to them | implemented, tested |
 | One user, many clients: per-account presence, per-session delivery | implemented, tested |
 | App: room hierarchy in the sidebar, browse/join other rooms, `/join` and `/rooms` | implemented, tested |
+| App: multi-line messages (engine collapses newlines — see [CupriFace#69](https://github.com/Wixely/CupriFace/issues/69)) | worked around, tested |
 | Fan-out to several agents on request, clearance filter unchanged (§8a) | implemented, tested |
 | LLM classifier with keyword veto and fail-closed paths (§8a) | implemented, tested |
 | Work ledger (§8b: `TASK_*`, claim arbitration, leases, concurrency cap) | implemented, tested |

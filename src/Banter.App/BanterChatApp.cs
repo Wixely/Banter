@@ -82,7 +82,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
               <div class="{{RowClass}}" data-repeat="Messages">
                 <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
-                <span class="text">{{Text}}<span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span></span>
+                <span class="text">
+                  <div class="msg-line" data-repeat="Lines">{{Value}}</div>
+                  <span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span>
+                </span>
               </div>
             </cupri-virtual>
             <div class="composer-row">
@@ -145,6 +148,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .time { color: #5d6572; font-size: 12px; width: 44px; }
         .sender { color: #7fa7ff; width: 110px; }
         .text { flex: 1; }
+        /* One rendered line of a message. min-height is load-bearing: an empty line lays out at
+           zero height otherwise, and paragraph breaks disappear. Measured: a 14px text line is
+           16.8px, so this matches without making text lines taller. */
+        .msg-line { min-height: 17px; }
         .line.own .sender { color: #7fd88f; }
         .line.system { color: #8b93a1; font-style: italic; }
         .line.system .sender { color: #8b93a1; }
