@@ -44,11 +44,15 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
         Assert.Contains(pixels, b => b != 0);
     }
 
-    [Fact]
-    public void TimelineCostStaysFlatAsTheRoomFillsUp()
+    /// <summary>
+    /// Fastest of several layouts of a room holding <paramref name="messages"/>. The minimum, not
+    /// the mean: scheduler noise only ever adds time, so the best sample is the closest thing to
+    /// the cost of the work itself on a machine running six test assemblies at once.
+    /// </summary>
+    private static double LayoutMilliseconds(int messages)
     {
         var (app, vm, _) = Build();
-        for (var i = 0; i < 5_000; i++)
+        for (var i = 0; i < messages; i++)
         {
             // Variable-height rows: the case the timeline is actually built for.
             vm.Append("#main", i % 2 == 0 ? "bob" : "dagger",
@@ -56,21 +60,34 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
         }
 
         using var doc = app.CreateDocument();
-        doc.BuildDisplayList(Width, Height);
+        doc.BuildDisplayList(Width, Height);                // warm up, then measure
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var best = double.MaxValue;
         for (var i = 0; i < 10; i++)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             doc.BuildDisplayList(Width, Height);
+            sw.Stop();
+            best = Math.Min(best, sw.Elapsed.TotalMilliseconds);
         }
 
-        sw.Stop();
-        var perFrame = sw.Elapsed.TotalMilliseconds / 10;
-        output.WriteLine($"5,000-message room: {perFrame:F3} ms per layout");
+        return best;
+    }
 
-        // Loose bound: catches losing virtualization entirely (which measured ~260 ms), not
-        // a slow runner.
-        Assert.True(perFrame < 60, $"Layout of a 5,000-message room took {perFrame:F1} ms.");
+    [Fact]
+    public void TimelineCostStaysFlatAsTheRoomFillsUp()
+    {
+        var small = LayoutMilliseconds(100);
+        var large = LayoutMilliseconds(5_000);
+        var growth = large / Math.Max(small, 0.001);
+
+        output.WriteLine($"100 messages: {small:F3} ms, 5,000 messages: {large:F3} ms (x{growth:F1})");
+
+        // A ratio rather than a millisecond budget. What this test is for is catching the loss of
+        // virtualization, and that shows up as cost scaling with the room — fifty times the
+        // messages measured fifty times the work. A wall-clock threshold cannot tell that apart
+        // from a loaded runner, which is what made this fail whenever the whole solution ran.
+        Assert.True(growth < 8, $"Layout cost grew x{growth:F1} between a 100- and 5,000-message room.");
     }
 
     [Fact]

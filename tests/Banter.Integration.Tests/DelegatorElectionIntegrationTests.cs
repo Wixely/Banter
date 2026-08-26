@@ -73,6 +73,29 @@ public sealed class DelegatorElectionIntegrationTests : IAsyncLifetime
         return null;
     }
 
+    /// <summary>
+    /// Waits until <paramref name="room"/> lists <paramref name="count"/> agents. Unlike waiting
+    /// for a delegator to be null, this cannot be satisfied by nothing having happened yet.
+    /// </summary>
+    private static async Task<AgentListPayload> WaitForRosterAsync(BanterClient observer, string room, int count)
+    {
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        AgentListPayload? last = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            last = await observer.GetAgentsAsync(room);
+            if (last.Agents.Count == count)
+            {
+                return last;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.Fail($"Expected {count} agents in {room}, saw {last?.Agents.Count ?? 0}.");
+        return null!;
+    }
+
     [Fact]
     public async Task ASingleLocalAgentIsElectedOnJoin()
     {
@@ -193,9 +216,10 @@ public sealed class DelegatorElectionIntegrationTests : IAsyncLifetime
         await using var silent = await ConnectAsync("local-a");
         await silent.JoinAsync("#main");
 
-        // Unknown attributes fail closed: visible in the roster, never the delegator.
-        await WaitForDelegatorAsync(human, "#main", null);
-        var agents = await human.GetAgentsAsync("#main");
+        // Wait for the join to land, not for the absence of a delegator: "nobody is delegator"
+        // is also true before the agent has been registered at all, so waiting on it returns on
+        // the first poll and the roster assertions below then race the join.
+        var agents = await WaitForRosterAsync(human, "#main", 1);
         var entry = Assert.Single(agents.Agents);
         Assert.Equal(AgentLocality.Unknown, entry.Locality);
         Assert.False(entry.IsDelegator);
