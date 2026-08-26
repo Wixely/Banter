@@ -55,6 +55,12 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: file transfer (attachment chips, `/upload`, `/files`, download) | implemented, tested |
 | App: agent roster panel, delegator/mode header, egress styling (§8a made visible) | implemented, tested |
 | `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented, needs a manual run against a live server |
+| Voice: energy gate with hysteresis, PTT trimming, utterance segmentation (§6) | implemented, tested |
+| Voice: `VoiceSession` — both capture modes, ordered transcription off the capture thread | implemented, tested |
+| Voice: OpenAI-compatible STT (`/audio/transcriptions`), covers OpenAI, Qwen and local servers | implemented, tested |
+| Voice: OpenAI-compatible TTS (`/audio/speech`), streamed, raw PCM and WAV | implemented, tested |
+| Voice: sentence segmentation, per-sender voices, readback policy, barge-in (§6) | implemented, tested |
+| Voice: Wyoming adapter, local Whisper default, per-head capture/playback, on-screen PTT | not started |
 
 ## Running the server
 

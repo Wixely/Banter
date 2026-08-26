@@ -397,6 +397,54 @@ not, so every agent in the room sees it. Optional review-before-send stays per P
 modes. A natural follow-up (not planned yet): Bantz itself gains a "send to Banter room" output
 target next to text-injection, making Bantz a zero-UI Banter voice companion.
 
+**Started 2026-08-26.** `Banter.Voice` and `Banter.Voice.OpenAI` are in, with 109 tests. What
+landed, and the decisions inside it worth keeping:
+
+- **The energy gate** is a managed RMS gate with *two* thresholds. The onset matches
+  `Bantz.Capture.AudioSignalAnalyzer.ActiveRmsThreshold` so the level meter a user watches and the
+  gate that cuts their audio agree about what counts as sound; the release threshold is lower,
+  because a single threshold chatters through the pauses between words and each chatter severs an
+  utterance. `SpeechTrimmer` serves push-to-talk and returns **null** rather than an empty buffer
+  when there is no speech — an engine handed near-silence returns a confident invented sentence,
+  which then lands in the room under the user's name. `UtteranceSegmenter` serves always-listening,
+  keeps a lead-in pre-roll so the first consonant survives, and hard-cuts a continuous talker only
+  while they are still talking.
+- **`Banter.Voice` defines its own capture seam** rather than taking `Bantz.Capture.IAudioRecorder`,
+  whose `StopAsync` is documented to return *the complete normalized buffer*. That contract obliges
+  every implementation to retain the whole recording — right for press-and-release dictation, wrong
+  for a room microphone at ~115 MB an hour. `IVoiceCapture` retains nothing; both capture modes
+  bound what they keep. **Open item for the Bantz repo:** a streaming-only capture option would let
+  the desktop head use `WindowsAudioRecorder` directly for always-listening; until then the head
+  supplies its own `IVoiceCapture`.
+- **`VoiceSession`** is both capture modes in one class, because everything after the gate is
+  shared. Transcription runs on **one** worker, never on the capture thread: two utterances
+  transcribed concurrently finish in whatever order the engine returns them, and a room reading a
+  conversation backwards is worse than one reading it late.
+- **`ITranscriptionEngine`'s members are default interface methods** — only `TranscribeAsync` is
+  abstract. A signature that is merely close (`Task` where the interface says `ValueTask`) compiles
+  clean and silently leaves every interface-typed caller on Bantz's default no-op. Worth knowing
+  before writing the Whisper and Wyoming engines; the fix is to test through the interface.
+- **One OpenAI-compatible adapter** covers OpenAI, Qwen via DashScope, and local servers. STT is
+  `/audio/transcriptions` (only `text` is required of a reply — servers in this family agree on
+  little else) with a vocabulary prompt, which is where room nicknames and agent names belong.
+  TTS is `/audio/speech`, streamed, handling raw PCM and WAV; the WAV header's sample rate beats
+  the configured one, and `WaveHeader` walks the chunk list rather than trusting the canonical
+  44-byte offset, since servers interpose `LIST`/`fact` chunks and a streaming server writes a
+  placeholder length.
+- **Readback**: `SentenceSegmenter` releases a sentence only once something follows its terminator
+  (until then "3." may be "3.5"); an ellipsis ends a sentence only when what follows starts one.
+  `Readback.ShouldSpeak` never speaks a user's own messages under any policy — in always-listening
+  that is a loop with no exit. `VoiceAssignment` keys voices by name via FNV-1a (not
+  `string.GetHashCode`, which is per-process seeded and would recast the room every restart) and
+  probes past a taken voice, because a plain hash collided twice in six voices across five agents
+  and two agents sounding identical defeats the point. `ReadbackSession` speaks strictly one
+  sentence at a time, and `SilenceAsync` cancels the sentence in flight as well as draining the
+  queue — barge-in has to reach the speaker, not just the queue.
+
+Still to do in Phase 3: the Wyoming adapter; wiring `Bantz.Speech.Whisper` as the desktop default;
+per-head `IVoiceCapture`/`IAudioPlayback` backends; on-screen PTT and the voice settings UI in
+`Banter.App`.
+
 **Client audio pipeline** (in `Banter.Voice`, consumed by the CupriFace app and CLI):
 
 ```
@@ -955,6 +1003,13 @@ listed and fetched from another via room grant; browser client joins the same ro
 Phase 3 starts directly on `Banter.Voice` against the shared `ITranscriptionEngine` contract:
 local Whisper.net (desktop default) + OpenAI-compatible and Wyoming adapters; capture/playback
 per platform; on-screen PTT everywhere; TTS readout with per-sender voices.
+
+*Started 2026-08-26.* The provider-agnostic core is in and tested headlessly (§6): energy gate,
+both capture modes, the OpenAI-compatible STT and TTS adapters, sentence segmentation, per-sender
+voices and the readback queue. Everything so far runs without a microphone or a speaker, which is
+what made it testable; the parts that need real devices — per-head capture and playback backends,
+local Whisper, on-screen PTT — are what remain, along with the Wyoming adapter.
+
 *Exit: full round-trip — speak on phone → text in room → spoken aloud on desktop.*
 
 **Phase 4 — Hands-free & hotkeys:**
