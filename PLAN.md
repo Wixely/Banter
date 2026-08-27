@@ -1037,8 +1037,31 @@ site** — the served client is already a CupriFace renderer, and Nodestar's
 detail.
 
 `WebSocketBanterTransport` was built on the mistaken reading and does **not** serve this phase. It
-survives or not on its own merits away from the browser (reverse proxies, `wss://` for TLS without
-the mesh), which is a much weaker case than the one it was committed under.
+is kept, tested, and **unwired** — `BanterTransports` resolves `tcp://` only — against the day a
+deployment needs to cross a reverse proxy or wants `wss://` without the mesh.
+
+### What the web head is blocked on
+
+The packages exist and Banter already consumes CupriNet **0.3.4**, above the 0.3.3 floor Nodestar
+asks for: `CupriNet.Nodestar`, `CupriNet.Nodestar.Client.CupriFace`, `CupriNet.Nodestar.WebRtc` and
+`CupriNet.Nodestar.Tor` are all on the feed at `0.1.0-alpha.4`, and `CupriNet.Shrine` at 0.3.4.
+
+The obstacle is the shape of the L2 session. `ShrineSession` offers `ConsultAsync` (Oracle),
+`AttendAsync` (Auspice) and `FetchRelicAsync` (Relics) — **no duplex frame pipe**. BanterProtocol is
+framed envelopes both ways, so it cannot ride those rites without being re-expressed as a second
+client implementation, permanently kept in sync with `BanterClient`.
+
+Nodestar's README already advertises the missing primitive — a site may serve *"static files, a
+request/response handler, a live stream, or a raw session"* — but `SiteBuilder` on alpha.4 has no
+`OnSession`. Raised as [CupriNodestar#1](https://github.com/Wixely/CupriNodestar/issues/1) with the
+shape Banter needs. **With it, the web client is the existing stack plus one small transport:
+`Banter.App` is already a CupriApp, and the Nodestar client already renders with CupriFace.**
+
+So the plan for §2.5 is: `Banter.Server` hosts a Nodestar, serves the reference WASM client as a
+clearnet asset, and exposes the room over a raw L2 session that a `ShrineBanterTransport` presents
+as an `IBanterConnection`. Relics look like the natural home for §5a's room files, and Auspice for
+anything that wants a feed rather than the framed stream, but neither is needed for a first
+crossing.
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
 listed and fetched from another via room grant; browser client joins the same room text-only.*
 
