@@ -69,6 +69,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: close-to-tray (`stayInTray`) | implemented, **off by default** — the icon could not be confirmed headlessly |
 | App: connect screen (server/name/password, no command line needed) | implemented, tested |
 | `Banter.App.Android` (`CupriActivity` head, TCP) | implemented; builds a signed 26 MB APK, not yet run on a device |
+| Android voice: `AudioRecord` capture, `AudioTrack` playback, in-context mic permission | implemented; needs a device |
 
 ## Running the server
 
@@ -116,5 +117,9 @@ dotnet build src/Banter.App.Android/Banter.App.Android.csproj -c Release -t:Sign
 ```
 
 It speaks `tcp://` only for now — CupriNet on Android is still the Phase 0 spike PLAN §10 lists as
-outstanding, and the head says so rather than timing out with no reason. There is no microphone
-support in it yet either; the permission is declared but nothing requests it at runtime.
+outstanding, and the head says so rather than timing out with no reason.
+
+Voice on the phone uses **remote engines only** (PLAN §6a): an OpenAI-compatible endpoint or a
+Wyoming service, set through `voice.endpoint` or `voice.wyomingAsr`. Local Whisper stays the
+desktop default — a 148 MB model and native inference are not what you want on a phone. A phone
+with neither configured simply has no microphone button.

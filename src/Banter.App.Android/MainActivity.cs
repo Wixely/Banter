@@ -1,3 +1,4 @@
+using Android;
 using Android.App;
 using Android.Content.PM;
 using Banter.App;
@@ -30,6 +31,12 @@ public sealed class MainActivity : CupriActivity
     private BanterClient? _client;
     private BanterChatSession? _session;
     private BanterSettings _settings = new();
+    private AndroidVoice? _voice;
+
+    /// <summary>The microphone request in flight, completed by <see cref="OnRequestPermissionsResult"/>.</summary>
+    private TaskCompletionSource<bool>? _micRequest;
+
+    private const int MicRequestCode = 4101;
 
     protected override CupriApp CreateApp()
     {
@@ -48,10 +55,76 @@ public sealed class MainActivity : CupriActivity
             JoinRoomAsync = room => _session?.JoinAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = agent => _session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
+            VoiceToggleAsync = SetVoiceOpenAsync,
+            ReadbackChangedAsync = policy => _session?.SetReadbackAsync(policy) ?? Task.CompletedTask,
 
             // No tray and no window to close on a phone; the OS owns that.
             StayInTray = false,
         };
+    }
+
+    /// <summary>
+    /// Opens or closes the microphone, asking for permission the first time it is actually wanted.
+    ///
+    /// <para>In context rather than at launch: a chat client that demands the microphone before
+    /// the user has done anything is one people refuse, and a refusal is sticky.</para>
+    /// </summary>
+    private async Task SetVoiceOpenAsync(bool open)
+    {
+        if (!open)
+        {
+            await (_session?.SetVoiceOpenAsync(false) ?? Task.CompletedTask).ConfigureAwait(false);
+            return;
+        }
+
+        if (!await EnsureMicrophoneAsync().ConfigureAwait(false))
+        {
+            _viewModel.Post(() =>
+            {
+                _viewModel.SetVoiceState(Banter.Voice.VoiceSessionState.Idle);
+                _viewModel.VoiceFailed("microphone permission was refused.");
+            });
+            return;
+        }
+
+        await (_session?.SetVoiceOpenAsync(true) ?? Task.CompletedTask).ConfigureAwait(false);
+    }
+
+    private Task<bool> EnsureMicrophoneAsync()
+    {
+        if (CheckSelfPermission(Manifest.Permission.RecordAudio) == Permission.Granted)
+        {
+            return Task.FromResult(true);
+        }
+
+        // One request at a time: a second tap while the dialog is up must wait on the same answer
+        // rather than raise a second dialog.
+        var pending = _micRequest;
+        if (pending is not null)
+        {
+            return pending.Task;
+        }
+
+        _micRequest = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RequestPermissions([Manifest.Permission.RecordAudio], MicRequestCode);
+        return _micRequest.Task;
+    }
+
+    public override void OnRequestPermissionsResult(
+        int requestCode,
+        string[] permissions,
+        Permission[] grantResults)
+    {
+        if (requestCode == MicRequestCode)
+        {
+            var granted = grantResults.Length > 0 && grantResults[0] == Permission.Granted;
+            var pending = _micRequest;
+            _micRequest = null;
+            pending?.TrySetResult(granted);
+            return;
+        }
+
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     /// <summary>
@@ -96,6 +169,8 @@ public sealed class MainActivity : CupriActivity
             _settings = _settings with { Server = server, User = user };
             _settings.TrySave(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
 
+            AttachVoice();
+
             var rooms = _settings.Rooms.Count > 0 ? _settings.Rooms : ["#main"];
             foreach (var room in rooms)
             {
@@ -119,8 +194,39 @@ public sealed class MainActivity : CupriActivity
         }
     }
 
+    /// <summary>
+    /// Wires voice once there is a session for a transcript to be sent through. Built here rather
+    /// than at startup because it is useless before a connection and its warnings would have
+    /// nowhere to appear.
+    /// </summary>
+    private void AttachVoice()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _voice = AndroidVoice.TryBuild(
+            _settings.Voice,
+            warn: m => _viewModel.Post(() => _viewModel.System(_viewModel.Model.ActiveRoom, $"[voice] {m}")));
+
+        if (_voice is null)
+        {
+            return;
+        }
+
+        _viewModel.Post(() =>
+        {
+            _viewModel.ReviewBeforeSend = _settings.Voice.ReviewBeforeSend;
+            _viewModel.SetReadback(_voice.Policy);
+        });
+
+        _session.AttachVoice(_voice.Session, _voice.Readback);
+    }
+
     protected override void OnDestroy()
     {
+        _voice?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _session?.Dispose();
         _client?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         base.OnDestroy();
