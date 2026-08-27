@@ -262,14 +262,46 @@ public sealed class AgentTaskWorkTests : IAsyncLifetime
         await using var coder = new WorkerAgent(Worker("coder", ["code"]), "done");
         var started = new List<string>();
         var finished = new List<bool>();
-        coder.TaskStarted += t => started.Add(t.TaskId);
-        coder.TaskFinished += (_, ok) => finished.Add(ok);
+
+        // Locked: these are appended on the agent's receive loop and read from the test thread.
+        coder.TaskStarted += t => { lock (started) { started.Add(t.TaskId); } };
+        coder.TaskFinished += (_, ok) => { lock (finished) { finished.Add(ok); } };
         await coder.StartAsync(_transport);
 
         var task = await human.PostTaskAsync("#main", "code something");
         await WaitForStateAsync(human, task.TaskId, TaskState.Done);
 
+        // The server reaching Done and the agent raising its own event are two different moments:
+        // the agent reports the transition and then tells its listeners, so asserting straight
+        // off the server's state races that gap. Waiting on the event closes it.
+        await WaitForAsync(() => Count(finished) == 1, "the agent's finished event");
+
         Assert.Equal(task.TaskId, Assert.Single(started));
         Assert.True(Assert.Single(finished));
+    }
+
+    private static int Count<T>(List<T> list)
+    {
+        lock (list)
+        {
+            return list.Count;
+        }
+    }
+
+    /// <summary>Spins until <paramref name="condition"/> holds, or fails saying what it waited for.</summary>
+    private static async Task WaitForAsync(Func<bool> condition, string what)
+    {
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.Fail($"Timed out waiting for {what}.");
     }
 }
