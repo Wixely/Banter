@@ -69,6 +69,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public Func<string, string, Task> AttachAsync { get; init; } = (_, _) => Task.CompletedTask;
 
     /// <summary>
+    /// Called with the server, account and password from the connect screen. Only a head that
+    /// shows that screen wires this — a desktop head is given all three before the window opens.
+    /// </summary>
+    public Func<string, string, string, Task> ConnectAsync { get; init; } = (_, _, _) => Task.CompletedTask;
+
+    /// <summary>
     /// Called when the user taps the microphone: true to open it, false to close it.
     ///
     /// <para>A toggle rather than a hold because CupriFace raises clicks, not pointer-down and
@@ -185,6 +191,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   </div>
                 </cupri-virtual>
               </div>
+            </div>
+          </div>
+          <div class="{{ConnectClass}}">
+            <div class="connect-card">
+              <div class="connect-title">Banter</div>
+              <div class="connect-label">Server</div>
+              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770"></cupri-textfield>
+              <div class="connect-label">Name</div>
+              <cupri-textfield class="connect-field" value="{{ConnectUser}}" placeholder="your nick"></cupri-textfield>
+              <div class="connect-label">Password</div>
+              <cupri-password class="connect-field" value="{{ConnectPassword}}"></cupri-password>
+              <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
+              <div class="connect-status">{{ConnectStatus}}</div>
             </div>
           </div>
           <div class="roster">
@@ -333,6 +352,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .tool-server { color: #8b93a1; font-size: 11px; }
         .tool-desc { color: #8b93a1; font-size: 11px; padding-left: 24px; }
 
+        /* Over everything, and its own colour: until this is dealt with there is no room to
+           look at behind it. */
+        .connect { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                   display: flex; background: #0d0f13; padding: 60px; }
+        .connect.hidden { display: none; }
+        .connect-card { width: 360px; margin-left: auto; margin-right: auto;
+                        display: flex; flex-direction: column; background: #14161a;
+                        border-radius: 6px; padding: 20px; height: 340px; }
+        .connect-title { font-weight: bold; font-size: 20px; padding-bottom: 12px; }
+        .connect-label { font-size: 11px; color: #8b93a1; padding-bottom: 4px; padding-top: 8px; }
+        .connect-field { background: #14161a; color: #e6e8eb; border: 1px solid #2b313b;
+                         border-radius: 4px; padding: 6px 8px; }
+        .connect-go { margin-top: 16px; background: #2f4a7a; color: #e6e8eb;
+                      border: 1px solid #3d5f96; border-radius: 4px; }
+        .connect-status { font-size: 12px; color: #e88c8c; padding-top: 10px; }
+
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         /* Styled explicitly. The engine's defaults for a text field and a button are a white box
            and a light button, which on a dark app look like two controls that failed to load. */
@@ -368,6 +403,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".mic", _ => ToggleVoice());
         doc.OnClick(".readback", _ => CycleReadback());
         doc.OnClick(".attach-open", _ => PickAttachment());
+        doc.OnClick(".connect-go", _ => Connect());
 
         // Ctrl+Enter sends; plain Enter stays a newline in the textarea, which is what a
         // multi-line composer needs and what the CupriFace guidance recommends.
@@ -627,6 +663,32 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         {
             await AttachAsync(room, path).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Take what the connect form holds and hand it to the head.
+    ///
+    /// <para>Read on the render thread, where the bindings are written, and then passed by value —
+    /// the head must not reach back into the model for them, and the password is cleared out of it
+    /// as soon as the attempt resolves.</para>
+    /// </summary>
+    public void Connect()
+    {
+        ViewModel.Post(() =>
+        {
+            if (ViewModel.Model.ConnectButtonText == "Connecting")
+            {
+                return;                                     // already trying; a second tap is a slip
+            }
+
+            if (!ViewModel.TryReadConnect(out var server, out var user, out var password))
+            {
+                return;
+            }
+
+            ViewModel.Connecting();
+            _ = ConnectAsync(server, user, password);
+        });
     }
 
     /// <summary>Cycle the readback policy and tell the head, which owns the speaking side.</summary>

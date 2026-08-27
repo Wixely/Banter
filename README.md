@@ -67,6 +67,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Voice: Wyoming adapter (faster-whisper ASR, Piper TTS) | implemented, tested against a fake service |
 | App: native file picker (`Attach`), `/upload` kept as the typed route | implemented, tested; dialog itself needs a click-test |
 | App: close-to-tray (`stayInTray`) | implemented, **off by default** — the icon could not be confirmed headlessly |
+| App: connect screen (server/name/password, no command line needed) | implemented, tested |
+| `Banter.App.Android` (`CupriActivity` head, TCP) | implemented; builds a signed 26 MB APK, not yet run on a device |
 
 ## Running the server
 
@@ -101,3 +103,18 @@ without credentials:
 dotnet build Banter.slnx
 dotnet test Banter.slnx
 ```
+
+### The Android head
+
+`Banter.App.Android` is **not** in `Banter.slnx`, on purpose: it needs the `android` workload, and
+putting it in the solution would make that a requirement for anyone building the server or the
+desktop client. It has its own CI job and is built directly.
+
+```
+dotnet workload install android
+dotnet build src/Banter.App.Android/Banter.App.Android.csproj -c Release -t:SignAndroidPackage
+```
+
+It speaks `tcp://` only for now — CupriNet on Android is still the Phase 0 spike PLAN §10 lists as
+outstanding, and the head says so rather than timing out with no reason. There is no microphone
+support in it yet either; the permission is declared but nothing requests it at runtime.

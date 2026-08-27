@@ -229,4 +229,24 @@ public sealed partial class ChatModel
 
     /// <summary>The attach control. Hidden on a head that cannot open a file dialog.</summary>
     public string AttachButtonClass { get; set; } = "attach-open hidden";
+
+    /// <summary>
+    /// The connect screen. Heads that are given a server on the command line never show it; a
+    /// phone has no command line, so it is how an account is entered there.
+    /// </summary>
+    public string ConnectClass { get; set; } = "connect hidden";
+
+    public string ConnectServer { get; set; } = "";
+    public string ConnectUser { get; set; } = "";
+
+    /// <summary>
+    /// Bound to a password field, and deliberately cleared the moment it has been used. It is not
+    /// written to the settings file for the same reason nothing else secret is.
+    /// </summary>
+    public string ConnectPassword { get; set; } = "";
+
+    /// <summary>What the connect screen is doing, or why the last attempt failed.</summary>
+    public string ConnectStatus { get; set; } = "";
+
+    public string ConnectButtonText { get; set; } = "Connect";
 }

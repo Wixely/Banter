@@ -38,3 +38,21 @@ jobs:
           name: test-results
           path: artifacts/test-results/*.trx
           if-no-files-found: warn
+
+  android:
+    # A job of its own, and the Android head is deliberately not in Banter.slnx. Putting it there
+    # would make the `android` workload a requirement for anyone building the server or the
+    # desktop client, and the README promises a plain `dotnet build Banter.slnx` works.
+    name: Build the Android head
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Install the Android workload
+        run: dotnet workload install android
+      - name: Add Wixely feed credentials
+        run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password ${{ github.token }} --store-password-in-clear-text --configfile NuGet.config
+      - name: Build
+        run: dotnet build src/Banter.App.Android/Banter.App.Android.csproj --configuration Release
