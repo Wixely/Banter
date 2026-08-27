@@ -1057,11 +1057,49 @@ request/response handler, a live stream, or a raw session"* — but `SiteBuilder
 shape Banter needs. **With it, the web client is the existing stack plus one small transport:
 `Banter.App` is already a CupriApp, and the Nodestar client already renders with CupriFace.**
 
-So the plan for §2.5 is: `Banter.Server` hosts a Nodestar, serves the reference WASM client as a
-clearnet asset, and exposes the room over a raw L2 session that a `ShrineBanterTransport` presents
-as an `IBanterConnection`. Relics look like the natural home for §5a's room files, and Auspice for
-anything that wants a feed rather than the framed stream, but neither is needed for a first
-crossing.
+**`OnSession` shipped** in CupriNodestar `v0.1.0-alpha.5` against CupriNet **0.3.6**
+([CupriNodestar#1](https://github.com/Wixely/CupriNodestar/issues/1)). `SiteSession` is bytes in,
+bytes out, keyed by a required `protocolId`; the client half is `ShrineSession.Conduits` and needs
+no Nodestar code at all. Two properties beat the request: a clean close **latches** (once
+`ReceiveAsync` answers null it keeps answering null, so a receive loop cannot hang on a closed
+session), and concurrent sends are **guaranteed** rather than transport-shaped — `ConduitSession`
+took its own send lock in 0.3.5, so `ShrineBanterTransport` needs no serialising wrapper of the
+kind the WebSocket one carries. The diagnosis in the issue was wrong even though the shape was
+right: the Conduit rite was in `CupriNet.Rites` 0.3.4 all along, merely unreachable from the
+Pilgrimage path ([CupriNet#3](https://github.com/Wixely/CupriNet/issues/3)).
+
+So §2.5 is: `Banter.Server` hosts a Nodestar, serves the reference WASM client as a clearnet asset,
+and exposes the room over a conduit that a `ShrineBanterTransport` presents as an
+`IBanterConnection`.
+
+### The 192 KiB frame ceiling, and why it is not our problem to solve
+
+A conduit frame caps at 196 608 bytes (`ConduitCodec` encodes versioned frames to exactly that).
+Banter's own `BanterFraming.DefaultMaxFrameBytes` is 4 MB, so nothing stops an oversized frame
+today — but the platform already carries the answer for bulk, and it is better than ours:
+
+**Relics are a complete chunked transfer.** `ReliquaryBuilder.Build` produces a signed
+`ReliquaryManifest`; each `ReliquaryFile` carries `Length`, `ChunkSize`, a `FullHash` and a
+`ChunkHashes` list; `ReliquaryAssembler` offers `AcceptChunk`, `MissingChunks()`, `IsComplete` and
+`Assemble()`; `RelicCodec.DefaultChunkBytes` is 196 608, i.e. the chunk size *is* the ceiling by
+construction, and `DefaultMaxFileBytes` is 256 MB.
+
+That is strictly more than Banter's own file transfer does — 64 KB `FilePutChunk` frames carrying
+an offset, with no per-chunk integrity, no resume and no signing. **§5a's room files should become
+relics on the conduit path**, and the case for doing the same on every path is worth weighing
+separately.
+
+What remains genuinely ours is **history paging**: a page is not a file, so it wants a `limit`
+bounded against `SiteSession.MaxFrameBytes` (read, never hard-coded — it differs on the channel
+path) rather than a transfer mechanism. `GetHistoryAsync` defaults to 100 messages, and 100 long
+agent replies will pass 192 KiB.
+
+**Nothing has crossed this seam yet.** Nodestar's tests drive real `ConduitSession`s over an
+in-memory channel on both ends, but the reference client opens no conduits — Banter's web head is
+the first real exercise, which its author said plainly rather than letting us find it.
+
+*Blocked on publication:* CupriNet is on the feed at 0.3.6, but `CupriNet.Nodestar` still publishes
+`0.1.0-alpha.4` — alpha.5 is in the repo, not on the feed.
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
 listed and fetched from another via room grant; browser client joins the same room text-only.*
 
