@@ -54,13 +54,17 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: persisted settings (no secrets on disk) | implemented, tested |
 | App: file transfer (attachment chips, `/upload`, `/files`, download) | implemented, tested |
 | App: agent roster panel, delegator/mode header, egress styling (§8a made visible) | implemented, tested |
-| `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented, needs a manual run against a live server |
+| `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented; runs against a live server — connects, joins, survives traffic, exits clean |
 | Voice: energy gate with hysteresis, PTT trimming, utterance segmentation (§6) | implemented, tested |
 | Voice: `VoiceSession` — both capture modes, ordered transcription off the capture thread | implemented, tested |
 | Voice: OpenAI-compatible STT (`/audio/transcriptions`), covers OpenAI, Qwen and local servers | implemented, tested |
 | Voice: OpenAI-compatible TTS (`/audio/speech`), streamed, raw PCM and WAV | implemented, tested |
 | Voice: sentence segmentation, per-sender voices, readback policy, barge-in (§6) | implemented, tested |
-| Voice: Wyoming adapter, local Whisper default, per-head capture/playback, on-screen PTT | not started |
+| Voice: app controls — microphone toggle, gate indicator, readback policy | implemented, tested |
+| Voice: desktop capture (Bantz recorders) and playback (NAudio / `aplay`) | implemented; needs a listen-test with a real microphone |
+| Voice: local Whisper as the desktop default ear, remote by configuration | implemented; model download not yet exercised |
+| Voice: global push-to-talk hotkey to the home room (`Bantz.Input`) | implemented, parser tested; needs a press-test |
+| Voice: Wyoming adapter | not started |
 
 ## Running the server
 
