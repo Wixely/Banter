@@ -65,6 +65,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Voice: local Whisper as the desktop default ear, remote by configuration | implemented; model download not yet exercised |
 | Voice: global push-to-talk hotkey to the home room (`Bantz.Input`) | implemented, parser tested; needs a press-test |
 | Voice: Wyoming adapter (faster-whisper ASR, Piper TTS) | implemented, tested against a fake service |
+| App: native file picker (`Attach`), `/upload` kept as the typed route | implemented, tested; dialog itself needs a click-test |
+| App: close-to-tray (`stayInTray`) | implemented, **off by default** — the icon could not be confirmed headlessly |
 
 ## Running the server
 

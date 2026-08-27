@@ -30,6 +30,20 @@ public sealed record BanterSettings
     public int Scrollback { get; init; } = 5_000;
 
     /// <summary>
+    /// Keep running in the notification area when the window is closed, rather than exiting.
+    /// Worth turning on — a room where agents are working is worth staying in, and the global
+    /// push-to-talk key only works while the client runs.
+    ///
+    /// <para><b>Off by default, deliberately.</b> CupriFace honours the request: the window hides
+    /// and the process lives on, which was confirmed. What could not be confirmed from a headless
+    /// session is that the tray <i>icon</i> appears — the notification area is not reachable from
+    /// one. If it does not, closing the window leaves a running process with no window and no way
+    /// to bring it back, which is a worse default than simply exiting. Turn it on once you have
+    /// seen the icon.</para>
+    /// </summary>
+    public bool StayInTray { get; init; }
+
+    /// <summary>
     /// Speech settings (PLAN §6). The API key is absent for the same reason the password is:
     /// it comes from <c>BANTER_SPEECH_KEY</c>.
     /// </summary>

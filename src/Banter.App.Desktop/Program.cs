@@ -173,6 +173,17 @@ if (hotkey is not null)
     vm.Post(() => vm.System(homeRoom, $"[voice] hold {hotkey.Display} to talk to {homeRoom}."));
 }
 
+// The native file dialog, where this platform has one. The /upload command stays either way.
+var filePicker = new Banter.App.Desktop.SystemFilePicker();
+if (filePicker.IsSupported)
+{
+    vm.Post(vm.EnableAttach);
+}
+else
+{
+    Console.Error.WriteLine("no file dialog on this platform; use /upload <path>.");
+}
+
 var app = new BanterChatApp(vm)
 {
     SendAsync = session.SendAsync,
@@ -186,6 +197,10 @@ var app = new BanterChatApp(vm)
     ToolsOpenAsync = session.LoadToolsAsync,
     ToolsSaveAsync = session.SaveToolsAsync,
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
+    StayInTray = settings.StayInTray,
+    FilePicker = filePicker,
+    // The picker hands back a path; quoting it is what lets a chosen file have spaces in its name.
+    AttachAsync = (room, path) => session.UploadAsync(room, $"\"{path}\""),
     VoiceToggleAsync = open => session.SetVoiceOpenAsync(open),
 
     ReadbackChangedAsync = policy => session.SetReadbackAsync(policy),

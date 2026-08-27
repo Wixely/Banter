@@ -43,6 +43,12 @@ public sealed partial class ChatViewModel
     /// still on the server and is re-fetchable with <c>HISTORY_REQ</c>.</summary>
     public int RoomScrollback { get; init; } = 5_000;
 
+    /// <summary>
+    /// Shows the attach control. Called by a head that wired a file dialog; without it the button
+    /// stays hidden rather than sitting there unable to open anything.
+    /// </summary>
+    public void EnableAttach() => Model.AttachButtonClass = "attach-open";
+
     /// <summary>Sets an unread count and its visibility together, so the two cannot disagree.</summary>
     private static void SetBadge(RoomRow tab, string badge)
     {

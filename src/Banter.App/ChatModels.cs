@@ -226,4 +226,7 @@ public sealed partial class ChatModel
     /// there as an empty band of padding.
     /// </summary>
     public string VoiceRowClass { get; set; } = "voice-row hidden";
+
+    /// <summary>The attach control. Hidden on a head that cannot open a file dialog.</summary>
+    public string AttachButtonClass { get; set; } = "attach-open hidden";
 }

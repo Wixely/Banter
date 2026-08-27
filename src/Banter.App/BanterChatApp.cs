@@ -60,6 +60,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public IClipboard Clipboard { get; init; } = NullClipboard.Instance;
 
     /// <summary>
+    /// The native file dialog. Defaults to one that cannot pick, so the app runs headlessly and
+    /// the attach control stays hidden until a head wires a real one.
+    /// </summary>
+    public IFilePicker FilePicker { get; init; } = NullFilePicker.Instance;
+
+    /// <summary>Called with a chosen path, to be sent to the room the user is looking at.</summary>
+    public Func<string, string, Task> AttachAsync { get; init; } = (_, _) => Task.CompletedTask;
+
+    /// <summary>
     /// Called when the user taps the microphone: true to open it, false to close it.
     ///
     /// <para>A toggle rather than a hold because CupriFace raises clicks, not pointer-down and
@@ -81,6 +90,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// dark app reads as a white band bolted to the top of it.
     /// </summary>
     public override bool DarkWindowChrome => true;
+
+    /// <summary>
+    /// Whether closing the window leaves the client running in the tray. Off unless a head asks
+    /// for it: it changes what the close button means, and a head whose platform has no tray
+    /// would otherwise hide a window that nothing can bring back.
+    /// </summary>
+    public bool StayInTray { get; init; }
+
+    public override bool CloseToTray => StayInTray;
+
+    public override string TrayCloseLabel => "Quit Banter";
 
     /// <summary>
     /// The same colour the stylesheet paints the page. The host clears to this before the first
@@ -134,6 +154,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </cupri-context-menu>
             <div class="composer-row">
               <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
+              <cupri-button class="{{AttachButtonClass}}">Attach</cupri-button>
               <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message  ·  Ctrl+Enter to send"></cupri-textarea>
               <cupri-button class="send">Send</cupri-button>
             </div>
@@ -328,6 +349,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mic.working { background: #6b5a2f; }
         .mic.hidden { display: none; }
         .readback.hidden { display: none; }
+        .attach-open { margin-right: 8px; min-width: 70px; background: #232833; color: #e6e8eb;
+                       border: 1px solid #333a46; border-radius: 4px; }
+        .attach-open.hidden { display: none; }
         .send { width: 90px; margin-left: 8px; background: #2f4a7a; color: #e6e8eb;
                 border: 1px solid #3d5f96; border-radius: 4px; }
         .mic { margin-right: 8px; min-width: 64px; background: #232833; color: #e6e8eb;
@@ -343,6 +367,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".send", _ => Send());
         doc.OnClick(".mic", _ => ToggleVoice());
         doc.OnClick(".readback", _ => CycleReadback());
+        doc.OnClick(".attach-open", _ => PickAttachment());
 
         // Ctrl+Enter sends; plain Enter stays a newline in the textarea, which is what a
         // multi-line composer needs and what the CupriFace guidance recommends.
@@ -570,6 +595,38 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         _ = VoiceToggleAsync(!ViewModel.Listening);
+    }
+
+    /// <summary>
+    /// Open the file dialog and send whatever comes back.
+    ///
+    /// <para>The room is captured before the dialog opens. A dialog is modal to the user but not
+    /// to the app, and sending to whichever room happened to be on screen when they finally
+    /// clicked Open would put the file somewhere they were not looking when they chose it.</para>
+    /// </summary>
+    public void PickAttachment()
+    {
+        if (!FilePicker.IsSupported)
+        {
+            return;
+        }
+
+        var room = ViewModel.Model.ActiveRoom;
+        if (room.Length == 0)
+        {
+            return;
+        }
+
+        _ = PickAndSendAsync(room);
+    }
+
+    private async Task PickAndSendAsync(string room)
+    {
+        var path = await FilePicker.PickAsync($"Send a file to {room}").ConfigureAwait(false);
+        if (path is { Length: > 0 })
+        {
+            await AttachAsync(room, path).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Cycle the readback policy and tell the head, which owns the speaking side.</summary>
