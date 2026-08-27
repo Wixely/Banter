@@ -41,9 +41,8 @@ public sealed class RecorderVoiceCapture(IAudioRecorder recorder) : IVoiceCaptur
     {
         recorder.FrameCaptured -= Forward;
 
-        // The returned buffer is deliberately unused; see the note on this class. It cannot be
-        // discarded into `_` because Program.cs is top-level statements and owns that name.
-        await recorder.StopAsync(cancellationToken).ConfigureAwait(false);
+        // The complete recording it returns is deliberately dropped; see the note on this class.
+        _ = await recorder.StopAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void Forward(AudioFrame frame) => FrameCaptured?.Invoke(frame.Audio.Data);

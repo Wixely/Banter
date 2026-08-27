@@ -108,7 +108,9 @@ async Task<BanterClient?> ConnectWithRetryAsync()
     }
 }
 
-await using var _ = client;
+// Named rather than discarded into `_`: a top-level `var _` reserves that name across the whole
+// assembly, so every other file in this head loses the discard.
+await using var connection = client;
 using var session = new BanterChatSession(client, vm);
 
 vm.Post(() =>
@@ -156,6 +158,21 @@ if (voice is not null)
     preparingSpeech = voice.PrepareAsync(m => vm.Post(() => vm.System(vm.Model.ActiveRoom, $"[voice] {m}")));
 }
 
+// The global push-to-talk key. Its destination is decided here rather than read off the screen:
+// the point of it is that the app is not on screen when it is pressed.
+var homeRoom = settings.Voice.HomeRoom.Length > 0 ? settings.Voice.HomeRoom : rooms[0];
+var hotkey = voice?.Session is null
+    ? null
+    : Banter.App.Desktop.DesktopHotkey.TryRegister(
+        settings.Voice.Hotkey,
+        open => session.SetVoiceOpenAsync(open, homeRoom),
+        warn: m => vm.Post(() => vm.System(vm.Model.ActiveRoom, $"[voice] {m}")));
+
+if (hotkey is not null)
+{
+    vm.Post(() => vm.System(homeRoom, $"[voice] hold {hotkey.Display} to talk to {homeRoom}."));
+}
+
 var app = new BanterChatApp(vm)
 {
     SendAsync = session.SendAsync,
@@ -170,10 +187,13 @@ var app = new BanterChatApp(vm)
     ToolsSaveAsync = session.SaveToolsAsync,
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
     VoiceToggleAsync = open => session.SetVoiceOpenAsync(open),
+
     ReadbackChangedAsync = policy => session.SetReadbackAsync(policy),
 };
 
 DesktopHost.Run(app, _ => { });
+
+hotkey?.Dispose();
 
 if (voice is not null)
 {

@@ -43,8 +43,20 @@ public sealed partial class BanterChatSession
         _vm.Post(() => _vm.EnableVoice(readbackAvailable: readback is not null));
     }
 
-    /// <summary>Opens or closes the microphone, reporting a device that refused rather than hiding it.</summary>
-    public async Task SetVoiceOpenAsync(bool open, CancellationToken cancellationToken = default)
+    /// <summary>Where dictation goes while the microphone is open; null means the room on screen.</summary>
+    private string? _dictationRoom;
+
+    /// <summary>
+    /// Opens or closes the microphone, reporting a device that refused rather than hiding it.
+    ///
+    /// <para><paramref name="targetRoom"/> fixes where what is heard will be sent. The global
+    /// hotkey passes the home room, because the app is not on screen when it is used and there is
+    /// no "current room" to mean; the on-screen button passes nothing and uses whatever is.</para>
+    /// </summary>
+    public async Task SetVoiceOpenAsync(
+        bool open,
+        string? targetRoom = null,
+        CancellationToken cancellationToken = default)
     {
         if (_voice is not { } voice)
         {
@@ -55,6 +67,7 @@ public sealed partial class BanterChatSession
         {
             if (open)
             {
+                _dictationRoom = targetRoom;
                 await voice.StartAsync(cancellationToken).ConfigureAwait(false);
                 VoiceOpen = true;
 
@@ -73,6 +86,7 @@ public sealed partial class BanterChatSession
         catch (Exception ex)
         {
             VoiceOpen = false;
+            _dictationRoom = null;
             _vm.Post(() =>
             {
                 _vm.SetVoiceState(VoiceSessionState.Idle);
@@ -104,7 +118,7 @@ public sealed partial class BanterChatSession
     private void OnDraft(VoiceDraft draft) =>
         _vm.Post(() =>
         {
-            var room = _vm.Model.ActiveRoom;
+            var room = _dictationRoom ?? _vm.Model.ActiveRoom;
             var text = _vm.AcceptDraft(draft.Text);
             if (text.Length == 0 || room.Length == 0)
             {

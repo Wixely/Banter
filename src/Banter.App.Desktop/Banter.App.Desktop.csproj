@@ -26,5 +26,8 @@
          server and no audio leaving the machine. Wraps native whisper.cpp and downloads a
          ~148 MB model on first use, which is why it is a head dependency and not a core one. -->
     <PackageReference Include="Bantz.Speech.Whisper" Version="0.2.3" />
+    <!-- Global push-to-talk: keyboard chords, and gamepad and mouse buttons for free. Replaces
+         the hand-rolled RegisterHotKey work the plan originally carried (PLAN §6a). -->
+    <PackageReference Include="Bantz.Input" Version="0.2.3" />
   </ItemGroup>
 </Project>

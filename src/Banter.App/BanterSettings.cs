@@ -159,4 +159,21 @@ public sealed record VoiceSettings
     /// pressed. Off by default: an open microphone is a decision, not a default.
     /// </summary>
     public bool AlwaysListening { get; init; }
+
+    /// <summary>
+    /// A global push-to-talk chord such as <c>Ctrl+Shift+Space</c>, held while speaking. Empty
+    /// leaves the desktop with no global hotkey; the on-screen button still works.
+    ///
+    /// <para>This is the flow PLAN §6a is built around — press from any application, speak, and
+    /// have it land in the room where the agents are, without switching windows.</para>
+    /// </summary>
+    public string Hotkey { get; init; } = "";
+
+    /// <summary>
+    /// Where the hotkey sends what it hears. Empty means the first room joined. It is deliberately
+    /// not "whichever room is on screen": the point of a global hotkey is that the app is not on
+    /// screen, so the destination has to be a decision made in advance rather than one the user is
+    /// looking at.
+    /// </summary>
+    public string HomeRoom { get; init; } = "";
 }
