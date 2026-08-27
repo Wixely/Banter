@@ -6,15 +6,16 @@ namespace Banter.Protocol.Transport;
 /// <summary>
 /// The WebSocket transport: <c>ws://host:port/</c>.
 ///
-/// <para><b>The fallback, not the plan's primary browser path.</b> PLAN §2.5 wants the web client
-/// on CupriNet's WebRTC DataChannel, which a browser can also use and which keeps the mesh's Noise
-/// encryption end to end; this is the safety net §10 names under that risk. It exists because the
-/// DataChannel's browser-side story is still an open Phase 0 spike — no WASM client library is
-/// named for it — and because a socket is the one thing script definitely cannot open.</para>
+/// <para><b>Parked, on purpose. Not reachable through <see cref="BanterTransports"/>.</b> It was
+/// written for the web head on the mistaken belief that a browser needed a socket. It does not:
+/// CupriNodestar serves a WASM CupriNet client that dials back over WebRTC with no signalling
+/// server and carries live data on the Auspice rite, and that design rules sockets out in as many
+/// words — "Like WebSockets, but entirely over WebRTC. No WebSockets, no SSE, no polling." Its
+/// degraded path is a server-rendered HTML snapshot, not a socket either.</para>
 ///
-/// <para>It earns its place away from the browser too: <c>ws://</c> passes through the reverse
-/// proxies and firewalls that plain <c>tcp://</c> does not, and <c>wss://</c> behind nginx is how a
-/// deployment gets TLS without CupriNet.</para>
+/// <para>Kept rather than deleted because it works and is covered: if a deployment ever needs to
+/// cross a reverse proxy, or wants <c>wss://</c> for TLS without the mesh, this is ready and
+/// tested. Construct it directly — nothing resolves <c>ws://</c> to it.</para>
 ///
 /// <para><b>No length prefix.</b> WebSocket is already message-framed, so one Banter frame is one
 /// binary message and <see cref="BanterFraming"/> is not involved. A message can still arrive in

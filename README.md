@@ -13,7 +13,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Solution layout (`Banter.slnx`, per PLAN §2) | scaffolded |
 | `Banter.Protocol` v1 (envelope, payloads, MessagePack + JSON debug codec, framing) | implemented, tested |
 | `IBanterTransport` seam + plain-TCP fallback | implemented, tested |
-| WebSocket transport (`ws://`), server and client — what a browser needs (§2.5) | implemented, tested; two CLI clients verified over it |
+| WebSocket transport | implemented and tested, but **parked and unwired** — the browser path is CupriNodestar's WebRTC, which rules sockets out |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |

@@ -1018,9 +1018,27 @@ which deadlocks whenever both ends dispose at once — as they do whenever a con
 from one place. `CloseOutputAsync` sends the frame without waiting and the peer still sees a clean
 close.
 
-Still to do: a WASM host for the CupriApp. There is no `CupriFace.Web` package on the feed — the
-engine's `RenderToPixels` into a `<canvas>` is the documented route, so the web head is a host to
-be written rather than a package to consume.
+**Correction (2026-08-27): the above was scoped without checking the Wixely estate, and is wrong
+about what the web head needs.** [CupriNodestar](https://github.com/Wixely/CupriNodestar) — private,
+"working end to end, not yet packaged" — already is this phase: it serves the CupriNet client stack
+compiled to **WASM** as a clearnet asset, that client dials back over **WebRTC** with no signalling
+server, and it renders the site with **CupriFace**. Live data rides CupriNet's **Auspice** rite on
+the same DataChannel; its README is explicit that this replaces WebSockets — *"Like WebSockets, but
+entirely over WebRTC. No WebSockets, no SSE, no polling."* Where a browser cannot reach a WebRTC
+UDP endpoint, the fallback is a **server-rendered static HTML snapshot**, not a socket.
+
+Nothing here was found by searching the NuGet feed, because it is not packaged yet. That is the
+lesson: absence from the feed is not absence from the estate.
+
+So the web head is very likely **Banter.Server hosting a Nodestar and serving `Banter.App` as an L2
+site** — the served client is already a CupriFace renderer, and Nodestar's
+`Constellation.CupriFace` sample shows a site shipping compiled C# behaviour, which is the shape
+`Banter.App` is in. That needs confirming against Nodestar's design docs before it is planned in
+detail.
+
+`WebSocketBanterTransport` was built on the mistaken reading and does **not** serve this phase. It
+survives or not on its own merits away from the browser (reverse proxies, `wss://` for TLS without
+the mesh), which is a much weaker case than the one it was committed under.
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
 listed and fetched from another via room grant; browser client joins the same room text-only.*
 

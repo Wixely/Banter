@@ -10,18 +10,24 @@ namespace Banter.Protocol.Transport;
 /// </summary>
 public static class BanterTransports
 {
-    /// <summary>The schemes this assembly can serve, for usage text and error messages.</summary>
-    public static IReadOnlyList<string> Schemes { get; } =
-        [TcpBanterTransport.Scheme, WebSocketBanterTransport.Scheme, WebSocketBanterTransport.SecureScheme];
+    /// <summary>The schemes resolved here, for usage text and error messages.</summary>
+    public static IReadOnlyList<string> Schemes { get; } = [TcpBanterTransport.Scheme];
 
     /// <summary>
-    /// A transport for <paramref name="endpoint"/>, or null when the scheme is not one of the
-    /// built-in ones. Both implementations serve either end, so one lookup answers both.
+    /// A transport for <paramref name="endpoint"/>, or null when the scheme is not one resolved
+    /// here. Implementations serve either end, so one lookup answers both.
+    ///
+    /// <para><b><c>ws://</c> is deliberately absent.</b> <see cref="WebSocketBanterTransport"/> is
+    /// built and tested and stays that way, but it is not wired to a scheme: the browser story is
+    /// CupriNodestar's — a WASM CupriNet client dialling back over WebRTC, with live data on the
+    /// Auspice rite — and that design rejects sockets outright ("no WebSockets, no SSE, no
+    /// polling"). Leaving <c>ws://</c> resolvable would offer a path the architecture does not
+    /// want. A deployment that needs it for a reverse proxy can still construct the transport
+    /// directly.</para>
     /// </summary>
     private static object? Match(Uri endpoint) => endpoint.Scheme.ToLowerInvariant() switch
     {
         TcpBanterTransport.Scheme => new TcpBanterTransport(),
-        WebSocketBanterTransport.Scheme or WebSocketBanterTransport.SecureScheme => new WebSocketBanterTransport(),
         _ => null,
     };
 

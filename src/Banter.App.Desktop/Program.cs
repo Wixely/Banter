@@ -26,7 +26,6 @@ if (cli is null)
 
         Transport is chosen by URI scheme:
           tcp://host:port           plain TCP
-          ws://host:port            WebSocket (what the web client uses)
           cupri://<intonation-uri>  CupriNet mesh (paste the mesh-magnet link)
         """);
     return 0;
