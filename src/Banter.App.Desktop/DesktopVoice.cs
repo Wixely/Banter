@@ -1,5 +1,6 @@
 using Banter.Voice;
 using Banter.Voice.OpenAI;
+using Banter.Voice.Wyoming;
 using Bantz.Speech;
 using Bantz.Speech.Whisper;
 
@@ -44,7 +45,15 @@ public sealed class DesktopVoice : IAsyncDisposable
     public static DesktopVoice? TryBuild(VoiceSettings settings, Action<string> warn)
     {
         var policy = ParsePolicy(settings.Readback);
-        var wantsLocal = !string.Equals(settings.Engine, "remote", StringComparison.OrdinalIgnoreCase);
+        var engine = settings.Engine.ToLowerInvariant();
+        var wantsWyoming = engine == "wyoming";
+        var wantsLocal = !wantsWyoming && engine != "remote";
+
+        if (wantsWyoming && !TryEndpoint(settings.WyomingAsr, out _, out _))
+        {
+            warn($"voice.engine is 'wyoming' but voice.wyomingAsr ('{settings.WyomingAsr}') is not a host:port; voice is off.");
+            return null;
+        }
 
         Uri? endpoint = null;
         if (settings.Endpoint.Length > 0 && !Uri.TryCreate(settings.Endpoint, UriKind.Absolute, out endpoint))
@@ -81,9 +90,11 @@ public sealed class DesktopVoice : IAsyncDisposable
         ITranscriptionEngine? transcription = null;
         if (capture is not null)
         {
-            transcription = wantsLocal
-                ? BuildWhisper(settings)
-                : new OpenAiTranscriptionEngine(options!);
+            transcription = wantsWyoming
+                ? BuildWyomingAsr(settings)
+                : wantsLocal
+                    ? BuildWhisper(settings)
+                    : new OpenAiTranscriptionEngine(options!);
 
             session = new VoiceSession(capture, transcription, new VoiceSessionOptions
             {
@@ -98,15 +109,31 @@ public sealed class DesktopVoice : IAsyncDisposable
         }
 
         ReadbackSession? readback = null;
-        OpenAiTextToSpeech? speech = null;
-        if (playback is not null && options is not null)
-        {
-            speech = new OpenAiTextToSpeech(options);
+        ITextToSpeech? speaker = null;
 
-            // Voices are configuration rather than discovery in this API, so the options' list is
-            // the pool; it is read here so a server with its own voices needs no code change.
-            var voices = speech.GetVoicesAsync().AsTask().GetAwaiter().GetResult();
-            readback = new ReadbackSession(speech, playback, new VoiceAssignment(voices),
+        // A Wyoming speaker wins over the HTTP one: someone who has configured one has said what
+        // they want, and it is the half that makes an entirely self-hosted setup possible.
+        if (playback is not null && TryEndpoint(settings.WyomingTts, out var ttsHost, out var ttsPort))
+        {
+            speaker = new WyomingTextToSpeech(new WyomingOptions
+            {
+                Host = ttsHost,
+                Port = ttsPort,
+                Language = settings.Language.Length == 0 ? null : settings.Language,
+                Voices = [.. settings.WyomingVoices.Select(v => new VoiceDescriptor(v))],
+            });
+        }
+        else if (playback is not null && options is not null)
+        {
+            speaker = new OpenAiTextToSpeech(options);
+        }
+
+        if (playback is not null && speaker is not null)
+        {
+            // Voices are configuration rather than discovery in both backends, so the options'
+            // list is the pool; read here so a server with its own voices needs no code change.
+            var voices = speaker.GetVoicesAsync().AsTask().GetAwaiter().GetResult();
+            readback = new ReadbackSession(speaker, playback, new VoiceAssignment(voices),
                 new ReadbackOptions { Policy = policy });
         }
         else if (playback is not null)
@@ -120,8 +147,15 @@ public sealed class DesktopVoice : IAsyncDisposable
             warn("no speaker; dictation works but nothing will be read aloud.");
         }
 
+        // Cast rather than tracked separately: the HTTP backends own an HttpClient and are
+        // disposable, the Wyoming ones hold no socket between calls and are not.
         return new DesktopVoice(session, readback, policy,
-            [capture as IDisposable, playback as IDisposable, transcription as IDisposable, speech]);
+        [
+            capture as IDisposable,
+            playback as IDisposable,
+            transcription as IDisposable,
+            speaker as IDisposable,
+        ]);
     }
 
     /// <summary>
@@ -176,6 +210,34 @@ public sealed class DesktopVoice : IAsyncDisposable
         TranscriptionInitializationStage.Ready => "speech ready",
         _ => "preparing speech",
     };
+
+    /// <summary>A Wyoming ASR service — faster-whisper, usually.</summary>
+    private static ITranscriptionEngine BuildWyomingAsr(VoiceSettings settings)
+    {
+        TryEndpoint(settings.WyomingAsr, out var host, out var port);
+        return new WyomingTranscriptionEngine(new WyomingOptions
+        {
+            Host = host,
+            Port = port,
+            Name = settings.TranscriptionModel == "whisper-1" ? null : settings.TranscriptionModel,
+            Language = settings.Language.Length == 0 ? null : settings.Language,
+        });
+    }
+
+    /// <summary>Reads a <c>host:port</c> setting. False for anything that is not one.</summary>
+    private static bool TryEndpoint(string value, out string host, out int port)
+    {
+        host = "";
+        port = 0;
+        var colon = value.LastIndexOf(':');
+        if (colon <= 0 || !int.TryParse(value.AsSpan(colon + 1), out port) || port is < 1 or > 65535)
+        {
+            return false;
+        }
+
+        host = value[..colon];
+        return host.Length > 0;
+    }
 
     /// <summary>
     /// Local Whisper, with its model and native runtime kept under Banter's own profile folder so

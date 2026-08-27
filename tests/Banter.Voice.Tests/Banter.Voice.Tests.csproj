@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Banter.Voice/Banter.Voice.csproj" />
     <ProjectReference Include="../../src/Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
+    <ProjectReference Include="../../src/Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
   </ItemGroup>
 </Project>

@@ -441,9 +441,18 @@ landed, and the decisions inside it worth keeping:
   sentence at a time, and `SilenceAsync` cancels the sentence in flight as well as draining the
   queue — barge-in has to reach the speaker, not just the queue.
 
-Still to do in Phase 3: the Wyoming adapter; wiring `Bantz.Speech.Whisper` as the desktop default;
-per-head `IVoiceCapture`/`IAudioPlayback` backends; on-screen PTT and the voice settings UI in
-`Banter.App`.
+**Phase 3's provider matrix is complete** (2026-08-27): local Whisper, OpenAI-compatible, and
+Wyoming, all behind the one `ITranscriptionEngine`/`ITextToSpeech` pair, all selected by
+configuration. The Wyoming client is ~200 lines because the protocol is newline-delimited JSON over
+TCP with a raw-PCM payload; the two details worth knowing are that a header line and the audio
+after it arrive in the same packets, so a reader needs one buffer across both (a fresh reader for
+the payload silently loses whatever the line read overshot), and that `data` may be inline in the
+header *or* a length-prefixed block that is **merged into** it — a reader handling only the inline
+form sees empty events. Its tests run against a service whose framing is written independently, so
+agreeing with itself is not enough to pass.
+
+Still to do in Phase 3: nothing built. What remains is verification — none of the audio path has
+met a real microphone or speaker yet.
 
 **Client audio pipeline** (in `Banter.Voice`, consumed by the CupriFace app and CLI):
 

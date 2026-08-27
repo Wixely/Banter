@@ -64,7 +64,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Voice: desktop capture (Bantz recorders) and playback (NAudio / `aplay`) | implemented; needs a listen-test with a real microphone |
 | Voice: local Whisper as the desktop default ear, remote by configuration | implemented; model download not yet exercised |
 | Voice: global push-to-talk hotkey to the home room (`Bantz.Input`) | implemented, parser tested; needs a press-test |
-| Voice: Wyoming adapter | not started |
+| Voice: Wyoming adapter (faster-whisper ASR, Piper TTS) | implemented, tested against a fake service |
 
 ## Running the server
 

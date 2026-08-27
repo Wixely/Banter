@@ -125,12 +125,29 @@ public sealed record VoiceSettings
     public string Endpoint { get; init; } = "";
 
     /// <summary>
-    /// Which engine transcribes: <c>local</c> or <c>remote</c>. Local is the desktop default
-    /// (PLAN §6a) because it is private and needs no endpoint at all; an endpoint that is also
-    /// configured is then used only for reading the room aloud, for which there is no local
-    /// option. <c>remote</c> sends audio to the endpoint instead.
+    /// Which engine transcribes: <c>local</c>, <c>remote</c>, or <c>wyoming</c>. Local is the
+    /// desktop default (PLAN §6a) because it is private and needs no endpoint at all; an endpoint
+    /// that is also configured is then used only for reading the room aloud, for which there is no
+    /// local option. <c>remote</c> sends audio to the OpenAI-compatible endpoint;
+    /// <c>wyoming</c> sends it to <see cref="WyomingAsr"/>.
     /// </summary>
     public string Engine { get; init; } = "local";
+
+    /// <summary>
+    /// A Wyoming ASR service as <c>host:port</c> — faster-whisper's default is
+    /// <c>localhost:10300</c>. Used when <see cref="Engine"/> is <c>wyoming</c>.
+    /// </summary>
+    public string WyomingAsr { get; init; } = "";
+
+    /// <summary>
+    /// A Wyoming TTS service as <c>host:port</c> — Piper's default is <c>localhost:10200</c>.
+    /// Takes precedence over the OpenAI-compatible endpoint for reading the room aloud, which is
+    /// what makes an entirely self-hosted voice setup possible.
+    /// </summary>
+    public string WyomingTts { get; init; } = "";
+
+    /// <summary>Voices the Wyoming speaker offers, for per-sender assignment.</summary>
+    public IReadOnlyList<string> WyomingVoices { get; init; } = [];
 
     public string TranscriptionModel { get; init; } = "whisper-1";
 
