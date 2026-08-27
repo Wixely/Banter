@@ -141,12 +141,19 @@ if (save)
 
 // Voice (PLAN §6). Optional throughout: a machine with no microphone, or no speech server
 // configured, simply runs without the controls rather than showing ones that cannot work.
-var voice = Banter.App.Desktop.DesktopVoice.TryBuild(settings.Voice, vm, warn: m => Console.Error.WriteLine($"voice: {m}"));
+var voice = Banter.App.Desktop.DesktopVoice.TryBuild(
+    settings.Voice, warn: m => Console.Error.WriteLine($"voice: {m}"));
+
+var preparingSpeech = Task.CompletedTask;
 if (voice is not null)
 {
     vm.ReviewBeforeSend = settings.Voice.ReviewBeforeSend;
     vm.SetReadback(voice.Policy);
     session.AttachVoice(voice.Session, voice.Readback);
+
+    // Started, not awaited: the first run downloads a speech model, and the window should open
+    // and the room be usable while that happens. Progress lands in the timeline.
+    preparingSpeech = voice.PrepareAsync(m => vm.Post(() => vm.System(vm.Model.ActiveRoom, $"[voice] {m}")));
 }
 
 var app = new BanterChatApp(vm)
@@ -170,6 +177,8 @@ DesktopHost.Run(app, _ => { });
 
 if (voice is not null)
 {
+    // Long finished by the time a window closes; awaited so nothing is left running past exit.
+    await preparingSpeech;
     await voice.DisposeAsync();
 }
 

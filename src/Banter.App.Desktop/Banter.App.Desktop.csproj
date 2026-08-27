@@ -22,5 +22,9 @@
     <!-- Speaker. Bantz is dictation-only and ships no playback, so this half is ours; Linux goes
          through aplay and needs no package at all. -->
     <PackageReference Include="NAudio" Version="2.3.0" />
+    <!-- Local transcription: the desktop default (PLAN §6a), so dictation works with no speech
+         server and no audio leaving the machine. Wraps native whisper.cpp and downloads a
+         ~148 MB model on first use, which is why it is a head dependency and not a core one. -->
+    <PackageReference Include="Bantz.Speech.Whisper" Version="0.2.3" />
   </ItemGroup>
 </Project>

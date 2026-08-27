@@ -124,6 +124,14 @@ public sealed record VoiceSettings
     /// </summary>
     public string Endpoint { get; init; } = "";
 
+    /// <summary>
+    /// Which engine transcribes: <c>local</c> or <c>remote</c>. Local is the desktop default
+    /// (PLAN §6a) because it is private and needs no endpoint at all; an endpoint that is also
+    /// configured is then used only for reading the room aloud, for which there is no local
+    /// option. <c>remote</c> sends audio to the endpoint instead.
+    /// </summary>
+    public string Engine { get; init; } = "local";
+
     public string TranscriptionModel { get; init; } = "whisper-1";
 
     public string SpeechModel { get; init; } = "tts-1";
