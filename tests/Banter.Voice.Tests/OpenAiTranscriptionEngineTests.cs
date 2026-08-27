@@ -173,7 +173,7 @@ public sealed class OpenAiTranscriptionEngineTests
         // implementation, so a signature that is merely close compiles fine and leaves every
         // interface-typed caller — which is all of them — talking to the default instead.
         Bantz.Speech.ITranscriptionEngine engine = concrete;
-        await engine.InitializeAsync(new Progress<Bantz.Speech.TranscriptionInitializationProgress>(
+        await engine.InitializeAsync(new SyncProgress<Bantz.Speech.TranscriptionInitializationProgress>(
             p => stages.Add(p.Stage)));
 
         // Nothing to download, so the only honest progress report is that it is already done.

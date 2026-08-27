@@ -88,3 +88,13 @@ internal static class Wait
         throw new TimeoutException($"Timed out waiting for {what}.");
     }
 }
+
+/// <summary>
+/// Reports on the calling thread. <see cref="Progress{T}"/> posts its callback to the thread pool
+/// instead, so a test asserting straight after an await is racing it — which passes alone and
+/// fails when the whole solution runs.
+/// </summary>
+internal sealed class SyncProgress<T>(Action<T> onReport) : IProgress<T>
+{
+    public void Report(T value) => onReport(value);
+}
