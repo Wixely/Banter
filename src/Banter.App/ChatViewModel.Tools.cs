@@ -61,6 +61,10 @@ public sealed partial class ChatViewModel
     public void SelectToolAgent(string agent)
     {
         Model.ToolsAgent = agent;
+
+        // Named only once there is a name; otherwise the heading read "Tools · " with nothing
+        // after it, which looks like something failed to load.
+        Model.ToolsTitle = agent.Length > 0 ? $"Tools · {agent}" : "Tools";
         _editing = null;
         Model.ToolsStatus = _grants.ContainsKey(agent) ? "" : "Loading grants…";
         RebuildToolPanel();

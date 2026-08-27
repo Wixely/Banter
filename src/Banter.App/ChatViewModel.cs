@@ -43,6 +43,13 @@ public sealed partial class ChatViewModel
     /// still on the server and is re-fetchable with <c>HISTORY_REQ</c>.</summary>
     public int RoomScrollback { get; init; } = 5_000;
 
+    /// <summary>Sets an unread count and its visibility together, so the two cannot disagree.</summary>
+    private static void SetBadge(RoomRow tab, string badge)
+    {
+        tab.Badge = badge;
+        tab.BadgeClass = badge.Length == 0 ? "badge hidden" : "badge";
+    }
+
     /// <summary>Queue a mutation. Safe from any thread; runs later on the render thread.</summary>
     public void Post(Action mutation) => _pending.Enqueue(mutation);
 
@@ -130,7 +137,7 @@ public sealed partial class ChatViewModel
             tab.TabClass = tab.Name == room ? "tab active" : "tab";
             if (tab.Name == room)
             {
-                tab.Badge = "";
+                SetBadge(tab, "");
             }
         }
 
@@ -197,7 +204,9 @@ public sealed partial class ChatViewModel
             var tab = Model.Rooms.FirstOrDefault(r => r.Name == room);
             if (tab is not null && rowClass != "line system")
             {
-                tab.Badge = tab.Badge.Length == 0 ? "1" : (int.TryParse(tab.Badge, out var n) ? n + 1 : 1).ToString();
+                SetBadge(tab, tab.Badge.Length == 0
+                    ? "1"
+                    : (int.TryParse(tab.Badge, out var n) ? n + 1 : 1).ToString());
             }
         }
 
@@ -445,6 +454,7 @@ public sealed partial class ChatViewModel
         }
 
         Model.Delegator = nick is { Length: > 0 } ? nick : "no delegator";
+        RefreshDispatch();
     }
 
     public void SetDispatchMode(string room, string mode)
@@ -452,7 +462,25 @@ public sealed partial class ChatViewModel
         if (room == Model.ActiveRoom)
         {
             Model.DispatchMode = mode;
+            RefreshDispatch();
         }
+    }
+
+    /// <summary>
+    /// Joins the mode and the delegator for the header, with the separator only where there are
+    /// two things to separate.
+    /// </summary>
+    private void RefreshDispatch()
+    {
+        var mode = Model.DispatchMode;
+        var who = Model.Delegator;
+        Model.Dispatch = (mode.Length, who.Length) switch
+        {
+            (0, 0) => "",
+            (0, _) => who,
+            (_, 0) => mode,
+            _ => $"{mode} · {who}",
+        };
     }
 
     private void ShowAgentsFor(string room)
@@ -465,6 +493,7 @@ public sealed partial class ChatViewModel
 
         var delegatorRow = Model.Agents.FirstOrDefault(a => a.Role.Length > 0);
         Model.Delegator = delegatorRow?.Nick ?? "no delegator";
+        RefreshDispatch();
     }
 
     // ── Task board (PLAN §8b) ────────────────────────────────────────────────────────────────

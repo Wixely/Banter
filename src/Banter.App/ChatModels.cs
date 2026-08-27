@@ -95,6 +95,12 @@ public sealed partial class RoomRow
 
     public string TabClass { get; set; } = "tab";
     public string Badge { get; set; } = "";
+
+    /// <summary>
+    /// Carries the badge's visibility. An empty badge still paints its background and padding, so
+    /// without this every room with nothing unread wore a small blank pill.
+    /// </summary>
+    public string BadgeClass { get; set; } = "badge hidden";
 }
 
 /// <summary>
@@ -161,6 +167,13 @@ public sealed partial class ChatModel
     public string Delegator { get; set; } = "";
     public string DispatchMode { get; set; } = "";
 
+    /// <summary>
+    /// The two above, joined for display. Composed here rather than in the markup because a
+    /// separator written between two bindings still renders when both are empty, and a room with
+    /// no agents in it showed a stray "·" floating in its header.
+    /// </summary>
+    public string Dispatch { get; set; } = "";
+
     /// <summary>Hidden until the room actually has work on the board.</summary>
     public string TasksClass { get; set; } = "tasks hidden";
 
@@ -183,6 +196,9 @@ public sealed partial class ChatModel
     /// <summary>Whose grants are being edited.</summary>
     public string ToolsAgent { get; set; } = "";
 
+    /// <summary>The panel's heading, with the agent's name only once one is chosen.</summary>
+    public string ToolsTitle { get; set; } = "Tools";
+
     /// <summary>What just happened: saved, refused, or what the panel is waiting on.</summary>
     public string ToolsStatus { get; set; } = "";
 
@@ -204,4 +220,10 @@ public sealed partial class ChatModel
     public string ReadbackText { get; set; } = "Speech: agents";
 
     public string ReadbackClass { get; set; } = "readback hidden";
+
+    /// <summary>
+    /// The strip under the composer. Hidden outright on a head with no audio, so it does not sit
+    /// there as an empty band of padding.
+    /// </summary>
+    public string VoiceRowClass { get; set; } = "voice-row hidden";
 }

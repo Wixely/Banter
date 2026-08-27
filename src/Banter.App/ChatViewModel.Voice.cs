@@ -31,6 +31,7 @@ public sealed partial class ChatViewModel
     {
         VoiceAvailable = true;
         Model.MicClass = "mic";
+        Model.VoiceRowClass = "voice-row";
         Model.ReadbackClass = readbackAvailable ? "readback" : "readback hidden";
         RefreshVoiceLabels();
     }

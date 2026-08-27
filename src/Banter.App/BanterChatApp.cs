@@ -77,6 +77,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public override int Height => 760;
 
     /// <summary>
+    /// A dark title bar. Without it Windows gives the window its default light chrome, which on a
+    /// dark app reads as a white band bolted to the top of it.
+    /// </summary>
+    public override bool DarkWindowChrome => true;
+
+    /// <summary>
+    /// The same colour the stylesheet paints the page. The host clears to this before the first
+    /// frame and during a resize, so matching it removes the white flash on open and the white
+    /// edge that trails a window being dragged wider.
+    /// </summary>
+    public override SkiaSharp.SKColor Background => new(0x14, 0x16, 0x1a);
+
+    /// <summary>
     /// Drives the pump in <see cref="Present"/>. Messages arrive on socket threads with no input
     /// event to piggyback on, so the host must tick even when the user is idle. 20 Hz is well
     /// inside the measured per-delta cost (~0.8 ms) and cheap when nothing has changed.
@@ -90,7 +103,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="{{StatusClass}}">{{Status}}</div>
             <div class="rooms">
               <div class="{{TabClass}}" data-repeat="Rooms" data-room="{{Name}}">
-                <span class="tab-name">{{Label}}</span><span class="badge">{{Badge}}</span>
+                <span class="tab-name">{{Label}}</span><span class="{{BadgeClass}}">{{Badge}}</span>
               </div>
               <div class="{{BrowseClass}}">
                 <div class="browse-title">Other rooms</div>
@@ -105,7 +118,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="header">
               <span class="room-name">{{ActiveRoom}}</span>
               <span class="topic">{{Topic}}</span>
-              <span class="dispatch">{{DispatchMode}} &#183; {{Delegator}}</span>
+              <span class="dispatch">{{Dispatch}}</span>
             </div>
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-context-menu class="timeline-menu">
@@ -121,10 +134,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </cupri-context-menu>
             <div class="composer-row">
               <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
-              <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
+              <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message  ·  Ctrl+Enter to send"></cupri-textarea>
               <cupri-button class="send">Send</cupri-button>
             </div>
-            <div class="voice-row">
+            <div class="{{VoiceRowClass}}">
               <span class="voice-status">{{VoiceStatus}}</span>
               <cupri-button class="{{ReadbackClass}}">{{ReadbackText}}</cupri-button>
             </div>
@@ -132,7 +145,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           <div class="{{ToolsClass}}">
             <div class="toolpanel-inner">
               <div class="toolpanel-head">
-                <span class="toolpanel-title">Tools &#183; {{ToolsAgent}}</span>
+                <span class="toolpanel-title">{{ToolsTitle}}</span>
                 <span class="toolpanel-status">{{ToolsStatus}}</span>
                 <cupri-button class="tools-save">Save</cupri-button>
                 <cupri-button class="tools-close">Close</cupri-button>
@@ -174,7 +187,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
     public override string Css => """
         body { background: #14161a; color: #e6e8eb; font-size: 14px; }
-        .app { display: flex; flex-direction: row; height: 760px; }
+        .app { display: flex; flex-direction: row; height: 100%; }
 
         .sidebar { display: flex; flex-direction: column; width: 220px; background: #1b1e24; padding: 12px; }
         .brand { font-weight: bold; font-size: 16px; padding-bottom: 8px; }
@@ -182,16 +195,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .status.on { color: #7fd88f; background: #16301c; }
         .status.off { color: #e88c8c; background: #341a1a; }
         .rooms { flex: 1; }
-        .tab { display: flex; flex-direction: row; padding: 6px 8px; border-radius: 4px; }
+        .tab { display: flex; flex-direction: row; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
         .tab.active { background: #2b313b; }
         .tab-name { flex: 1; }
         .badge { color: #14161a; background: #7fa7ff; border-radius: 8px; padding: 0 6px; font-size: 11px; }
+        .badge.hidden { display: none; }
         .nick { font-size: 12px; color: #8b93a1; padding-top: 8px; }
 
         .browse { padding-top: 14px; }
         .browse.hidden { display: none; }
         .browse-title { font-size: 11px; color: #5d6572; padding-bottom: 4px; }
-        .browse-row { display: flex; flex-direction: row; padding: 4px 8px; border-radius: 4px; }
+        .browse-row { display: flex; flex-direction: row; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
         .browse-name { flex: 1; color: #8b93a1; font-size: 12px; }
         .browse-members { color: #5d6572; font-size: 11px; }
 
@@ -200,7 +214,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .room-name { font-weight: bold; padding-right: 12px; }
         .topic { color: #8b93a1; }
 
-        .loadmore { padding: 6px 14px; color: #7fa7ff; font-size: 12px; background: #191c22; }
+        .loadmore { padding: 6px 14px; color: #7fa7ff; font-size: 12px; background: #191c22; cursor: pointer; }
         .loadmore.hidden { display: none; }
 
         .timeline-menu { display: flex; flex-direction: column; flex: 1; }
@@ -223,7 +237,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line.system .sender { color: #8b93a1; }
         .line.streaming .text { color: #cdd3dc; }
 
-        .attach { color: #7fa7ff; background: #1f2530; border-radius: 4px; padding: 1px 6px; margin-left: 6px; }
+        .attach { color: #7fa7ff; background: #1f2530; border-radius: 4px; padding: 1px 6px; margin-left: 6px;
+                  cursor: pointer; }
         .attach.hidden { display: none; }
 
         /* Width only: height follows the source's aspect ratio. Capped so one large screenshot
@@ -261,31 +276,33 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line.egress .sender { color: #e0a56a; }
 
         .tools-open { font-size: 11px; color: #7fa7ff; background: #1f2530; border-radius: 4px;
-                      padding: 4px 6px; margin-bottom: 12px; text-align: center; }
+                      padding: 4px 6px; margin-bottom: 12px; text-align: center; cursor: pointer; }
         .tools-open.hidden { display: none; }
 
         /* An overlay rather than another column: granting tools is a deliberate, occasional act,
            and it wants the width to show what each tool actually is. */
-        .toolpanel { position: absolute; left: 0; top: 0; width: 1100px; height: 760px;
-                     background: #0d0f13; padding: 40px 60px; }
+        .toolpanel { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                     display: flex; background: #0d0f13; padding: 40px 60px; }
         .toolpanel.hidden { display: none; }
-        .toolpanel-inner { display: flex; flex-direction: column; height: 680px;
+        .toolpanel-inner { display: flex; flex-direction: column; flex: 1;
                            background: #14161a; border-radius: 6px; padding: 16px; }
         .toolpanel-head { display: flex; flex-direction: row; padding-bottom: 12px; }
         .toolpanel-title { flex: 1; font-weight: bold; }
         .toolpanel-status { color: #8b93a1; font-size: 12px; padding-right: 12px; }
-        .tools-save { width: 80px; margin-right: 8px; }
-        .tools-close { width: 80px; }
+        .tools-save { width: 80px; margin-right: 8px; background: #2f4a7a; color: #e6e8eb;
+                      border: 1px solid #3d5f96; border-radius: 4px; }
+        .tools-close { width: 80px; background: #232833; color: #e6e8eb;
+                       border: 1px solid #333a46; border-radius: 4px; }
         .toolpanel-body { display: flex; flex-direction: row; flex: 1; }
 
         .tool-agents { width: 180px; padding-right: 12px; }
-        .tool-agent { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #1b1e24; }
+        .tool-agent { padding: 6px 8px; border-radius: 4px; margin-bottom: 6px; background: #1b1e24; cursor: pointer; }
         .tool-agent.active { background: #2b313b; }
         .tool-agent-nick { font-size: 13px; }
         .tool-agent-count { color: #8b93a1; font-size: 11px; }
 
         .tool-list { flex: 1; }
-        .tool { padding: 5px 8px; border-radius: 4px; margin-bottom: 4px; background: #1b1e24; }
+        .tool { padding: 5px 8px; border-radius: 4px; margin-bottom: 4px; background: #1b1e24; cursor: pointer; }
         /* Granted tools are marked as clearly as frontier agents are, and for the same reason:
            what an agent can reach is the thing an operator most needs to see at a glance. */
         .tool.granted { background: #16301c; }
@@ -296,10 +313,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .tool-desc { color: #8b93a1; font-size: 11px; padding-left: 24px; }
 
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
-        .composer { flex: 1; min-height: 44px; max-height: 120px; }
+        /* Styled explicitly. The engine's defaults for a text field and a button are a white box
+           and a light button, which on a dark app look like two controls that failed to load. */
+        .composer { flex: 1; min-height: 44px; max-height: 120px; background: #14161a; color: #e6e8eb;
+                    border: 1px solid #2b313b; border-radius: 4px; padding: 6px 8px; caret-color: #7fa7ff; }
+        .composer:focus { border: 1px solid #4a5a75; }
         .voice-row { display: flex; flex-direction: row; padding: 0 14px 8px 14px; background: #1b1e24; }
+        .voice-row.hidden { display: none; }
         .voice-status { flex: 1; color: #8b93a1; font-size: 12px; }
-        .mic { margin-right: 8px; min-width: 64px; }
         /* The gate's state, said in colour as well as in words: a room microphone is watched
            from across a desk, where the label is too small to read. */
         .mic.armed { background: #2b3a4a; }
@@ -307,7 +328,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mic.working { background: #6b5a2f; }
         .mic.hidden { display: none; }
         .readback.hidden { display: none; }
-        .send { width: 90px; margin-left: 8px; }
+        .send { width: 90px; margin-left: 8px; background: #2f4a7a; color: #e6e8eb;
+                border: 1px solid #3d5f96; border-radius: 4px; }
+        .mic { margin-right: 8px; min-width: 64px; background: #232833; color: #e6e8eb;
+               border: 1px solid #333a46; border-radius: 4px; }
+        .readback { background: #232833; color: #8b93a1; border: 1px solid #333a46;
+                    border-radius: 4px; font-size: 12px; }
         """;
 
     public override void Configure(CupriDocument doc)
