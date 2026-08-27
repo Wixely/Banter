@@ -59,6 +59,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public IClipboard Clipboard { get; init; } = NullClipboard.Instance;
 
+    /// <summary>
+    /// Called when the user taps the microphone: true to open it, false to close it.
+    ///
+    /// <para>A toggle rather than a hold because CupriFace raises clicks, not pointer-down and
+    /// pointer-up — there is no press to hold. Real hold-to-talk is the desktop global hotkey
+    /// (PLAN §7), which has both edges; on screen, tap-to-talk is also the better fit for touch.</para>
+    /// </summary>
+    public Func<bool, Task> VoiceToggleAsync { get; init; } = _ => Task.CompletedTask;
+
+    /// <summary>Called when the user cycles the readback policy, with the policy now in force.</summary>
+    public Func<Voice.ReadbackPolicy, Task> ReadbackChangedAsync { get; init; } = _ => Task.CompletedTask;
+
     public override string Title => "Banter";
     public override object Model => ViewModel.Model;
     public override int Width => 1100;
@@ -108,8 +120,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-menu-item class="copy-room">Copy room name</cupri-menu-item>
             </cupri-context-menu>
             <div class="composer-row">
+              <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
               <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
               <cupri-button class="send">Send</cupri-button>
+            </div>
+            <div class="voice-row">
+              <span class="voice-status">{{VoiceStatus}}</span>
+              <cupri-button class="{{ReadbackClass}}">{{ReadbackText}}</cupri-button>
             </div>
           </div>
           <div class="{{ToolsClass}}">
@@ -280,6 +297,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         .composer { flex: 1; min-height: 44px; max-height: 120px; }
+        .voice-row { display: flex; flex-direction: row; padding: 0 14px 8px 14px; background: #1b1e24; }
+        .voice-status { flex: 1; color: #8b93a1; font-size: 12px; }
+        .mic { margin-right: 8px; min-width: 64px; }
+        /* The gate's state, said in colour as well as in words: a room microphone is watched
+           from across a desk, where the label is too small to read. */
+        .mic.armed { background: #2b3a4a; }
+        .mic.hearing { background: #2f6b3f; }
+        .mic.working { background: #6b5a2f; }
+        .mic.hidden { display: none; }
+        .readback.hidden { display: none; }
         .send { width: 90px; margin-left: 8px; }
         """;
 
@@ -288,6 +315,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         _doc = doc;
 
         doc.OnClick(".send", _ => Send());
+        doc.OnClick(".mic", _ => ToggleVoice());
+        doc.OnClick(".readback", _ => CycleReadback());
 
         // Ctrl+Enter sends; plain Enter stays a newline in the textarea, which is what a
         // multi-line composer needs and what the CupriFace guidance recommends.
@@ -500,6 +529,31 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         _ = ToolsSaveAsync(agent, ViewModel.PendingGrants);
+    }
+
+    /// <summary>
+    /// Open or close the microphone. The view model is not updated here: the session reports what
+    /// actually happened through <c>SetVoiceState</c>, so a backend that failed to open a device
+    /// does not leave a button claiming to be listening.
+    /// </summary>
+    public void ToggleVoice()
+    {
+        if (!ViewModel.VoiceAvailable)
+        {
+            return;
+        }
+
+        _ = VoiceToggleAsync(!ViewModel.Listening);
+    }
+
+    /// <summary>Cycle the readback policy and tell the head, which owns the speaking side.</summary>
+    public void CycleReadback()
+    {
+        ViewModel.Post(() =>
+        {
+            var policy = ViewModel.CycleReadback();
+            _ = ReadbackChangedAsync(policy);
+        });
     }
 
     /// <summary>Send the composer's contents to the active room and clear it.</summary>

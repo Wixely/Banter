@@ -188,4 +188,20 @@ public sealed partial class ChatModel
 
     public List<ToolAgentRow> ToolAgents { get; set; } = [];
     public List<ToolRow> ToolCatalog { get; set; } = [];
+
+    /// <summary>
+    /// The microphone control. Hidden on a head that wired no capture backend, because a button
+    /// that cannot do anything is worse than no button.
+    /// </summary>
+    public string MicClass { get; set; } = "mic hidden";
+
+    public string MicText { get; set; } = "Talk";
+
+    /// <summary>What the microphone is doing, in words: idle, listening, heard, transcribing.</summary>
+    public string VoiceStatus { get; set; } = "";
+
+    /// <summary>The readback toggle's label, which doubles as its state.</summary>
+    public string ReadbackText { get; set; } = "Speech: agents";
+
+    public string ReadbackClass { get; set; } = "readback hidden";
 }

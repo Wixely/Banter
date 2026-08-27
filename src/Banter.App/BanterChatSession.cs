@@ -549,6 +549,7 @@ public sealed partial class BanterChatSession : IDisposable
     private void OnMessage(Protocol.MsgPayload m)
     {
         _vm.Post(() => _vm.Append(m.Room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? "", fileId: m.FileId ?? ""));
+        SpeakIncoming(m.Room, m.Sender, m.Text);
 
         // The message only carries a file id, so name and size need a round-trip. Done off the
         // receive loop and best-effort: the row is already visible with a placeholder, and a
@@ -607,14 +608,26 @@ public sealed partial class BanterChatSession : IDisposable
             _vm.System(t.Room, $"Topic: {t.Topic}");
         });
 
-    private void OnStreamStart(Protocol.MsgStreamStartPayload s) =>
+    private void OnStreamStart(Protocol.MsgStreamStartPayload s)
+    {
         _vm.Post(() => _vm.StreamStart(s.Room, s.Sender, s.StreamId));
+        BeginSpokenStream(s.Room, s.StreamId, s.Sender);
+    }
 
-    private void OnStreamDelta(Protocol.MsgStreamDeltaPayload d) =>
+    private void OnStreamDelta(Protocol.MsgStreamDeltaPayload d)
+    {
         _vm.Post(() => _vm.StreamDelta(d.StreamId, d.Delta));
 
-    private void OnStreamEnd(Protocol.MsgStreamEndPayload e) =>
+        // Spoken as the sentences complete rather than at the end (§6): waiting for the stream to
+        // finish puts the whole generation time in front of the first sound.
+        SpeakDelta(d.StreamId, d.Delta);
+    }
+
+    private void OnStreamEnd(Protocol.MsgStreamEndPayload e)
+    {
         _vm.Post(() => _vm.StreamEnd(e.StreamId, e.FinalText, e.Timestamp));
+        EndSpokenStream(e.StreamId);
+    }
 
     private void OnPrivate(Protocol.PrivMsgPayload p) =>
         _vm.Post(() => _vm.System(_vm.Model.ActiveRoom, $"[pm] {p.Sender}: {p.Text}"));
