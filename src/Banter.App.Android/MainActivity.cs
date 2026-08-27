@@ -142,17 +142,18 @@ public sealed class MainActivity : CupriActivity
                 return;
             }
 
-            if (uri.Scheme != "tcp")
+            // CupriNet on Android is a Phase 0 spike the plan still lists as outstanding
+            // (§10: .NET AOT and background sockets). Saying so beats a timeout with no reason.
+            var transport = BanterTransports.TryClient(uri);
+            if (transport is null)
             {
-                // CupriNet on Android is a Phase 0 spike the plan still lists as outstanding
-                // (§10: .NET AOT and background sockets). Saying so beats a timeout with no reason.
                 _viewModel.Post(() => _viewModel.ConnectFailed(
-                    $"This head speaks tcp:// only for now; '{uri.Scheme}://' is not wired yet."));
+                    $"This head speaks {string.Join(", ", BanterTransports.Schemes)} for now; '{uri.Scheme}://' is not wired yet."));
                 return;
             }
 
             _client = await BanterClient
-                .ConnectAsync(new TcpBanterTransport(), uri, user, password)
+                .ConnectAsync(transport, uri, user, password)
                 .ConfigureAwait(false);
 
             _session = new BanterChatSession(_client, _viewModel);

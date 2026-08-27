@@ -15,7 +15,7 @@ try
 catch (ArgumentException ex)
 {
     Console.Error.WriteLine(ex.Message);
-    Console.Error.WriteLine("usage: banter-server [--endpoint tcp://host:port] [--db sqlite|postgres] [--connection <connection-string>]");
+    Console.Error.WriteLine("usage: banter-server [--endpoint tcp://host:port | ws://host:port] [--db sqlite|postgres] [--connection <connection-string>]");
     return 1;
 }
 
@@ -83,8 +83,12 @@ if (mcpOptions.Upstreams.Count > 0)
         $"{toolBroker.AllTools().Count} tool(s) available to grant.");
 }
 
+// The scheme picks the transport, exactly as it does on the client. ws:// is what a browser
+// needs, since script cannot open a socket (PLAN §2.5).
+var transport = BanterTransports.Server(endpoint);
+
 await using var server = new BanterServer(
-    new TcpBanterTransport(), accounts, new DbServerStore(database), fileStore,
+    transport, accounts, new DbServerStore(database), fileStore,
     guardrails: null,
     tasks: new TaskStore(database),
     tools: toolBroker);

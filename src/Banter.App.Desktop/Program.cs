@@ -26,6 +26,7 @@ if (cli is null)
 
         Transport is chosen by URI scheme:
           tcp://host:port           plain TCP
+          ws://host:port            WebSocket (what the web client uses)
           cupri://<intonation-uri>  CupriNet mesh (paste the mesh-magnet link)
         """);
     return 0;
@@ -51,9 +52,11 @@ if (!settings.IsComplete || string.IsNullOrEmpty(pass))
 var server = new Uri(settings.Server);
 var rooms = settings.Rooms.Count > 0 ? settings.Rooms : ["#main"];
 
-IBanterClientTransport transport = server.Scheme == "tcp"
-    ? new TcpBanterTransport()
-    : new CupriNetBanterTransport(new CupriNetTransportOptions
+// Built-in schemes first; anything else is the mesh, which lives outside Banter.Protocol.
+var transport = BanterTransports.TryClient(server) ?? BuildCupriNet();
+
+IBanterClientTransport BuildCupriNet() =>
+    new CupriNetBanterTransport(new CupriNetTransportOptions
     {
         // Mesh identity lives beside the settings file so a profile is one folder.
         DataDirectory = Path.Combine(

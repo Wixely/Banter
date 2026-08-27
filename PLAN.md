@@ -1003,6 +1003,24 @@ scanning a code is a per-head job and really an Android concern), inline image r
 image attachments, a native file picker per head to replace `/upload`, and the Android head.
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
+
+*Transport done 2026-08-27.* `WebSocketBanterTransport` is in on both ends — `ws://` picks it, and
+the server, CLI, desktop and Android heads all resolve their transport through
+`BanterTransports` rather than each carrying its own scheme switch. Verified with two CLI clients
+talking to a `ws://` server. **This is the half a browser cannot do without**, since script cannot
+open a socket; §10 listed it as the safety net under CupriNet's DataChannel and it is now the
+shorter path to a web client rather than the fallback.
+
+Two things it taught, both in the code: WebSocket is already message-framed, so a Banter frame is
+one binary message and `BanterFraming` is not involved — but a message still arrives across several
+reads, so reassembly is required. And `WebSocket.CloseAsync` **waits for the peer's close reply**,
+which deadlocks whenever both ends dispose at once — as they do whenever a connection is torn down
+from one place. `CloseOutputAsync` sends the frame without waiting and the peer still sees a clean
+close.
+
+Still to do: a WASM host for the CupriApp. There is no `CupriFace.Web` package on the feed — the
+engine's `RenderToPixels` into a `<canvas>` is the documented route, so the web head is a host to
+be written rather than a package to consume.
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
 listed and fetched from another via room grant; browser client joins the same room text-only.*
 

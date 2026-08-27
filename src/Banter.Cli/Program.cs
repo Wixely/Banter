@@ -7,16 +7,17 @@ var user = Arg("--user");
 var pass = Arg("--pass");
 if (user is null || pass is null)
 {
-    Console.Error.WriteLine("usage: banter-cli [--server tcp://host:port] --user <name> --pass <secret>");
+    Console.Error.WriteLine($"usage: banter-cli [--server <{string.Join("|", BanterTransports.Schemes)}>://host:port] --user <name> --pass <secret>");
     return 1;
 }
 
 BanterClient client;
 try
 {
-    client = await BanterClient.ConnectAsync(new TcpBanterTransport(), new Uri(server), user, pass);
+    var endpoint = new Uri(server);
+    client = await BanterClient.ConnectAsync(BanterTransports.Client(endpoint), endpoint, user, pass);
 }
-catch (Exception ex) when (ex is BanterClientException or IOException or System.Net.Sockets.SocketException)
+catch (Exception ex) when (ex is BanterClientException or IOException or System.Net.Sockets.SocketException or ArgumentException)
 {
     Console.Error.WriteLine($"Connect failed: {ex.Message}");
     return 1;
