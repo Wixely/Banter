@@ -4,9 +4,17 @@ using System.Net.WebSockets;
 namespace Banter.Protocol.Transport;
 
 /// <summary>
-/// The WebSocket transport: <c>ws://host:port/</c>, and the only one a browser can use — script
-/// cannot open a socket, so the web client of PLAN §2.5 needs this or nothing (§10 lists it as the
-/// safety net under CupriNet's browser DataChannel).
+/// The WebSocket transport: <c>ws://host:port/</c>.
+///
+/// <para><b>The fallback, not the plan's primary browser path.</b> PLAN §2.5 wants the web client
+/// on CupriNet's WebRTC DataChannel, which a browser can also use and which keeps the mesh's Noise
+/// encryption end to end; this is the safety net §10 names under that risk. It exists because the
+/// DataChannel's browser-side story is still an open Phase 0 spike — no WASM client library is
+/// named for it — and because a socket is the one thing script definitely cannot open.</para>
+///
+/// <para>It earns its place away from the browser too: <c>ws://</c> passes through the reverse
+/// proxies and firewalls that plain <c>tcp://</c> does not, and <c>wss://</c> behind nginx is how a
+/// deployment gets TLS without CupriNet.</para>
 ///
 /// <para><b>No length prefix.</b> WebSocket is already message-framed, so one Banter frame is one
 /// binary message and <see cref="BanterFraming"/> is not involved. A message can still arrive in
