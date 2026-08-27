@@ -139,6 +139,16 @@ if (save)
     settings.TrySave(settingsPath, p => Console.Error.WriteLine($"warning: {p}"));
 }
 
+// Voice (PLAN §6). Optional throughout: a machine with no microphone, or no speech server
+// configured, simply runs without the controls rather than showing ones that cannot work.
+var voice = Banter.App.Desktop.DesktopVoice.TryBuild(settings.Voice, vm, warn: m => Console.Error.WriteLine($"voice: {m}"));
+if (voice is not null)
+{
+    vm.ReviewBeforeSend = settings.Voice.ReviewBeforeSend;
+    vm.SetReadback(voice.Policy);
+    session.AttachVoice(voice.Session, voice.Readback);
+}
+
 var app = new BanterChatApp(vm)
 {
     SendAsync = session.SendAsync,
@@ -152,9 +162,17 @@ var app = new BanterChatApp(vm)
     ToolsOpenAsync = session.LoadToolsAsync,
     ToolsSaveAsync = session.SaveToolsAsync,
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
+    VoiceToggleAsync = open => session.SetVoiceOpenAsync(open),
+    ReadbackChangedAsync = policy => session.SetReadbackAsync(policy),
 };
 
 DesktopHost.Run(app, _ => { });
+
+if (voice is not null)
+{
+    await voice.DisposeAsync();
+}
+
 return 0;
 
 static (string? Server, string? User, string? Pass, string[]? Rooms, string? SettingsPath, bool Save)? ParseArgs(string[] argv)

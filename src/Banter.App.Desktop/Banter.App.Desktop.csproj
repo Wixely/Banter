@@ -10,9 +10,17 @@
   <ItemGroup>
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <ProjectReference Include="../Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
+    <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <PackageReference Include="CupriFace.Shell" Version="0.5.0" />
     <!-- Decoding a cached preview into a clipboard DIB. Transitive via CupriFace, declared
          because this project uses it directly. -->
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <!-- Microphone. Bantz's recorders normalise to the 16 kHz mono the speech engines take and
+         already handle both desktop platforms, so the head adapts them rather than reimplementing
+         device handling twice. -->
+    <PackageReference Include="Bantz.Capture" Version="0.2.3" />
+    <!-- Speaker. Bantz is dictation-only and ships no playback, so this half is ours; Linux goes
+         through aplay and needs no package at all. -->
+    <PackageReference Include="NAudio" Version="2.3.0" />
   </ItemGroup>
 </Project>

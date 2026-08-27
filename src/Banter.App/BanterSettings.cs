@@ -29,6 +29,12 @@ public sealed record BanterSettings
     /// <summary>Messages kept per room before the oldest are dropped from memory.</summary>
     public int Scrollback { get; init; } = 5_000;
 
+    /// <summary>
+    /// Speech settings (PLAN §6). The API key is absent for the same reason the password is:
+    /// it comes from <c>BANTER_SPEECH_KEY</c>.
+    /// </summary>
+    public VoiceSettings Voice { get; init; } = new();
+
     [JsonIgnore]
     public bool IsComplete =>
         Server.Length > 0 && User.Length > 0 && Uri.TryCreate(Server, UriKind.Absolute, out _);
@@ -104,4 +110,45 @@ public sealed record BanterSettings
         User = user ?? User,
         Rooms = rooms is { Count: > 0 } ? rooms : Rooms,
     };
+}
+
+/// <summary>
+/// How this client speaks and listens. Everything here is a preference rather than a credential,
+/// which is why it can live in a plain JSON file next to the rest.
+/// </summary>
+public sealed record VoiceSettings
+{
+    /// <summary>
+    /// An OpenAI-compatible speech server — OpenAI itself, DashScope, or something local. Empty
+    /// means "use whatever runs on this machine", which on desktop is local Whisper.
+    /// </summary>
+    public string Endpoint { get; init; } = "";
+
+    public string TranscriptionModel { get; init; } = "whisper-1";
+
+    public string SpeechModel { get; init; } = "tts-1";
+
+    /// <summary>BCP-47 hint. Worth setting: detection on a short utterance is a coin flip.</summary>
+    public string Language { get; init; } = "";
+
+    /// <summary>
+    /// Words the engine has never seen and will otherwise replace with something plausible.
+    /// Room nicknames and agent names belong here.
+    /// </summary>
+    public string Vocabulary { get; init; } = "";
+
+    /// <summary>
+    /// Whether a transcript waits in the composer instead of sending itself. Off suits
+    /// push-to-talk, which is deliberate; on suits leaving a microphone open.
+    /// </summary>
+    public bool ReviewBeforeSend { get; init; }
+
+    /// <summary>Whose messages are read aloud: <c>off</c>, <c>agents</c>, or <c>everyone</c>.</summary>
+    public string Readback { get; init; } = "agents";
+
+    /// <summary>
+    /// Leave the microphone open and let the gate cut utterances, rather than waiting to be
+    /// pressed. Off by default: an open microphone is a decision, not a default.
+    /// </summary>
+    public bool AlwaysListening { get; init; }
 }
