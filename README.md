@@ -14,6 +14,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Protocol` v1 (envelope, payloads, MessagePack + JSON debug codec, framing) | implemented, tested |
 | `IBanterTransport` seam + plain-TCP fallback | implemented, tested |
 | WebSocket transport | implemented and tested, but **parked and unwired** — the browser path is CupriNodestar's WebRTC, which rules sockets out |
+| `Banter.Transport.Shrine` — a CupriNet L2 conduit as an `IBanterConnection` (§2.5) | implemented, 15 tests; **not yet run against a live node** |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
@@ -105,6 +106,22 @@ without credentials:
 dotnet build Banter.slnx
 dotnet test Banter.slnx
 ```
+
+### The Shrine transport (the web head's server half)
+
+`Banter.Transport.Shrine` presents a CupriNet **conduit** as an `IBanterConnection`, so the whole
+stack above the transport seam runs over L2 unchanged. It is **not** in `Banter.slnx` and has no CI
+job, because it restores `CupriNet.Nodestar 0.1.0-alpha.5.local` from a **local build** — alpha.5's
+publish run died on a GitHub Actions artifact-storage quota rather than on anything in the code, so
+it is not on the feed yet.
+
+```
+dotnet test tests/Banter.Transport.Shrine.Tests/Banter.Transport.Shrine.Tests.csproj
+```
+
+The local source is declared in a `NuGet.config` beside each of those two projects, so the rest of
+the repo and CI restore exactly as before. **When alpha.5 reaches the feed:** delete both files,
+change the `PackageReference` to `0.1.0-alpha.5`, and put the projects in the solution.
 
 ### The Android head
 
