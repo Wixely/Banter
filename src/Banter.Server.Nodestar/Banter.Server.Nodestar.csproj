@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>banter-nodestar</AssemblyName>
+    <RootNamespace>Banter.Server.Nodestar</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Banter.Server/Banter.Server.csproj" />
+    <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
+    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.5.local" />
+    <PackageReference Include="CupriNet.Nodestar.WebRtc" Version="0.1.0-alpha.5.local" />
+  </ItemGroup>
+</Project>

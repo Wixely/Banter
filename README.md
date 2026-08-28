@@ -14,7 +14,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Protocol` v1 (envelope, payloads, MessagePack + JSON debug codec, framing) | implemented, tested |
 | `IBanterTransport` seam + plain-TCP fallback | implemented, tested |
 | WebSocket transport | implemented and tested, but **parked and unwired** — the browser path is CupriNodestar's WebRTC, which rules sockets out |
-| `Banter.Transport.Shrine` — a CupriNet L2 conduit as an `IBanterConnection` (§2.5) | implemented, 15 tests; **not yet run against a live node** |
+| `Banter.Transport.Shrine` — a CupriNet L2 conduit as an `IBanterConnection` (§2.5) | implemented, 15 tests |
+| `Banter.Server.Nodestar` — a Banter server hosted on a CupriNet node | runs: node online, site addressed, raw sessions served; **no client has dialled it yet** |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
@@ -117,7 +118,13 @@ it is not on the feed yet.
 
 ```
 dotnet test tests/Banter.Transport.Shrine.Tests/Banter.Transport.Shrine.Tests.csproj
+
+# A Banter server on a CupriNet node rather than a socket
+dotnet run --project src/Banter.Server.Nodestar -- --data <dir> --network banter
 ```
+
+It prints the site's `cupri1…` address once the node is online, and Nodestar reports
+`Raw sessions: served.` when the Banter conduit has been registered.
 
 The local source is declared in a `NuGet.config` beside each of those two projects, so the rest of
 the repo and CI restore exactly as before. **When alpha.5 reaches the feed:** delete both files,

@@ -51,3 +51,19 @@ public sealed class SiteSessionFrames(SiteSession session) : IShrineFrames
     public Task EndAsync(string reason, CancellationToken cancellationToken = default) =>
         session.EndAsync(reason, cancellationToken);
 }
+
+/// <summary>
+/// Hands out a listener that was built before the server was.
+///
+/// <para><c>BanterServer</c> takes a transport and asks it to listen on a URI, which suits a
+/// socket and not a conduit: the node is already running and the site is already registered by the
+/// time there is a server to give it to. This adapts the one to the other rather than bending the
+/// seam that every other transport uses.</para>
+/// </summary>
+public sealed class PreparedListenerTransport(Banter.Protocol.Transport.IBanterListener listener)
+    : Banter.Protocol.Transport.IBanterServerTransport
+{
+    public Task<Banter.Protocol.Transport.IBanterListener> ListenAsync(
+        Uri endpoint,
+        CancellationToken cancellationToken = default) => Task.FromResult(listener);
+}
