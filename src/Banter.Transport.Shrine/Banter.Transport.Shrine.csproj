@@ -4,9 +4,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.Protocol/Banter.Protocol.csproj" />
-    <!-- 0.1.0-alpha.5.local: a local build, restored through this project's own NuGet.config.
-         Switch to 0.1.0-alpha.5 and delete that file once the feed has it. -->
-    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.5.local" />
+    <!-- 0.1.0-alpha.6.local: a local build, restored through this project's own NuGet.config.
+         Switch to 0.1.0-alpha.6 and delete that file once the feed has it. -->
+    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.6.local" />
     <!-- The client half: Pilgrimage, ShrineSession and the Conduit rite. -->
     <PackageReference Include="CupriNet.Shrine" Version="0.3.6" />
     <PackageReference Include="CupriNet.Rites" Version="0.3.6" />

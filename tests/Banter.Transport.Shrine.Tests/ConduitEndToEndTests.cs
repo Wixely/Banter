@@ -1,3 +1,4 @@
+using System.Net;
 using Banter.Client.Core;
 using Banter.Server;
 using Banter.Server.Files;
@@ -20,6 +21,10 @@ namespace Banter.Transport.Shrine.Tests;
 /// over an in-memory channel and no client opens one against a running node. So this is the first
 /// exercise of the whole path: vessel, Pilgrimage, conduit, and BanterProtocol's own handshake and
 /// verbs on top of it.</para>
+///
+/// <para>The client dials the <b>site's</b> vessel host, not the node's beacon port, and pins the
+/// site's Signet. Those are the two halves of CupriNodestar#2: the node's port reaches the node,
+/// and a session with no Shrine behind it answers every rite with a closed stream.</para>
 /// </summary>
 public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifetime
 {
@@ -29,8 +34,8 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
     private BanterDatabase _database = null!;
     private NodestarApplication _node = null!;
     private ShrineBanterListener _listener = null!;
+    private ShrineVesselHost _host = null!;
     private BanterServer _server = null!;
-    private int _listenPort;
 
     public async Task InitializeAsync()
     {
@@ -45,13 +50,11 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
         await accounts.CreateUserAsync("alice", "pw", isAgent: false, isAdmin: true);
         await accounts.CreateUserAsync("bob", "pw", isAgent: false, isAdmin: false);
 
-        _listenPort = FreePort();
-
         var builder = NodestarApplication.CreateBuilder([]);
         builder.Node.Concordium = "banter-conduit-test";
         builder.Node.DataDirectory = Path.Combine(_root, "mesh");
         builder.Node.ListenAddress = "127.0.0.1";
-        builder.Node.ListenPort = _listenPort;
+        builder.Node.ListenPort = FreePort();
         builder.Node.SiteName = "Banter";
         builder.Node.Moniker = "banter-test-node";
 
@@ -80,8 +83,13 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
         await _server.StartAsync(_listener.LocalEndpoint);
         await _node.StartAsync();
 
+        // The site's own front door. Distinct from the node's beacon port on purpose: a vessel
+        // accepted here is served as the site, and one accepted there is not.
+        _host = new ShrineVesselHost(_node, new IPEndPoint(IPAddress.Loopback, 0));
+        _host.Start();
+
         output.WriteLine($"site: {_node.SiteAddress}");
-        output.WriteLine($"node listening on 127.0.0.1:{_listenPort}");
+        output.WriteLine($"site listening on {_host.LocalEndPoint}");
     }
 
     private static int FreePort()
@@ -99,14 +107,15 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
     /// and network, so nothing else has to be told to it.
     /// </summary>
     private ShrineClientTransport ClientTransport() =>
-        new(async (_, ct) => await TcpVessel.ConnectAsync("127.0.0.1", _listenPort, cancellationToken: ct),
+        new(async (_, ct) => await TcpVessel.ConnectAsync(
+                "127.0.0.1", _host.LocalEndPoint.Port, cancellationToken: ct),
             new BouncyCastleSuite());
 
     /// <summary>The node's signed link, which is what a real client would be handed.</summary>
     private Uri Link() => new(new NodestarLinkProvider(
         _node.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1)).Current().Link);
 
-    [Fact(Skip = "Blocked on CupriNodestar#2: a conduit opened over a TCP vessel is closed as soon as the pilgrimage completes, and the site's OnSession handler is never invoked. The test is the reproduction — unskip when the conduit is routed on that path.")]
+    [Fact]
     public async Task AClientReachesTheServerOverAConduit()
     {
         await using var client = await BanterClient
@@ -117,7 +126,7 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
         Assert.Equal("alice", client.Nick);
     }
 
-    [Fact(Skip = "Blocked on CupriNodestar#2: a conduit opened over a TCP vessel is closed as soon as the pilgrimage completes, and the site's OnSession handler is never invoked. The test is the reproduction — unskip when the conduit is routed on that path.")]
+    [Fact]
     public async Task TwoClientsTalkToEachOtherThroughTheSite()
     {
         await using var alice = await BanterClient
@@ -143,7 +152,7 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
         Assert.Equal("hello over L2", await heard.Task.WaitAsync(Patience));
     }
 
-    [Fact(Skip = "Blocked on CupriNodestar#2: a conduit opened over a TCP vessel is closed as soon as the pilgrimage completes, and the site's OnSession handler is never invoked. The test is the reproduction — unskip when the conduit is routed on that path.")]
+    [Fact]
     public async Task HistoryComesBackOverTheConduit()
     {
         await using var alice = await BanterClient
@@ -165,6 +174,7 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
 
     public async Task DisposeAsync()
     {
+        await _host.DisposeAsync();
         await _server.DisposeAsync();
         await _listener.DisposeAsync();
         await _node.DisposeAsync();

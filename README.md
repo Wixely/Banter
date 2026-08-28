@@ -14,9 +14,9 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Protocol` v1 (envelope, payloads, MessagePack + JSON debug codec, framing) | implemented, tested |
 | `IBanterTransport` seam + plain-TCP fallback | implemented, tested |
 | WebSocket transport | implemented and tested, but **parked and unwired** — the browser path is CupriNodestar's WebRTC, which rules sockets out |
-| `Banter.Transport.Shrine` — a CupriNet L2 conduit as an `IBanterConnection` (§2.5) | implemented, 15 tests |
-| `Banter.Server.Nodestar` — a Banter server hosted on a CupriNet node | runs: node online, site addressed, raw sessions served |
-| End-to-end over a conduit (client dials the site) | **blocked upstream** — [CupriNodestar#2](https://github.com/Wixely/CupriNodestar/issues/2); tests written and skipped against it |
+| `Banter.Transport.Shrine` — a CupriNet L2 conduit as an `IBanterConnection` (§2.5) | implemented, 19 tests |
+| `Banter.Server.Nodestar` — a Banter server hosted on a CupriNet node | runs: node online, site addressed, conduit served |
+| End-to-end over a conduit (client dials the site) | **green over TCP** — handshake, two clients talking, history paging, all on L2. Over WebRTC: unproven, and the web head will be the first to try it |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
@@ -113,9 +113,15 @@ dotnet test Banter.slnx
 
 `Banter.Transport.Shrine` presents a CupriNet **conduit** as an `IBanterConnection`, so the whole
 stack above the transport seam runs over L2 unchanged. It is **not** in `Banter.slnx` and has no CI
-job, because it restores `CupriNet.Nodestar 0.1.0-alpha.5.local` from a **local build** — alpha.5's
+job, because it restores `CupriNet.Nodestar 0.1.0-alpha.6.local` from a **local build** — the
 publish run died on a GitHub Actions artifact-storage quota rather than on anything in the code, so
 it is not on the feed yet.
+
+A client dials the **site's** vessel host (`ShrineVesselHost`) and pins the **site's** Signet. Both
+halves matter: the node's own listen port reaches the *node*, and a session with no Shrine behind it
+answers every rite with a closed stream. That was [CupriNodestar#2](https://github.com/Wixely/CupriNodestar/issues/2),
+and it is why only WebRTC worked before — the browser gate accepts the DataChannel into the
+Pilgrimage itself, and nothing else did.
 
 ```
 dotnet test tests/Banter.Transport.Shrine.Tests/Banter.Transport.Shrine.Tests.csproj
@@ -124,12 +130,13 @@ dotnet test tests/Banter.Transport.Shrine.Tests/Banter.Transport.Shrine.Tests.cs
 dotnet run --project src/Banter.Server.Nodestar -- --data <dir> --network banter
 ```
 
-It prints the site's `cupri1…` address once the node is online, and Nodestar reports
-`Raw sessions: served.` when the Banter conduit has been registered.
+It prints the site's `cupri1…` address once the node is online, along with the port clients dial
+(`--site-port`, default 7411), and Nodestar reports `Raw sessions: served.` when the Banter conduit
+has been registered.
 
-The local source is declared in a `NuGet.config` beside each of those two projects, so the rest of
-the repo and CI restore exactly as before. **When alpha.5 reaches the feed:** delete both files,
-change the `PackageReference` to `0.1.0-alpha.5`, and put the projects in the solution.
+The local source is declared in a `NuGet.config` beside each of those projects, so the rest of the
+repo and CI restore exactly as before. **When alpha.6 reaches the feed:** delete those files, change
+the `PackageReference` to `0.1.0-alpha.6`, and put the projects in the solution.
 
 ### The Android head
 

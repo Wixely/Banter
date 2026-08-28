@@ -97,8 +97,17 @@ public sealed class ShrineBanterListener(Uri endpoint) : IBanterListener
         }
     }
 
+    private int _disposed;
+
     public ValueTask DisposeAsync()
     {
+        // Idempotent on purpose: BanterServer disposes the listener it was given, and whoever built
+        // it disposes it too. Both are right to, and the second must not throw.
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return ValueTask.CompletedTask;
+        }
+
         _arrivals.Writer.TryComplete();
         _stopping.Cancel();
 

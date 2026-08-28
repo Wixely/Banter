@@ -94,12 +94,6 @@ public sealed class ShrineClientTransport(
     Func<Intonation, CancellationToken, Task<IVessel>> dial,
     ICryptoSuite suite) : IBanterClientTransport
 {
-    /// <summary>
-    /// The frame bound assumed for the client half. The site reads the real figure from its own
-    /// session; a Pilgrim has no equivalent to read, so this is the rite's own ceiling.
-    /// </summary>
-    public int MaxFrameBytes { get; init; } = 196608;
-
     public async Task<IBanterConnection> ConnectAsync(Uri endpoint, CancellationToken cancellationToken = default)
     {
         if (!IntonationUri.TryParse(endpoint.OriginalString.Trim(), out var intonation, out _))
@@ -119,13 +113,17 @@ public sealed class ShrineClientTransport(
 
         var vessel = await dial(intonation, cancellationToken).ConfigureAwait(false);
 
+        // The SITE's Signet, not the node's InviterSigil. Pinning the node succeeds — into a
+        // session with no Shrine behind it, where every rite answers with a closed stream
+        // (CupriNodestar#2). The refusal when this does not match is the pin doing its job.
         var shrineSession = await Pilgrimage
-            .OverVesselAsync(vessel, intonation.InviterSigil, intonation.Network, suite, cancellationToken: cancellationToken)
+            .OverVesselAsync(vessel, shrine, intonation.Network, suite, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         return new ShrineClientConnection(
             new ShrineConnection(
-                new ConduitSessionFrames(shrineSession.Conduits, MaxFrameBytes),
+                // Read, not assumed: the ceiling differs on the Arcanum channel path.
+                new ConduitSessionFrames(shrineSession.Conduits, shrineSession.Conduits.MaxPayloadBytes),
                 intonation.ShrineAddress ?? shrine.ToString() ?? "site"),
             shrineSession);
     }
@@ -147,7 +145,17 @@ public sealed class ShrineClientTransport(
         public async ValueTask DisposeAsync()
         {
             await inner.DisposeAsync().ConfigureAwait(false);
-            await shrine.DisposeAsync().ConfigureAwait(false);
+
+            try
+            {
+                await shrine.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // A session the far side has already ended has torn its own vessel down, and
+                // disposing it again throws rather than doing nothing (CupriNodestar#3). Closing a
+                // connection must not fail, and there is nothing left here to release.
+            }
         }
     }
 }

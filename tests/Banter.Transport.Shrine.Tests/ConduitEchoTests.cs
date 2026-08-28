@@ -1,3 +1,4 @@
+using System.Net;
 using Banter.Protocol.Transport;
 using CupriNet.Alembic.BouncyCastle;
 using CupriNet.Core;
@@ -14,30 +15,35 @@ namespace Banter.Transport.Shrine.Tests;
 /// Does a conduit carry bytes at all, between a real node and a real Pilgrim? Deliberately below
 /// Banter: no server, no handshake, one frame echoed. When the end-to-end test fails this says
 /// whether the fault is in the conduit or in what Banter does over it.
+///
+/// <para>This test was the reproduction for CupriNodestar#2, where the answer was neither: nothing
+/// had reached the site at all. A TCP connection to the node's own listen port reaches the
+/// <i>node</i>, which completes a node-to-node handshake and has no Shrine behind it. Serving a
+/// site over a vessel is a separate act — <c>AcceptPilgrimageAsync</c> — and the Pilgrim pins the
+/// site's Signet, not the node's.</para>
 /// </summary>
 public sealed class ConduitEchoTests(ITestOutputHelper output)
 {
     private static int FreePort()
     {
-        using var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        using var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         probe.Start();
-        var port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
         probe.Stop();
         return port;
     }
 
-    [Fact(Skip = "Blocked on CupriNodestar#2: a conduit opened over a TCP vessel is closed as soon as the pilgrimage completes, and the site's OnSession handler is never invoked. The test is the reproduction — unskip when the conduit is routed on that path.")]
+    [Fact]
     public async Task AFrameSentByAPilgrimComesBackFromTheSite()
     {
         var root = Path.Combine(Path.GetTempPath(), "banter-echo-" + Guid.NewGuid().ToString("n")[..8]);
         Directory.CreateDirectory(root);
-        var port = FreePort();
 
         var builder = NodestarApplication.CreateBuilder([]);
         builder.Node.Concordium = "banter-echo-test";
         builder.Node.DataDirectory = Path.Combine(root, "mesh");
         builder.Node.ListenAddress = "127.0.0.1";
-        builder.Node.ListenPort = port;
+        builder.Node.ListenPort = FreePort();
         builder.Node.SiteName = "Echo";
         builder.Node.Moniker = "echo-node";
         builder.Node.AdvertiseSiteInLink = true;
@@ -66,19 +72,29 @@ public sealed class ConduitEchoTests(ITestOutputHelper output)
         await using var node = builder.Build();
         await node.StartAsync();
         output.WriteLine($"site address: {node.SiteAddress}");
-        output.WriteLine("site: OnSession registered before Build");
+
+        // The site's own front door, separate from the node's beacon port: a vessel accepted here
+        // is served as the *site*, which is the distinction #2 turned on.
+        using var stopping = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var host = new ShrineVesselHost(node, new IPEndPoint(IPAddress.Loopback, 0));
+        host.Start(stopping.Token);
+        output.WriteLine($"site listening on {host.LocalEndPoint}");
 
         var link = new NodestarLinkProvider(node.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1))
             .Current().Link;
         Assert.True(IntonationUri.TryParse(link, out var intonation, out _), "the node's link should parse");
-        output.WriteLine($"link shrine: {intonation.ShrineAddress}");
+        Assert.True(intonation.Shrine.HasValue, "the link should advertise the site it hosts");
 
-        var vessel = await TcpVessel.ConnectAsync("127.0.0.1", port);
+        var vessel = await TcpVessel.ConnectAsync("127.0.0.1", host.LocalEndPoint.Port);
+
+        // The SITE's Signet, not the node's InviterSigil. Pinning the node succeeds into a session
+        // with no Shrine behind it, and every rite on it then answers with a closed stream.
         await using var shrine = await Pilgrimage
-            .OverVesselAsync(vessel, intonation.InviterSigil, intonation.Network, new BouncyCastleSuite())
+            .OverVesselAsync(vessel, intonation.Shrine!.Value, intonation.Network, new BouncyCastleSuite())
             .WaitAsync(TimeSpan.FromSeconds(30));
 
-        output.WriteLine("pilgrim: pilgrimage complete");
+        output.WriteLine($"pilgrim: pilgrimage complete, MaxPayloadBytes={shrine.Conduits.MaxPayloadBytes}");
+        Assert.True(shrine.Conduits.MaxPayloadBytes > 0, "a Pilgrim should be able to read its own frame ceiling");
 
         await shrine.Conduits.SendAsync(new ConduitFrame
         {

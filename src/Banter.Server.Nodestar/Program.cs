@@ -1,6 +1,7 @@
 using Banter.Server;
 using Banter.Server.Files;
 using Banter.Server.Persistence;
+using System.Net;
 using Banter.Transport.Shrine;
 using CupriNet.Nodestar;
 
@@ -17,6 +18,10 @@ var dataDir = Arg("--data") ?? Path.Combine(
 Directory.CreateDirectory(dataDir);
 
 var concordium = Arg("--network") ?? "banter";
+
+// The site's own front door, and not the node's beacon port: a vessel accepted there reaches the
+// node, which has no Shrine behind it (CupriNodestar#2). Clients dial this one.
+var sitePort = int.TryParse(Arg("--site-port"), out var parsed) ? parsed : 7411;
 var adminPassword = Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD") ?? "admin";
 
 var storage = BanterStorageOptions.Parse("sqlite", $"Data Source={Path.Combine(dataDir, "banter.db")}");
@@ -50,9 +55,17 @@ var listener = builder.Site.ServeBanter(new Uri($"cupri://{concordium}/banter"))
 
 // Announced from OnStarted, not after Build: the site address does not exist until the node is
 // online, and printing it earlier says "Banter is on the site at " with nothing after it.
-builder.OnStarted((app, _) =>
+ShrineVesselHost? host = null;
+
+builder.OnStarted((app, cancellationToken) =>
 {
+    // Started here rather than after Build for the same reason the address is printed here: the
+    // site does not exist to be served until the node is online.
+    host = new ShrineVesselHost(app, new IPEndPoint(IPAddress.Any, sitePort));
+    host.Start(cancellationToken);
+
     Console.WriteLine($"Banter is on the site at {app.SiteAddress}");
+    Console.WriteLine($"Clients dial this node on port {host.LocalEndPoint.Port}.");
     Console.WriteLine("Press Ctrl+C to stop.");
     return Task.CompletedTask;
 });
@@ -82,6 +95,11 @@ try
 catch (OperationCanceledException)
 {
     // Ctrl+C.
+}
+
+if (host is not null)
+{
+    await host.DisposeAsync();
 }
 
 await listener.DisposeAsync();
