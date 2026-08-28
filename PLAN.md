@@ -1098,8 +1098,15 @@ agent replies will pass 192 KiB.
 in-memory channel on both ends, but the reference client opens no conduits — Banter's web head is
 the first real exercise, which its author said plainly rather than letting us find it.
 
+**Carrying now, over TCP** (`0.1.0-alpha.6.local`): a client dials the site's own vessel host and
+pins the **site's** Signet, and the whole Banter stack rides the conduit unchanged — handshake, two
+clients in a room, history paging. The node's listen port reaches the *node*, and a session with no
+Shrine behind it answers every rite with a closed stream; serving a site over a vessel is the
+separate act `AcceptPilgrimageAsync`, which only WebRTC did for itself
+([CupriNodestar#2](https://github.com/Wixely/CupriNodestar/issues/2)).
+
 *Blocked on publication:* CupriNet is on the feed at 0.3.6, but `CupriNet.Nodestar` still publishes
-`0.1.0-alpha.4` — alpha.5 is in the repo, not on the feed.
+`0.1.0-alpha.4` — alpha.6 is a local build, held off the feed by a GitHub artifact-storage quota.
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
 listed and fetched from another via room grant; browser client joins the same room text-only.*
 
