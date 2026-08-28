@@ -78,37 +78,56 @@ public sealed class ConduitSessionFrames(ConduitSession session, int maxFrameByt
 }
 
 /// <summary>
-/// Dials a Banter server that lives on a CupriNet site (PLAN §2.5): conjoin the node, make a
-/// Pilgrimage to the site's Signet, and take the conduit from the resulting
-/// <see cref="ShrineSession"/>.
+/// Dials a Banter server that lives on a CupriNet site (PLAN §2.5).
 ///
-/// <para>The vessel comes from the caller, because who owns the node differs by head — a desktop
-/// client makes its own, and the browser client is handed one by the page it was served from.</para>
+/// <para>The endpoint is the node's <b>intonation link</b>, not a host and port: a signed link
+/// already carries the site's Sigil and the network it belongs to, so a client needs nothing else
+/// to know what it is talking to and to verify that it reached it. That is also what makes the URI
+/// on this seam meaningful rather than decorative.</para>
+///
+/// <para>How to <i>reach</i> the node is separate from how to <i>identify</i> it, so the vessel is
+/// the caller's to open: a desktop client dials a beacon over TCP, a browser arrives over WebRTC,
+/// and an onion client over a circuit. No node is constructed on this side — a Pilgrim needs only
+/// a vessel, which is precisely what lets a browser be one.</para>
 /// </summary>
 public sealed class ShrineClientTransport(
-    Func<CancellationToken, Task<IVessel>> vessel,
-    Sigil siteSignet,
-    Concordium network,
+    Func<Intonation, CancellationToken, Task<IVessel>> dial,
     ICryptoSuite suite) : IBanterClientTransport
 {
     /// <summary>
-    /// A conservative frame bound for the client side. The server reads the real figure from its
-    /// own session; a Pilgrim has no equivalent, so this is the rite's own ceiling and the same
-    /// number a site would report on the WebRTC path.
+    /// The frame bound assumed for the client half. The site reads the real figure from its own
+    /// session; a Pilgrim has no equivalent to read, so this is the rite's own ceiling.
     /// </summary>
     public int MaxFrameBytes { get; init; } = 196608;
 
     public async Task<IBanterConnection> ConnectAsync(Uri endpoint, CancellationToken cancellationToken = default)
     {
-        var carrier = await vessel(cancellationToken).ConfigureAwait(false);
+        if (!IntonationUri.TryParse(endpoint.OriginalString.Trim(), out var intonation, out _))
+        {
+            throw new ArgumentException(
+                $"'{endpoint}' is not a CupriNet intonation link.", nameof(endpoint));
+        }
 
-        var shrine = await Pilgrimage
-            .OverVesselAsync(carrier, siteSignet, network, suite, cancellationToken: cancellationToken)
+        if (intonation.Shrine is not { } shrine)
+        {
+            // A link from a node that hosts no site, or one issued before the site existed. Worth
+            // saying plainly: the Pilgrimage would otherwise fail with nothing to point at.
+            throw new ArgumentException(
+                $"The link for '{intonation.Moniker}' advertises no site to make a pilgrimage to.",
+                nameof(endpoint));
+        }
+
+        var vessel = await dial(intonation, cancellationToken).ConfigureAwait(false);
+
+        var shrineSession = await Pilgrimage
+            .OverVesselAsync(vessel, intonation.InviterSigil, intonation.Network, suite, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         return new ShrineClientConnection(
-            new ShrineConnection(new ConduitSessionFrames(shrine.Conduits, MaxFrameBytes), siteSignet.ToString() ?? "site"),
-            shrine);
+            new ShrineConnection(
+                new ConduitSessionFrames(shrineSession.Conduits, MaxFrameBytes),
+                intonation.ShrineAddress ?? shrine.ToString() ?? "site"),
+            shrineSession);
     }
 
     /// <summary>
