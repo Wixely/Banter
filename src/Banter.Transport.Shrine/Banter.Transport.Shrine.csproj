@@ -7,5 +7,13 @@
     <!-- 0.1.0-alpha.5.local: a local build, restored through this project's own NuGet.config.
          Switch to 0.1.0-alpha.5 and delete that file once the feed has it. -->
     <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.5.local" />
+    <!-- The client half: Pilgrimage, ShrineSession and the Conduit rite. -->
+    <PackageReference Include="CupriNet.Shrine" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Rites" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Hosting" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Abstractions" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Alembic" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Core" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Vessel" Version="0.3.6" />
   </ItemGroup>
 </Project>

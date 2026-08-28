@@ -9,13 +9,6 @@ namespace Banter.Transport.Shrine;
 public static class ShrineSite
 {
     /// <summary>
-    /// Banter's conduit protocol id. Chosen freely — the rite keeps no registry — and checked by
-    /// Nodestar itself: a frame under any other id ends the session and tells the peer why, rather
-    /// than being quietly ignored.
-    /// </summary>
-    public const uint BanterProtocolId = 0xBA1E70;
-
-    /// <summary>
     /// Serves Banter over this site's conduit, returning the listener to hand to
     /// <c>BanterServer</c>.
     ///
@@ -25,7 +18,7 @@ public static class ShrineSite
     {
         var listener = new ShrineBanterListener(endpoint);
 
-        site.OnSession(BanterProtocolId, (session, cancellationToken) =>
+        site.OnSession(Banter.Protocol.Transport.BanterConduit.ProtocolId, (session, cancellationToken) =>
             listener.HandleSessionAsync(
                 new SiteSessionFrames(session),
                 $"pilgrim:{session.ProtocolId:x}",

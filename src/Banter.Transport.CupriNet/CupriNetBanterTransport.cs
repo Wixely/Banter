@@ -42,7 +42,6 @@ public sealed record CupriNetTransportOptions
 public sealed class CupriNetBanterTransport(CupriNetTransportOptions options) : IBanterClientTransport, IBanterServerTransport, IAsyncDisposable
 {
     /// <summary>Conduit protocol id for BanterProtocol envelope frames.</summary>
-    private const uint BanterProtocolId = 0xBA17;
 
     private readonly SemaphoreSlim _nodeGate = new(1, 1);
     private CupriNode? _node;
@@ -186,7 +185,7 @@ public sealed class CupriNetBanterTransport(CupriNetTransportOptions options) : 
         {
             var conduitFrame = new ConduitFrame
             {
-                ProtocolId = BanterProtocolId,
+                ProtocolId = BanterConduit.ProtocolId,
                 SchemaVersion = 1,
                 Flags = 0,
                 Payload = frame.ToArray(),
@@ -226,7 +225,7 @@ public sealed class CupriNetBanterTransport(CupriNetTransportOptions options) : 
                     return null;
                 }
 
-                if (frame.ProtocolId == BanterProtocolId)
+                if (frame.ProtocolId == BanterConduit.ProtocolId)
                 {
                     return frame.Payload;
                 }
