@@ -174,7 +174,7 @@
       "type": "msedge",
       "request": "launch",
       "preLaunchTask": "serve-web",
-      "url": "http://localhost:5190",
+      "url": "http://localhost:7775",
       "webRoot": "${workspaceFolder}/src/Banter.App.Web/wwwroot",
       "browserLaunchLocation": "workspace"
     },
@@ -183,7 +183,7 @@
       "type": "chrome",
       "request": "launch",
       "preLaunchTask": "serve-web",
-      "url": "http://localhost:5190",
+      "url": "http://localhost:7775",
       "webRoot": "${workspaceFolder}/src/Banter.App.Web/wwwroot",
       "browserLaunchLocation": "workspace"
     },

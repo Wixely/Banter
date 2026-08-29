@@ -140,10 +140,27 @@ The local source is declared in a `NuGet.config` beside each of those projects, 
 repo and CI restore exactly as before. **When alpha.6 reaches the feed:** delete those files, change
 the `PackageReference` to `0.1.0-alpha.6`, and put the projects in the solution.
 
+### Ports
+
+Everything Banter binds sits in one block, and none of it is left to a framework default — a
+Banter node and a plain Nodestar node used to pick the same web front and the same overlay port, so
+whichever started second failed to bind.
+
+| Port | What | Override |
+|---|---|---|
+| 7770 | `Banter.Server`, plain TCP | `--endpoint` |
+| 7771 | mesh server: vessels, for desktop clients | `--site-port` |
+| 7772 | mesh server: the node's overlay beacon | `--listen-port` |
+| 7773/udp | mesh server: the browser on-ramp (WebRTC) | `--webrtc-port` |
+| 7774 | mesh server: clearnet front, serving `link.json` | `--web-port` |
+| 7775 | the web head's dev server | `Properties/launchSettings.json` |
+
+The mesh server prints all four of its own at startup, so a failure to bind names the port.
+
 ### Debugging the web stack
 
 **Run → "Mesh server + web client"** (`.vscode/launch.json`). That builds and starts a Banter
-server on a CupriNet node with WebRTC on, serves the web head at `http://localhost:5190`, and opens
+server on a CupriNet node with WebRTC on, serves the web head at `http://localhost:7775`, and opens
 a browser on it. Sign in as **admin / banter**.
 
 The Server field is already filled: the node writes its link to

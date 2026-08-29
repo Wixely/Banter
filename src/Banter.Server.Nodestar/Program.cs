@@ -20,9 +20,19 @@ Directory.CreateDirectory(dataDir);
 
 var concordium = Arg("--network") ?? "banter";
 
-// The site's own front door, and not the node's beacon port: a vessel accepted there reaches the
-// node, which has no Shrine behind it (CupriNodestar#2). Clients dial this one.
-var sitePort = int.TryParse(Arg("--site-port"), out var parsed) ? parsed : 7411;
+// Every port this process binds is named here, and none is left to Nodestar's defaults.
+//
+// Inheriting them meant a Banter node and a Nodestar node could not run side by side — they chose
+// the same web front and the same overlay port, so whichever started second failed to bind. These
+// sit in Banter's own block beside the socket server on 7770, which keeps a whole deployment
+// findable in one range and out of the way of the framework it is built on.
+//
+// The site port is the site's own front door, and not the node's beacon port: a vessel accepted
+// there reaches the node, which has no Shrine behind it (CupriNodestar#2). Clients dial this one.
+var sitePort = Port("--site-port", 7771);      // vessels, for desktop clients
+var listenPort = Port("--listen-port", 7772);  // the node's own overlay beacon
+var webRtcPort = Port("--webrtc-port", 7773);  // the browser on-ramp (UDP)
+var webPort = Port("--web-port", 7774);        // the clearnet front, and the link.json it serves
 
 // Where to drop this node's link so a browser client can seed itself instead of being pasted
 // into. The web head fetches it from its own origin, which is why this is a file rather than an
@@ -79,6 +89,9 @@ var builder = NodestarApplication.CreateBuilder(args);
 builder.Node.Concordium = concordium;
 builder.Node.DataDirectory = Path.Combine(dataDir, "mesh");
 builder.Node.SiteName = "Banter";
+builder.Node.ListenPort = listenPort;
+builder.Node.WebRtcPort = webRtcPort;
+builder.Node.WebPort = webPort;
 
 // A Pilgrim pins the SITE's Signet, so a node that does not put one in its link cannot be visited
 // at all — the link would describe a node and nothing it hosts.
@@ -104,7 +117,9 @@ builder.OnStarted((app, cancellationToken) =>
     host.Start(cancellationToken);
 
     Console.WriteLine($"Banter is on the site at {app.SiteAddress}");
-    Console.WriteLine($"Desktop clients dial this node on port {host.LocalEndPoint.Port}.");
+    Console.WriteLine(
+        $"Ports: vessels {host.LocalEndPoint.Port}, overlay {listenPort}, " +
+        $"WebRTC {webRtcPort}/udp, web {webPort}.");
 
     // The link is what a browser needs, and the only thing it needs: it carries the site's Signet,
     // the network, and the WebRTC credentials the browser writes the node's answer from.
@@ -195,6 +210,9 @@ await nodestar.DisposeAsync();
 // loads the page next. A hard kill skips this, which is what the delete at startup is for.
 ClearSeed();
 return 0;
+
+int Port(string name, int fallback) =>
+    int.TryParse(Arg(name), out var value) ? value : fallback;
 
 string? Arg(string name)
 {

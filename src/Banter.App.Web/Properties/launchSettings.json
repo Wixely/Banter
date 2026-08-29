@@ -3,7 +3,7 @@
     "Banter.App.Web": {
       "commandName": "Project",
       "launchBrowser": false,
-      "applicationUrl": "http://localhost:5190",
+      "applicationUrl": "http://localhost:7775",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
