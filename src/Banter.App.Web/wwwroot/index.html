@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Banter</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- No favicon here on purpose: the host sets one at boot from the app's own icon bytes, so it
+       lives in one place rather than as a base64 copy that drifts. -->
+  <link rel="preload" id="webassembly" />
+  <script type="importmap"></script>
+  <script type='module' src="main#[.{fingerprint}].js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; font-family: sans-serif; }
+    /* Fill the window: the app scales into whatever viewport it is given. */
+    #banter { display: block; width: 100vw; height: 100vh; outline: none; }
+  </style>
+</head>
+
+<body>
+  <!-- The engine draws the whole UI here. No HTML widgets and no Blazor — a canvas and nothing else. -->
+  <canvas id="banter"></canvas>
+</body>
+
+</html>

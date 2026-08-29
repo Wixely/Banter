@@ -56,3 +56,20 @@ jobs:
         run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password ${{ github.token }} --store-password-in-clear-text --configfile NuGet.config
       - name: Build
         run: dotnet build src/Banter.App.Android/Banter.App.Android.csproj --configuration Release
+
+  web:
+    # Out of Banter.slnx for the same reason as the Android head: the `wasm-tools` workload would
+    # otherwise be a requirement for anyone building the server or the desktop client.
+    name: Build the web head
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Install the WebAssembly workload
+        run: dotnet workload install wasm-tools
+      - name: Add Wixely feed credentials
+        run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password ${{ github.token }} --store-password-in-clear-text --configfile NuGet.config
+      - name: Publish
+        run: dotnet publish src/Banter.App.Web/Banter.App.Web.csproj --configuration Release
