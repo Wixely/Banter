@@ -8,6 +8,11 @@
 
 import { dotnet } from './_framework/dotnet.js'
 
+// Reaching this line means the module loaded, which is the thing index.html's fallback is
+// watching for. Set before any work, so a later failure reports itself properly rather than
+// being mistaken for a script that never arrived.
+window.__banterBooted = true;
+
 const canvas = document.getElementById('banter');
 const ctx = canvas.getContext('2d');
 

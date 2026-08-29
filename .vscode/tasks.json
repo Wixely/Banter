@@ -44,12 +44,17 @@
     {
       // Serves the web head on the fixed port in Properties/launchSettings.json, and stays up.
       // The browser configs wait for the "App url" line rather than racing it.
+      //
+      // No dependsOn: `dotnet run` builds. Depending on build-web as well would rebuild the
+      // project a second time, and a rebuild UNDERNEATH a server that is already serving is the
+      // one thing to avoid here — scripts are fingerprinted, so the running server keeps
+      // advertising a filename the rebuild has just replaced, the import 404s, and the page loads
+      // to a blank canvas with no error on it. If that happens, restart this task.
       "label": "serve-web",
       "command": "dotnet",
       "type": "process",
       "args": ["run", "--project", "${workspaceFolder}/src/Banter.App.Web/Banter.App.Web.csproj"],
       "isBackground": true,
-      "dependsOn": "build-web",
       "problemMatcher": {
         "pattern": [{ "regexp": "^\\s*$", "file": 1, "location": 2, "message": 3 }],
         "background": {

@@ -20,6 +20,30 @@
 <body>
   <!-- The engine draws the whole UI here. No HTML widgets and no Blazor — a canvas and nothing else. -->
   <canvas id="banter"></canvas>
+
+  <!--
+    Not a module, on purpose: this has to run even when the module above never does. If main.js
+    fails to load at all, nothing in it can report that — the page just sits there as a blank
+    canvas with no error anywhere a person would look.
+
+    The way that happens in practice: scripts are fingerprinted, so rebuilding the project while
+    the dev server is still serving leaves the page importing a filename that no longer exists.
+    The fix is to restart the server, and this is what says so.
+  -->
+  <script>
+    setTimeout(function () {
+      if (window.__banterBooted) return;
+      var c = document.getElementById('banter');
+      var g = c.getContext('2d');
+      g.fillStyle = '#14161a'; g.fillRect(0, 0, c.width, c.height);
+      g.fillStyle = '#e6e8eb'; g.font = '15px sans-serif';
+      g.fillText('Banter did not start.', 24, 40);
+      g.fillStyle = '#8b93a1'; g.font = '13px sans-serif';
+      g.fillText('Its script did not load. If the project was rebuilt while this server was', 24, 68);
+      g.fillText('running, the page is asking for a filename that no longer exists — restart', 24, 90);
+      g.fillText('the dev server. Otherwise the browser console has the reason.', 24, 112);
+    }, 15000);
+  </script>
 </body>
 
 </html>
