@@ -10,7 +10,7 @@ using SkiaSharp;
 // this. That sample carries video underlays, an ARIA mirror, IME positioning and a clipboard
 // bridge; this carries what Banter needs to be usable and nothing it does not, because every line
 // here is upstream's concern living in the wrong repository until there is a CupriFace.Web
-// package (CupriFace#57).
+// package (CupriFace#73).
 Console.WriteLine("[Banter] WASM runtime started.");
 
 public partial class Interop
