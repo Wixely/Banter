@@ -177,6 +177,77 @@ public sealed class ConnectScreenTests
         Assert.Equal("tcp://host:7770", vm.Model.ConnectServer);
     }
 
+
+    /// <summary>
+    /// The card is centred horizontally. It was not: the engine does not honour `margin: auto` on
+    /// a flex item (CupriFace#76), so the card sat against the container's left padding on every
+    /// head — measured at x=60 in a 1440-wide viewport, where centred is x=540.
+    /// </summary>
+    [Fact]
+    public void TheCardIsCentred()
+    {
+        const int width = 1440, height = 900;
+        var vm = new ChatViewModel();
+        vm.ShowConnect("tcp://host:7770", "alice");
+        var app = new BanterChatApp(vm);
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(width, height);
+        var pixels = doc.RenderToPixels(width, height, SkiaSharp.SKColors.Black);
+
+        // Scan a row through the card and find where its fill (#14161a) starts and ends against
+        // the darker backdrop behind it.
+        const int row = 250;
+        int first = -1, last = -1;
+        for (var x = 0; x < width; x++)
+        {
+            var i = ((row * width) + x) * 4;
+            if (pixels[i] == 0x14 && pixels[i + 1] == 0x16 && pixels[i + 2] == 0x1a)
+            {
+                if (first < 0)
+                {
+                    first = x;
+                }
+
+                last = x;
+            }
+        }
+
+        Assert.True(first >= 0, "the card should be painted at all");
+
+        // Its midpoint is the viewport's, within a pixel of rounding.
+        var midpoint = (first + last) / 2.0;
+        Assert.InRange(midpoint, (width / 2.0) - 2, (width / 2.0) + 2);
+    }
+
+    /// <summary>
+    /// Nothing of the room shows beside it. The overlay is absolutely positioned but was declared
+    /// before the agent roster, and the engine paints in document order — so the roster sat on top
+    /// of a screen whose whole job is to be the only thing there.
+    /// </summary>
+    [Fact]
+    public void NothingShowsBesideIt()
+    {
+        const int width = 1440, height = 900;
+        var vm = new ChatViewModel();
+        vm.ShowConnect("tcp://host:7770", "alice");
+        var app = new BanterChatApp(vm);
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(width, height);
+        var pixels = doc.RenderToPixels(width, height, SkiaSharp.SKColors.Black);
+
+        // A row well below the card, where only the backdrop should be.
+        const int row = 700;
+        for (var x = 0; x < width; x++)
+        {
+            var i = ((row * width) + x) * 4;
+            Assert.True(
+                pixels[i] == 0x0d && pixels[i + 1] == 0x0f && pixels[i + 2] == 0x13,
+                $"x={x} shows #{pixels[i]:x2}{pixels[i + 1]:x2}{pixels[i + 2]:x2} through the connect screen");
+        }
+    }
+
 }
 
 /// <summary>The screen driven through a real document, the way a thumb hits it.</summary>

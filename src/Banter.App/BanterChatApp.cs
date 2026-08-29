@@ -193,19 +193,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               </div>
             </div>
           </div>
-          <div class="{{ConnectClass}}">
-            <div class="connect-card">
-              <div class="connect-title">Banter</div>
-              <div class="connect-label">Server</div>
-              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770"></cupri-textfield>
-              <div class="connect-label">Name</div>
-              <cupri-textfield class="connect-field" value="{{ConnectUser}}" placeholder="your nick"></cupri-textfield>
-              <div class="connect-label">Password</div>
-              <cupri-password class="connect-field" value="{{ConnectPassword}}"></cupri-password>
-              <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
-              <div class="connect-status">{{ConnectStatus}}</div>
-            </div>
-          </div>
           <div class="roster">
             <div class="{{ToolsButtonClass}}" data-tools-open="1">Manage tools</div>
             <div class="{{TasksClass}}">
@@ -222,11 +209,30 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="agent-meta">{{Skills}}</div>
             </div>
           </div>
+          <div class="{{ConnectClass}}">
+            <div class="connect-card">
+              <div class="connect-title">Banter</div>
+              <div class="connect-label">Server</div>
+              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770"></cupri-textfield>
+              <div class="connect-label">Name</div>
+              <cupri-textfield class="connect-field" value="{{ConnectUser}}" placeholder="your nick"></cupri-textfield>
+              <div class="connect-label">Password</div>
+              <cupri-password class="connect-field" value="{{ConnectPassword}}"></cupri-password>
+              <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
+              <div class="connect-status">{{ConnectStatus}}</div>
+            </div>
+          </div>
         </div>
         """;
 
     public override string Css => """
-        body { background: #14161a; color: #e6e8eb; font-size: 14px; }
+        /* The cupri-* components read these rather than inheriting `color`, so setting them here
+           is what makes typed text in a field the same brightness as the text around it. Without
+           them the components fall back to their own defaults — which, on this dark ground, drew
+           entered values DIMMER than the placeholder they replaced. */
+        body { background: #14161a; color: #e6e8eb; font-size: 14px;
+               --cupri-text: #e6e8eb; --cupri-muted: #8b93a1; --cupri-surface: #1b1e24;
+               --cupri-border: #2b313b; --cupri-hover: #232830; }
         .app { display: flex; flex-direction: row; height: 100%; }
 
         .sidebar { display: flex; flex-direction: column; width: 220px; background: #1b1e24; padding: 12px; }
@@ -354,10 +360,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         /* Over everything, and its own colour: until this is dealt with there is no room to
            look at behind it. */
+        /* No padding here, and the offset is on the card instead. `width: 100%` plus padding
+           overflows, because the engine sizes content-box and does not honour `box-sizing`
+           (CupriFace#76) — which put the centre 60px right of the viewport's. */
         .connect { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-                   display: flex; background: #0d0f13; padding: 60px; }
+                   display: flex; justify-content: center; background: #0d0f13; }
         .connect.hidden { display: none; }
-        .connect-card { width: 360px; margin-left: auto; margin-right: auto;
+        /* Centred by the container, not by auto margins on the item: the engine does not honour
+           `margin: auto` on a flex item either. Top-aligned on purpose — a short viewport must
+           not push the card off-screen. */
+        .connect-card { width: 360px; margin-top: 60px;
                         display: flex; flex-direction: column; background: #14161a;
                         border-radius: 6px; padding: 20px; height: 340px; }
         .connect-title { font-weight: bold; font-size: 20px; padding-bottom: 12px; }
