@@ -8,3 +8,7 @@ artifacts/
 # Local debug profile: settings, mesh identity and SQLite db written by the VS Code
 # launch configs, kept out of the real profile at %APPDATA%/Banter.
 .banter-dev/
+
+# Written at runtime by `banter-nodestar --seed-file` so the web client can pre-fill its Server
+# field. A link, not a secret, but it is machine- and run-specific and belongs to nobody else.
+src/Banter.App.Web/wwwroot/seed.json

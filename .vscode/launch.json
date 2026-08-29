@@ -135,12 +135,77 @@
       "stopAtEntry": false
     },
     {
+      // The server on a CupriNet node instead of a socket: this is what the browser client
+      // talks to. Full C# debugging, same as any other coreclr config.
+      //
+      // --seed-file drops this node's link where the web head can fetch it from its own origin,
+      // so the browser pre-fills its Server field instead of needing a 400-character paste on
+      // every run. The file is gitignored and rewritten every 30s, because links rotate.
+      "name": "Mesh server (Nodestar + WebRTC)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-mesh-server",
+      "program": "${workspaceFolder}/src/Banter.Server.Nodestar/bin/Debug/net10.0/banter-nodestar.dll",
+      "args": [
+        "--data", "${workspaceFolder}/.banter-dev/nodestar",
+        "--network", "banter-dev",
+        "--seed-file", "${workspaceFolder}/src/Banter.App.Web/wwwroot/seed.json"
+      ],
+      "env": { "BANTER_ADMIN_PASSWORD": "banter" },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      // The web head, in a browser. VS Code's BUILT-IN JS debugger — nothing Blazor-named, and
+      // nothing Blazor in the app either (see src/Banter.App.Web: no Razor, no components, just
+      // Microsoft.NET.Sdk.WebAssembly, which is the WASM build SDK).
+      //
+      // WHAT YOU GET: breakpoints, stepping and the console in main.js — the WebRTC dial, the
+      // canvas blit, the input plumbing. Plus everything the app logs, and the boot log element.
+      //
+      // WHAT YOU DO NOT GET: breakpoints in the client's C#. The SDK ships a Mono debug proxy for
+      // that (WasmAppHost prints it as "Debug at url"), but the only VS Code adapter that speaks
+      // to it is the one the C# extension calls "blazorwasm" — a name, not a dependency, though
+      // it is built around Blazor's boot shape and is not wired here. Debug the client's C# by
+      // pushing the logic down into Banter.App/Banter.Client.Core and covering it from the test
+      // suite, which is where it belongs anyway: this head is ~340 lines of host glue.
+      "name": "Web client (Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "preLaunchTask": "serve-web",
+      "url": "http://localhost:5190",
+      "webRoot": "${workspaceFolder}/src/Banter.App.Web/wwwroot",
+      "browserLaunchLocation": "workspace"
+    },
+    {
+      "name": "Web client (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "serve-web",
+      "url": "http://localhost:5190",
+      "webRoot": "${workspaceFolder}/src/Banter.App.Web/wwwroot",
+      "browserLaunchLocation": "workspace"
+    },
+    {
       "name": "Attach to process",
       "type": "coreclr",
       "request": "attach"
     }
   ],
   "compounds": [
+    {
+      // The web stack: a Banter server on a CupriNet node, and the browser client that reaches
+      // it over WebRTC. The server seeds its link, so the client's Server field is already
+      // filled — sign in as admin / banter.
+      //
+      // Both halves are debuggable, in different debuggers: C# breakpoints in the server through
+      // coreclr, and JS breakpoints in the client through the browser. They are separate
+      // processes on purpose — the browser is a real peer here, not a hosted page.
+      "name": "Mesh server + web client",
+      "configurations": ["Mesh server (Nodestar + WebRTC)", "Web client (Edge)"],
+      "stopAll": true
+    },
     {
       // The one to pick for a first smoke test: server plus two clients in one room.
       "name": "Server + alice + bob",

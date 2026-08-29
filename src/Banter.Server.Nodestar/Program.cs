@@ -23,6 +23,11 @@ var concordium = Arg("--network") ?? "banter";
 // The site's own front door, and not the node's beacon port: a vessel accepted there reaches the
 // node, which has no Shrine behind it (CupriNodestar#2). Clients dial this one.
 var sitePort = int.TryParse(Arg("--site-port"), out var parsed) ? parsed : 7411;
+
+// Where to drop this node's link so a browser client can seed itself instead of being pasted
+// into. The web head fetches it from its own origin, which is why this is a file rather than an
+// endpoint: in development the client is served by its own dev server, not by this node.
+var seedFile = Arg("--seed-file");
 var adminPassword = Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD") ?? "admin";
 
 var storage = BanterStorageOptions.Parse("sqlite", $"Data Source={Path.Combine(dataDir, "banter.db")}");
@@ -78,12 +83,50 @@ builder.OnStarted((app, cancellationToken) =>
 
     // The link is what a browser needs, and the only thing it needs: it carries the site's Signet,
     // the network, and the WebRTC credentials the browser writes the node's answer from.
-    var link = new NodestarLinkProvider(app.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1))
-        .Current().Link;
+    var links = new NodestarLinkProvider(app.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1));
     Console.WriteLine();
     Console.WriteLine("Paste this into the web client's Server field:");
-    Console.WriteLine(link);
+    Console.WriteLine(links.Current().Link);
     Console.WriteLine();
+
+    if (seedFile is not null)
+    {
+        // Rewritten on a timer rather than written once: a link has a lifetime and rotates, so a
+        // seed file written at startup is stale by the time a long debugging session gets back to
+        // it — and a stale link fails in a way that looks like the transport being broken.
+        _ = Task.Run(async () =>
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(seedFile))!);
+                    await File.WriteAllTextAsync(
+                        seedFile,
+                        System.Text.Json.JsonSerializer.Serialize(new { link = links.Current().Link }),
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // A seed nobody can write is a convenience lost, not a node that should stop.
+                    Console.Error.WriteLine($"warning: could not write the seed file: {ex.Message}");
+                }
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }, cancellationToken);
+
+        Console.WriteLine($"Seeding the web client from {seedFile}.");
+        Console.WriteLine();
+    }
+
     Console.WriteLine("Press Ctrl+C to stop.");
     return Task.CompletedTask;
 });

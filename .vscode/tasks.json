@@ -15,6 +15,51 @@
       "problemMatcher": "$msCompile"
     },
     {
+      // The mesh server and the web head are NOT in Banter.slnx (the web head needs the
+      // wasm-tools workload, and the mesh server restores a local Nodestar build), so the
+      // default `build` task does not touch them.
+      "label": "build-mesh-server",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Banter.Server.Nodestar/Banter.Server.Nodestar.csproj",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build-web",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Banter.App.Web/Banter.App.Web.csproj",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      // Serves the web head on the fixed port in Properties/launchSettings.json, and stays up.
+      // The browser configs wait for the "App url" line rather than racing it.
+      "label": "serve-web",
+      "command": "dotnet",
+      "type": "process",
+      "args": ["run", "--project", "${workspaceFolder}/src/Banter.App.Web/Banter.App.Web.csproj"],
+      "isBackground": true,
+      "dependsOn": "build-web",
+      "problemMatcher": {
+        "pattern": [{ "regexp": "^\\s*$", "file": 1, "location": 2, "message": 3 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "WasmAppHost",
+          "endsPattern": "App url:"
+        }
+      }
+    },
+    {
       "label": "test",
       "command": "dotnet",
       "type": "process",

@@ -90,8 +90,8 @@ public partial class Interop
 
         // No server is configured in a browser — there are no command-line arguments to read one
         // from — so the connect screen is where every session starts. The server is the node's
-        // intonation link, pasted in.
-        _viewModel.ShowConnect(server: "", user: "");
+        // intonation link: pasted in, or seeded by a node that was asked to leave one.
+        _viewModel.ShowConnect(server: SeedLink(), user: "");
     }
 
     /// <summary>
@@ -418,4 +418,8 @@ public partial class Interop
 
     [JSImport("favicon", "banter")]
     internal static partial void SetFavicon(string dataUri);
+
+    /// <summary>The link a node left for us, or empty. Read once, at startup.</summary>
+    [JSImport("seedLink", "banter")]
+    internal static partial string SeedLink();
 }

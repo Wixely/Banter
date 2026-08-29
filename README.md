@@ -140,6 +140,28 @@ The local source is declared in a `NuGet.config` beside each of those projects, 
 repo and CI restore exactly as before. **When alpha.6 reaches the feed:** delete those files, change
 the `PackageReference` to `0.1.0-alpha.6`, and put the projects in the solution.
 
+### Debugging the web stack
+
+**Run → "Mesh server + web client"** (`.vscode/launch.json`). That builds and starts a Banter
+server on a CupriNet node with WebRTC on, serves the web head at `http://localhost:5190`, and opens
+a browser on it. Sign in as **admin / banter**.
+
+The Server field is already filled: the node writes its link to
+`src/Banter.App.Web/wwwroot/seed.json` (`--seed-file`, gitignored, rewritten every 30s because links
+rotate), and the client fetches it from its own origin at boot. Without that the field would need a
+400-character paste on every run.
+
+Breakpoints: **C# in the server** through the ordinary .NET debugger, and **JavaScript in the
+client** through VS Code's built-in browser debugger. Breakpoints in the client's *C#* are not
+wired — the SDK ships a Mono debug proxy for it, but the only VS Code adapter that drives that proxy
+is the Blazor-named one, and there is no Blazor here. In practice the web head is host glue; the
+behaviour worth stepping through lives in `Banter.App` and `Banter.Client.Core`, which the test suite
+covers headlessly.
+
+Nothing in `Banter.App.Web` is Blazor: no Razor, no components, no `blazor.webassembly.js`.
+`Microsoft.NET.Sdk.WebAssembly` is the WASM build SDK, and the UI is the same `CupriApp` the desktop
+runs, painted to a canvas.
+
 ### The Android head
 
 `Banter.App.Android` is **not** in `Banter.slnx`, on purpose: it needs the `android` workload, and

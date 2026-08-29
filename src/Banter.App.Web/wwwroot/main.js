@@ -120,6 +120,8 @@ try {
             window.__paints++;
         },
         cursor: name => { canvas.style.cursor = name; },
+        // The node's link, if one was left for us. Same origin, so no CORS and no server to ask.
+        seedLink: () => seed,
         navigate: href => { window.open(href, '_blank', 'noopener'); },
         favicon: dataUri => {
             let link = document.querySelector('link[rel="icon"]');
@@ -199,6 +201,14 @@ try {
         },
         rtcClose: () => { rtcTeardown(); rtc.state = 3; },
     });
+
+    // A link left by a node that was told to seed us (the server's --seed-file). Absent in a
+    // normal deployment, where the person pastes a link — so a miss is silence, not an error.
+    let seed = '';
+    try {
+        const res = await fetch('seed.json', { cache: 'no-store' });
+        if (res.ok) seed = (await res.json()).link || '';
+    } catch { /* no seed; the connect screen asks for one */ }
 
     const config = getConfig();
     const exports = await getAssemblyExports(config.mainAssemblyName);
