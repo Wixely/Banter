@@ -29,19 +29,28 @@ var sitePort = int.TryParse(Arg("--site-port"), out var parsed) ? parsed : 7411;
 // endpoint: in development the client is served by its own dev server, not by this node.
 var seedFile = Arg("--seed-file");
 
-// Deleted before the node starts, not merely overwritten when it is ready. A seed left by the
-// PREVIOUS run names this same node but carries that process's ICE credentials, which died with
-// it — so a client that reads it fails to connect in a way that looks like a bad password rather
-// than a stale file. Better for the client to find nothing and wait.
-if (seedFile is not null)
+// The seed file exists only while this node does, which takes deleting it at both ends.
+//
+// A seed outliving its node is the trap: it names a node that is gone, or names this one with a
+// dead process's ICE credentials, and a client that reads it hangs partway through a handshake
+// with nothing to talk to. That reads as the client being broken. Far better to leave no link at
+// all — the client then knows to wait, and says so.
+ClearSeed();
+
+void ClearSeed()
 {
+    if (seedFile is null)
+    {
+        return;
+    }
+
     try
     {
         File.Delete(seedFile);
     }
     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     {
-        Console.Error.WriteLine($"warning: could not clear the old seed file: {ex.Message}");
+        Console.Error.WriteLine($"warning: could not clear the seed file: {ex.Message}");
     }
 }
 var adminPassword = Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD") ?? "admin";
@@ -181,6 +190,10 @@ if (host is not null)
 
 await listener.DisposeAsync();
 await nodestar.DisposeAsync();
+
+// The node is down, so its link is worthless. Taken away rather than left to mislead whoever
+// loads the page next. A hard kill skips this, which is what the delete at startup is for.
+ClearSeed();
 return 0;
 
 string? Arg(string name)

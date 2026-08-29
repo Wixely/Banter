@@ -50,6 +50,13 @@ public sealed partial class BrowserDataChannel : IDataChannel
     /// The link carries no WebRTC endpoint, or the connection failed. A link without one belongs to
     /// a node that a browser simply cannot reach, which is worth saying rather than timing out.
     /// </exception>
+    /// <summary>
+    /// How long to wait for the channel to open. On a loopback node this is instant and over a
+    /// network it is seconds; anything longer means the node is not answering, and a person
+    /// watching a button say "Connecting" forever learns nothing.
+    /// </summary>
+    private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(20);
+
     public static async Task<BrowserDataChannel> ConnectAsync(
         Intonation intonation,
         CancellationToken cancellationToken = default)
@@ -84,6 +91,8 @@ public sealed partial class BrowserDataChannel : IDataChannel
         // Polling, because the browser reports readiness through state rather than a promise we can
         // await across the JS boundary. The runtime is single-threaded, so this yields to the event
         // loop — a blocking wait here would stop the very callbacks it is waiting for.
+        var deadline = DateTimeOffset.UtcNow + OpenTimeout;
+
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -95,7 +104,20 @@ public sealed partial class BrowserDataChannel : IDataChannel
                 case 2:
                 case 3:
                     _current = null;
+                    RtcClose();
                     throw new InvalidOperationException($"WebRTC: {RtcError()}");
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                // ICE never completes against a node that is no longer there — no refusal comes
+                // back, because there is nothing to refuse. Naming the address is the useful part:
+                // it is nearly always a link outliving the node that issued it.
+                _current = null;
+                RtcClose();
+                throw new TimeoutException(
+                    $"No answer from {host}:{webRtc.Port} after {OpenTimeout.TotalSeconds:0}s. " +
+                    "The link may be older than the node it names.");
             }
 
             await Task.Delay(25, cancellationToken).ConfigureAwait(false);
