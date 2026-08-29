@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
+    <ProjectReference Include="../../src/Banter.Transport.Shrine.Nodestar/Banter.Transport.Shrine.Nodestar.csproj" />
     <!-- The end-to-end test runs a real server on a real node and dials it. -->
     <ProjectReference Include="../../src/Banter.Server/Banter.Server.csproj" />
     <ProjectReference Include="../../src/Banter.Client.Core/Banter.Client.Core.csproj" />

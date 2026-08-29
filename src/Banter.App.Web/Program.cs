@@ -1,6 +1,11 @@
 using System.Runtime.InteropServices.JavaScript;
 using Banter.App;
+using Banter.App.Web;
+using Banter.Client.Core;
+using Banter.Transport.Shrine;
 using CupriFace;
+using CupriNet.Alembic.BouncyCastle;
+using CupriNet.Vessel;
 using SkiaSharp;
 
 // The web head. A raw .NET WebAssembly host — no Blazor — running the same CupriApp the desktop
@@ -26,13 +31,33 @@ public partial class Interop
     private static int _lastWidth, _lastHeight;
     private static bool _dirty = true;
     private static string _cursor = "";
+    private static BanterChatSession? _session;
+
+    /// <summary>Matches the desktop head's default; there is no settings file to read one from.</summary>
+    private const int HistoryPageSize = 50;
 
     /// <summary>Builds the app and its document once, before the first frame.</summary>
     [JSExport]
     internal static void Init()
     {
         _viewModel = new ChatViewModel();
-        _app = new BanterChatApp(_viewModel);
+
+        // Every callback resolves the session when it is called rather than when it is wired: the
+        // app exists from the first frame, and the session only after someone connects. The desktop
+        // head can build them in the other order because it connects before it has a window.
+        _app = new BanterChatApp(_viewModel)
+        {
+            ConnectAsync = ConnectAsync,
+            SendAsync = (room, text) => _session?.SendAsync(room, text) ?? Task.CompletedTask,
+            // Room switching is local: the backlog is held per room and history was filled at join.
+            RoomSelected = _ => { },
+            LoadOlderAsync = room => _session?.LoadOlderAsync(room, HistoryPageSize) ?? Task.CompletedTask,
+            CommandAsync = (room, text) => _session?.CommandAsync(room, text) ?? Task.CompletedTask,
+            DownloadAsync = id => _session?.DownloadAsync(id) ?? Task.CompletedTask,
+            JoinRoomAsync = room => _session?.JoinAsync(room, HistoryPageSize) ?? Task.CompletedTask,
+            ToolsOpenAsync = filter => _session?.LoadToolsAsync(filter) ?? Task.CompletedTask,
+            ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
+        };
         _doc = _app.CreateDocument();
 
         // The wasm Skia build has exactly one embedded face (Noto Mono). Without registering a real
@@ -64,8 +89,61 @@ public partial class Interop
         };
 
         // No server is configured in a browser — there are no command-line arguments to read one
-        // from — so the connect screen is where every session starts.
+        // from — so the connect screen is where every session starts. The server is the node's
+        // intonation link, pasted in.
         _viewModel.ShowConnect(server: "", user: "");
+    }
+
+    /// <summary>
+    /// What the Connect button does. The whole of the web head's networking: a WebRTC DataChannel
+    /// becomes a vessel, the vessel carries a Pilgrimage, the Pilgrimage carries a conduit, and
+    /// every Banter verb above that is the same code the desktop runs.
+    /// </summary>
+    private static async Task ConnectAsync(string server, string user, string password)
+    {
+        try
+        {
+            var transport = new ShrineClientTransport(
+                async (intonation, cancellationToken) =>
+                {
+                    var channel = await BrowserDataChannel.ConnectAsync(intonation, cancellationToken);
+                    return new DataChannelVessel(channel);
+                },
+                new BouncyCastleSuite());
+
+            var client = await BanterClient.ConnectAsync(transport, new Uri(server.Trim()), user, password);
+
+            var session = new BanterChatSession(client, _viewModel);
+            _session = session;
+            _viewModel.Connected();
+
+            // The status badge starts at "Disconnected" and only a head moves it. Without this the
+            // room opens looking broken while working perfectly.
+            _viewModel.Post(() =>
+            {
+                _viewModel.SetNick(client.Nick);
+                _viewModel.SetStatus("Connected", connected: true);
+            });
+
+            try
+            {
+                await session.JoinAsync("#main", HistoryPageSize);
+            }
+            catch (Exception ex)
+            {
+                _viewModel.Post(() => _viewModel.System("#main", $"could not join #main: {ex.Message}"));
+            }
+
+            // Probe once, so the tools control appears only for an account the server would let
+            // manage them.
+            await session.LoadToolsAsync("");
+        }
+        catch (Exception ex)
+        {
+            // Shown on the connect card rather than logged: in a browser there is no console the
+            // person is looking at, and a button that silently does nothing is the worst outcome.
+            _viewModel.ConnectFailed(ex.Message);
+        }
     }
 
     /// <summary>
@@ -283,6 +361,21 @@ public partial class Interop
 
         return "{" + string.Join(",", keys.Select(k => $"\"{k.Name}\":{(int)k.Key}")) + "}";
     }
+
+    /// <summary>
+    /// A message arrived on the WebRTC data channel. Declared here rather than on
+    /// <c>BrowserDataChannel</c> because the runtime groups exports by declaring type, and JS holds
+    /// one handle — this one.
+    /// </summary>
+    /// <para>A plain <c>byte[]</c>, not a <c>MemoryView</c>: a view can only be round-tripped when
+    /// C# created it, so it is the right marshalling outbound and an assertion failure inbound.
+    /// This copies, which for chat-sized frames is not worth a shared buffer to avoid.</para>
+    [JSExport]
+    internal static void RtcMessage(byte[] message) => BrowserDataChannel.Deliver(message);
+
+    /// <summary>The WebRTC data channel closed.</summary>
+    [JSExport]
+    internal static void RtcClosed() => BrowserDataChannel.NotifyClosed();
 
     [JSExport]
     internal static string? CopySelection() => _doc?.CopySelection();

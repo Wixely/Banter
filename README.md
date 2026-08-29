@@ -17,7 +17,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | `Banter.Transport.Shrine` — a CupriNet L2 conduit as an `IBanterConnection` (§2.5) | implemented, 19 tests |
 | `Banter.Server.Nodestar` — a Banter server hosted on a CupriNet node | runs: node online, site addressed, conduit served |
 | End-to-end over a conduit (client dials the site) | **green over TCP** — handshake, two clients talking, history paging, all on L2 |
-| The same, over a `DataChannelVessel` (the browser's vessel) | **green** — message-oriented framing carries Banter unchanged. Real WebRTC (ICE, a browser's own channel) still untried |
+| The same, over a `DataChannelVessel` (the browser's vessel) | **green** — message-oriented framing carries Banter unchanged |
+| `Banter.App.Web` — the same CupriApp in a browser, over **real WebRTC** | **green**, verified end to end: connect, join, send, and the message read back out of the server's database |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |

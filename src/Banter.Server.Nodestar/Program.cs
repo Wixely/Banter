@@ -4,6 +4,7 @@ using Banter.Server.Persistence;
 using System.Net;
 using Banter.Transport.Shrine;
 using CupriNet.Nodestar;
+using CupriNet.Nodestar.WebRtc;
 
 // A Banter server that lives on a CupriNet node instead of a socket (PLAN §2.5). The node serves
 // the clearnet on-ramp; the room runs on an L2 conduit behind it, and every Banter verb rides that
@@ -49,6 +50,14 @@ builder.Node.Concordium = concordium;
 builder.Node.DataDirectory = Path.Combine(dataDir, "mesh");
 builder.Node.SiteName = "Banter";
 
+// A Pilgrim pins the SITE's Signet, so a node that does not put one in its link cannot be visited
+// at all — the link would describe a node and nothing it hosts.
+builder.Node.AdvertiseSiteInLink = true;
+
+// The browser on-ramp. Without this the WebRTC endpoint never reaches the link, and the web head
+// has nothing to dial: it is the transport, not merely a flag.
+builder.UseWebRtc();
+
 // The listener has to exist before the server, because the site is registered while the node is
 // being built and the node is running before there is anything to hand it to.
 var listener = builder.Site.ServeBanter(new Uri($"cupri://{concordium}/banter"));
@@ -65,7 +74,16 @@ builder.OnStarted((app, cancellationToken) =>
     host.Start(cancellationToken);
 
     Console.WriteLine($"Banter is on the site at {app.SiteAddress}");
-    Console.WriteLine($"Clients dial this node on port {host.LocalEndPoint.Port}.");
+    Console.WriteLine($"Desktop clients dial this node on port {host.LocalEndPoint.Port}.");
+
+    // The link is what a browser needs, and the only thing it needs: it carries the site's Signet,
+    // the network, and the WebRTC credentials the browser writes the node's answer from.
+    var link = new NodestarLinkProvider(app.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1))
+        .Current().Link;
+    Console.WriteLine();
+    Console.WriteLine("Paste this into the web client's Server field:");
+    Console.WriteLine(link);
+    Console.WriteLine();
     Console.WriteLine("Press Ctrl+C to stop.");
     return Task.CompletedTask;
 });

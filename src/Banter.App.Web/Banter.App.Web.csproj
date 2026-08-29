@@ -39,6 +39,11 @@
   <ItemGroup>
     <!-- The same app the desktop and Android heads run. -->
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
+    <!-- The conduit transport's CLIENT half. Deliberately not Banter.Transport.Shrine.Nodestar:
+         that brings Kestrel, and a browser has no business downloading an HTTP server to join a
+         chat room. -->
+    <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
+    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.3.6" />
     <!-- Skia and HarfBuzz natives for the browser; the engine's desktop natives are ignored here.
          Both are required — text shaping dlopens libHarfBuzzSharp at the first text draw, so
          without it the app boots and then dies rendering its first glyph. -->
