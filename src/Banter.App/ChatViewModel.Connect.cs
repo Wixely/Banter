@@ -26,6 +26,21 @@ public sealed partial class ChatViewModel
         Model.ConnectClass = "connect";
     }
 
+    /// <summary>
+    /// Offers a server address the head learned after the screen was already up — a link a node
+    /// published, say. Declined once someone has typed their own, and once an attempt is under way:
+    /// a field that rewrites itself under the person filling it in is worse than one left alone.
+    /// </summary>
+    public void SuggestConnectServer(string server)
+    {
+        if (server.Length == 0 || Model.ConnectServer.Length != 0 || !ConnectVisible)
+        {
+            return;
+        }
+
+        Model.ConnectServer = server;
+    }
+
     /// <summary>An attempt is under way. The button is disabled by saying so, not by a flag.</summary>
     public void Connecting()
     {

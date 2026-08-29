@@ -377,6 +377,13 @@ public partial class Interop
     [JSExport]
     internal static void RtcClosed() => BrowserDataChannel.NotifyClosed();
 
+    /// <summary>
+    /// A node published its link after the page had already loaded. Offered rather than imposed:
+    /// the connect screen keeps whatever the person has typed.
+    /// </summary>
+    [JSExport]
+    internal static void SeedArrived(string link) => _viewModel?.SuggestConnectServer(link);
+
     [JSExport]
     internal static string? CopySelection() => _doc?.CopySelection();
 

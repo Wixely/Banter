@@ -204,11 +204,21 @@ try {
 
     // A link left by a node that was told to seed us (the server's --seed-file). Absent in a
     // normal deployment, where the person pastes a link — so a miss is silence, not an error.
+    //
+    // Read once here for the first paint, then kept looking for in the background: under a
+    // "server + client" launch the two start together, and the browser regularly wins. Polling
+    // rather than blocking, so a deployment with no seed at all is not made to wait for one.
     let seed = '';
-    try {
-        const res = await fetch('seed.json', { cache: 'no-store' });
-        if (res.ok) seed = (await res.json()).link || '';
-    } catch { /* no seed; the connect screen asks for one */ }
+    const readSeed = async () => {
+        try {
+            const res = await fetch('seed.json', { cache: 'no-store' });
+            if (!res.ok) return '';
+            return (await res.json()).link || '';
+        } catch {
+            return '';
+        }
+    };
+    seed = await readSeed();
 
     const config = getConfig();
     const exports = await getAssemblyExports(config.mainAssemblyName);
@@ -286,6 +296,18 @@ try {
 
     I.Init();
     logBoot('Init ok');
+
+    // The seed was not there when the page loaded, so watch for the node writing one. Offered to
+    // the connect screen, which declines it if the person has started typing their own.
+    if (!seed) {
+        (async () => {
+            for (let i = 0; i < 60 && !seed; i++) {
+                await new Promise(r => setTimeout(r, 500));
+                seed = await readSeed();
+                if (seed) { logBoot('seed arrived'); I.SeedArrived(seed); }
+            }
+        })();
+    }
 
     let firstTick = true;
     function frame(now) {

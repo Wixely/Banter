@@ -28,6 +28,22 @@ var sitePort = int.TryParse(Arg("--site-port"), out var parsed) ? parsed : 7411;
 // into. The web head fetches it from its own origin, which is why this is a file rather than an
 // endpoint: in development the client is served by its own dev server, not by this node.
 var seedFile = Arg("--seed-file");
+
+// Deleted before the node starts, not merely overwritten when it is ready. A seed left by the
+// PREVIOUS run names this same node but carries that process's ICE credentials, which died with
+// it — so a client that reads it fails to connect in a way that looks like a bad password rather
+// than a stale file. Better for the client to find nothing and wait.
+if (seedFile is not null)
+{
+    try
+    {
+        File.Delete(seedFile);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"warning: could not clear the old seed file: {ex.Message}");
+    }
+}
 var adminPassword = Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD") ?? "admin";
 
 var storage = BanterStorageOptions.Parse("sqlite", $"Data Source={Path.Combine(dataDir, "banter.db")}");

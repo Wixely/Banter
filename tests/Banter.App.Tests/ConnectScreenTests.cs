@@ -127,6 +127,56 @@ public sealed class ConnectScreenTests
         Assert.Equal("Connecting", vm.Model.ConnectButtonText);
         Assert.Contains("Connecting", vm.Model.ConnectStatus);
     }
+
+    /// <summary>
+    /// A head can learn a server address after the screen is already up — a browser fetching a
+    /// link a node publishes, for instance, where the page regularly loads before the node has
+    /// written one. That is the whole reason this exists.
+    /// </summary>
+    [Fact]
+    public void AServerLearnedLateFillsAnEmptyField()
+    {
+        var vm = Showing(server: "", user: "alice");
+
+        vm.SuggestConnectServer("cuprinet://intone/abc");
+
+        Assert.Equal("cuprinet://intone/abc", vm.Model.ConnectServer);
+    }
+
+    [Fact]
+    public void ItNeverOverwritesWhatSomeoneTyped()
+    {
+        var vm = Showing(server: "", user: "alice");
+        vm.Model.ConnectServer = "tcp://the-one-i-want:7770";
+
+        vm.SuggestConnectServer("cuprinet://intone/abc");
+
+        // A field that rewrites itself under the person filling it in is worse than one that stays
+        // empty, and this arrives on a timer they cannot see.
+        Assert.Equal("tcp://the-one-i-want:7770", vm.Model.ConnectServer);
+    }
+
+    [Fact]
+    public void ItStopsOnceTheScreenIsGone()
+    {
+        var vm = Showing(server: "", user: "alice");
+        vm.Connected();
+
+        vm.SuggestConnectServer("cuprinet://intone/abc");
+
+        Assert.Equal("", vm.Model.ConnectServer);
+    }
+
+    [Fact]
+    public void AnEmptySuggestionChangesNothing()
+    {
+        var vm = Showing(server: "tcp://host:7770", user: "alice");
+
+        vm.SuggestConnectServer("");
+
+        Assert.Equal("tcp://host:7770", vm.Model.ConnectServer);
+    }
+
 }
 
 /// <summary>The screen driven through a real document, the way a thumb hits it.</summary>
