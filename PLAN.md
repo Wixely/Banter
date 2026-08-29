@@ -1105,6 +1105,13 @@ Shrine behind it answers every rite with a closed stream; serving a site over a 
 separate act `AcceptPilgrimageAsync`, which only WebRTC did for itself
 ([CupriNodestar#2](https://github.com/Wixely/CupriNodestar/issues/2)).
 
+**And over WebRTC, from a browser.** `Banter.App.Web` runs the same CupriApp as the desktop and
+Android heads, and adds exactly one thing to the network: an `IDataChannel` over an
+`RTCDataChannel`. No signalling server — the node is ICE-lite and DTLS-passive, and its signed link
+carries the ICE credentials and fingerprint, so the browser offers and writes the node's answer
+itself. Proven end to end: connect, join, send, and the message read back out of the server's
+database. This was the path nothing upstream had exercised.
+
 *Blocked on publication:* CupriNet is on the feed at 0.3.6, but `CupriNet.Nodestar` still publishes
 `0.1.0-alpha.4` — alpha.6 is a local build, held off the feed by a GitHub artifact-storage quota.
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
