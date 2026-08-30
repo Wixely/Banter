@@ -19,6 +19,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | End-to-end over a conduit (client dials the site) | **green over TCP** — handshake, two clients talking, history paging, all on L2 |
 | The same, over a `DataChannelVessel` (the browser's vessel) | **green** — message-oriented framing carries Banter unchanged |
 | `Banter.App.Web` — the same CupriApp in a browser, over **real WebRTC** | **green**, verified end to end: connect, join, send, and the message read back out of the server's database |
+| Web head on the packaged host (`CupriFace.Web.Mono`) | implemented — touch, the ARIA mirror, IME and clipboard come with it, so the browser is no longer the one head a screen reader cannot use |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
@@ -171,13 +172,13 @@ rotate), and the client fetches it from its own origin at boot. Without that the
 Breakpoints: **C# in the server** through the ordinary .NET debugger, and **JavaScript in the
 client** through VS Code's built-in browser debugger. Breakpoints in the client's *C#* are not
 wired — the SDK ships a Mono debug proxy for it, but the only VS Code adapter that drives that proxy
-is the Blazor-named one, and there is no Blazor here. In practice the web head is host glue; the
-behaviour worth stepping through lives in `Banter.App` and `Banter.Client.Core`, which the test suite
-covers headlessly.
+is the Blazor-named one, and there is no Blazor here. It matters less than it sounds: the web head
+is now one line of host plus a WebRTC data channel, and everything worth stepping through lives in
+`Banter.App` and `Banter.Client.Core`, which the test suite covers headlessly.
 
 Nothing in `Banter.App.Web` is Blazor: no Razor, no components, no `blazor.webassembly.js`.
 `Microsoft.NET.Sdk.WebAssembly` is the WASM build SDK, and the UI is the same `CupriApp` the desktop
-runs, painted to a canvas.
+runs, painted to a canvas by `CupriFace.Web.Mono`.
 
 ### The Android head
 

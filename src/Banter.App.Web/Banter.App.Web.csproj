@@ -1,55 +1,40 @@
 <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
 
+  <!--
+    What a CupriFace.Web.Mono app's project file is: the WebAssembly SDK, the host, and the app.
+
+    This used to carry the Skia and HarfBuzz wasm natives, WasmBuildNative, two embedded Noto
+    faces, and a workaround for a Mono AOT bug in CupriFace's own code. All of that is the host's
+    now (CupriFace#73), which is where it always belonged — a workaround for someone else's
+    compiler bug is not something a consumer can know to re-test.
+  -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- Required by [JSImport]; the source generator emits unsafe marshalling code. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <!-- Browser-only by definition; the JSExport/JSImport platform hints (CA1416 "only supported
-         on browser") are expected here and not actionable. -->
+    <!-- Browser-only by definition; the JSExport/JSImport platform hints are expected here. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
-    <!-- SkiaSharp ships a static wasm lib that has to be linked into the app. -->
-    <WasmBuildNative>true</WasmBuildNative>
     <!-- AOT is opt-in via `-p:Aot=true`, never via Configuration: a previous AOT publish leaves
-         artifacts in obj/ that make a later plain run paint a blank canvas. -->
+         artifacts in obj/ that make a later plain run paint a blank canvas. The host's
+         buildTransitive targets supply the interpreter workaround AOT needs. -->
     <RunAOTCompilation Condition="'$(Aot)' == 'true'">true</RunAOTCompilation>
     <WasmEmitSymbolMap Condition="'$(Aot)' == 'true'">true</WasmEmitSymbolMap>
     <WasmNativeDebugSymbols Condition="'$(Aot)' == 'true'">false</WasmNativeDebugSymbols>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(Aot)' == 'true'">
-    <!-- Mono's WASM AOT mis-compiles an indirect call inside CupriFace method bodies and traps at
-         boot with "function signature mismatch"; upstream keeps the engine interpreted for exactly
-         this reason (jiterpreter still applies). Everything else still AOTs. Re-test on each SDK
-         bump — this is upstream's workaround, carried because we hit the same compiler. -->
-    <_AOT_InternalForceInterpretAssemblies Include="CupriFace.dll" />
-  </ItemGroup>
-
   <ItemGroup>
-    <!-- The wasm Skia build embeds only "Noto Mono", so without a real sans face registered at
-         startup the entire UI renders monospaced. OFL-licensed; the licence sits beside them. -->
-    <EmbeddedResource Include="Assets/fonts/*.ttf" LogicalName="fonts.%(Filename)%(Extension)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <StaticWebAssetFingerprintPattern Include="JS" Pattern="*.js" Expression="#[.{fingerprint}]!" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- The same app the desktop and Android heads run. -->
+    <!-- The browser host, and the same app the desktop and Android heads run. -->
+    <PackageReference Include="CupriFace.Web.Mono" Version="0.8.0" />
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <!-- The conduit transport's CLIENT half. Deliberately not Banter.Transport.Shrine.Nodestar:
          that brings Kestrel, and a browser has no business downloading an HTTP server to join a
          chat room. -->
     <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
     <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.3.6" />
-    <!-- Skia and HarfBuzz natives for the browser; the engine's desktop natives are ignored here.
-         Both are required — text shaping dlopens libHarfBuzzSharp at the first text draw, so
-         without it the app boots and then dies rendering its first glyph. -->
-    <PackageReference Include="SkiaSharp" Version="3.116.1" />
-    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly" Version="3.116.1" />
-    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="8.3.0.1" />
   </ItemGroup>
 
 </Project>

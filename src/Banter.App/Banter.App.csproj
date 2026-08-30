@@ -7,6 +7,6 @@
     <ProjectReference Include="../Banter.Voice/Banter.Voice.csproj" />
     <!-- Engine only. Host heads (Desktop/Android/Web) bring their own CupriFace.* host package,
          which keeps this project buildable and testable headlessly on any platform. -->
-    <PackageReference Include="CupriFace" Version="0.5.0" />
+    <PackageReference Include="CupriFace" Version="0.8.0" />
   </ItemGroup>
 </Project>

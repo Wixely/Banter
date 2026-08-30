@@ -10,25 +10,37 @@ namespace Banter.App.Web;
 /// A browser <c>RTCDataChannel</c> presented as an <see cref="IDataChannel"/>, so
 /// <c>DataChannelVessel</c> can carry a Pilgrimage over it and Banter's whole stack rides on top
 /// unchanged. This is the entirety of what the web head adds to the network: everything above it
-/// is the same code the desktop runs.
-///
-/// <para><b>There is no signalling server, and none is needed.</b> The node is ICE-lite and DTLS
-/// passive, and its intonation link already carries the ICE credentials and DTLS fingerprint it
-/// would have put in an answer. So the browser makes an offer and then <i>writes the node's answer
-/// itself</i> from the link. The link is signed, which is what makes that safe: a forged answer
-/// would have to forge the link.</para>
-///
-/// <para>The SDP shape is not ours to invent — it has to match what the node's DCEP responder
-/// expects, down to the channel label and <c>a=setup:passive</c>. It follows Nodestar's own
-/// reference client.</para>
+/// is the same code the desktop runs, and everything below the app — the frame loop, input, ARIA —
+/// belongs to the host package.
 /// </summary>
 public sealed partial class BrowserDataChannel : IDataChannel
 {
     /// <summary>
+    /// How long to wait for the channel to open. On a loopback node this is instant and over a
+    /// network it is seconds; anything longer means the node is not answering, and a person
+    /// watching a button say "Connecting" forever learns nothing.
+    /// </summary>
+    private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// The JS module is loaded once, on first use. <see cref="JSHost.ImportAsync"/> rather than a
+    /// script tag in the page: the page belongs to the host package now, and a transport that
+    /// needed an edit to someone else's HTML would not be one anybody could drop in.
+    /// </summary>
+    private static Task? _module;
+
+    /// <summary>
     /// One connection per page, because the JS side keeps one peer connection. Static because the
-    /// message callback comes from JS, which has nowhere to put an instance.
+    /// message callback has nowhere to put an instance.
     /// </summary>
     private static BrowserDataChannel? _current;
+
+    /// <summary>
+    /// Where a message is copied out of JS. Sized to the largest a DataChannel will carry (the
+    /// node negotiates 256 KiB), so a frame at the conduit's ceiling still fits with room over.
+    /// Reused: this is on the receive path of every message.
+    /// </summary>
+    private static readonly byte[] Scratch = new byte[262144];
 
     private readonly Channel<byte[]> _inbound = Channel.CreateUnbounded<byte[]>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
@@ -43,20 +55,11 @@ public sealed partial class BrowserDataChannel : IDataChannel
 
     public EndPoint LocalEndPoint { get; }
 
-    /// <summary>
-    /// Dials the node the link describes and waits for the channel to open.
-    /// </summary>
+    /// <summary>Dials the node the link describes and waits for the channel to open.</summary>
     /// <exception cref="InvalidOperationException">
     /// The link carries no WebRTC endpoint, or the connection failed. A link without one belongs to
-    /// a node that a browser simply cannot reach, which is worth saying rather than timing out.
+    /// a node a browser simply cannot reach, which is worth saying rather than timing out.
     /// </exception>
-    /// <summary>
-    /// How long to wait for the channel to open. On a loopback node this is instant and over a
-    /// network it is seconds; anything longer means the node is not answering, and a person
-    /// watching a button say "Connecting" forever learns nothing.
-    /// </summary>
-    private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(20);
-
     public static async Task<BrowserDataChannel> ConnectAsync(
         Intonation intonation,
         CancellationToken cancellationToken = default)
@@ -76,8 +79,10 @@ public sealed partial class BrowserDataChannel : IDataChannel
             ?? throw new InvalidOperationException(
                 $"The link for '{intonation.Moniker}' names no address to dial.");
 
-        var channel = new BrowserDataChannel(
-            new DnsEndPoint(host, webRtc.Port));
+        _module ??= JSHost.ImportAsync("banter/rtc", "../banter-rtc.js");
+        await _module.ConfigureAwait(false);
+
+        var channel = new BrowserDataChannel(new DnsEndPoint(host, webRtc.Port));
         _current = channel;
 
         RtcConnect(
@@ -86,7 +91,9 @@ public sealed partial class BrowserDataChannel : IDataChannel
             webRtc.IceUfrag,
             webRtc.IcePassword,
             webRtc.FingerprintAlgorithm,
-            Convert.ToHexString(webRtc.Fingerprint));
+            Convert.ToHexString(webRtc.Fingerprint),
+            Drain,
+            NotifyClosed);
 
         // Polling, because the browser reports readiness through state rather than a promise we can
         // await across the JS boundary. The runtime is single-threaded, so this yields to the event
@@ -163,28 +170,70 @@ public sealed partial class BrowserDataChannel : IDataChannel
     }
 
     /// <summary>
-    /// A message arrived on the channel. Reached from JS through <c>Interop</c>, because the
-    /// runtime groups exports by declaring type and the host's exports all live on that one.
+    /// A message is waiting. JS signals rather than hands it over: a callback cannot carry a
+    /// <c>byte[]</c> across the boundary at all, and the array marshallings that exist copy element
+    /// by element. So the buffer is ours, and JS fills it.
     /// </summary>
-    internal static void Deliver(byte[] message) => _current?._inbound.Writer.TryWrite(message);
+    private static void Drain()
+    {
+        if (_current is not { } channel)
+        {
+            return;
+        }
 
-    /// <summary>The channel closed.</summary>
-    internal static void NotifyClosed() => _current?._inbound.Writer.TryComplete();
+        while (true)
+        {
+            var length = RtcReceive(Scratch);
+            if (length < 0)
+            {
+                if (length == -2)
+                {
+                    // Larger than any DataChannel message the node can send, so something is wrong
+                    // with the peer rather than with the buffer. Dropping it silently would show up
+                    // much later as a protocol desync.
+                    channel._inbound.Writer.TryComplete(
+                        new InvalidOperationException(
+                            $"A WebRTC message exceeded the {Scratch.Length}-byte receive buffer."));
+                }
 
-    [JSImport("rtcConnect", "banter")]
+                return;
+            }
+
+            channel._inbound.Writer.TryWrite(Scratch[..length]);
+        }
+    }
+
+    private static void NotifyClosed() => _current?._inbound.Writer.TryComplete();
+
+    [JSImport("connect", "banter/rtc")]
     internal static partial void RtcConnect(
-        string host, int port, string ufrag, string password, string fingerprintAlgorithm, string fingerprintHex);
+        string host,
+        int port,
+        string ufrag,
+        string password,
+        string fingerprintAlgorithm,
+        string fingerprintHex,
+        [JSMarshalAs<JSType.Function>] Action onMessage,
+        [JSMarshalAs<JSType.Function>] Action onClosed);
+
+    /// <summary>
+    /// Copies the next queued message into <paramref name="buffer"/>, returning its length, -1 when
+    /// nothing is waiting, or -2 when it would not fit. The view is safe to pass because C# owns
+    /// the array — the reverse, a view JS made, fails an assertion inside the marshaller.
+    /// </summary>
+    [JSImport("receive", "banter/rtc")]
+    internal static partial int RtcReceive([JSMarshalAs<JSType.MemoryView>] ArraySegment<byte> buffer);
 
     /// <summary>0 connecting, 1 open, 2 failed, 3 closed.</summary>
-    [JSImport("rtcState", "banter")]
+    [JSImport("state", "banter/rtc")]
     internal static partial int RtcState();
 
-    [JSImport("rtcError", "banter")]
+    [JSImport("error", "banter/rtc")]
     internal static partial string RtcError();
 
-    [JSImport("rtcSend", "banter")]
+    [JSImport("send", "banter/rtc")]
     internal static partial bool RtcSend([JSMarshalAs<JSType.MemoryView>] ArraySegment<byte> message);
 
-    [JSImport("rtcClose", "banter")]
+    [JSImport("close", "banter/rtc")]
     internal static partial void RtcClose();
 }

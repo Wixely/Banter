@@ -1,49 +1,29 @@
 <!DOCTYPE html>
 <html>
 
+<!-- Banter's page shell. The page is the one genuinely app-specific piece of a web host; the frame
+     loop, input, touch, ARIA, IME and clipboard all come from CupriFace.Web.Mono, and this app
+     writes no JS for any of them. The one script below is Banter's own and is loaded by the app,
+     not by the page: a WebRTC data channel, which is the whole of what the web head adds. -->
+
 <head>
   <title>Banter</title>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- No favicon here on purpose: the host sets one at boot from the app's own icon bytes, so it
-       lives in one place rather than as a base64 copy that drifts. -->
+  <!-- No favicon here on purpose: the host sets one at boot from the app's own icon bytes. -->
   <link rel="preload" id="webassembly" />
   <script type="importmap"></script>
-  <script type='module' src="main#[.{fingerprint}].js"></script>
+  <script type='module' src="_content/CupriFace.Web.Mono/main.js"></script>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; font-family: sans-serif; }
     /* Fill the window: the app scales into whatever viewport it is given. */
-    #banter { display: block; width: 100vw; height: 100vh; outline: none; }
+    #cupri { display: block; width: 100vw; height: 100vh; outline: none; }
   </style>
 </head>
 
 <body>
-  <!-- The engine draws the whole UI here. No HTML widgets and no Blazor — a canvas and nothing else. -->
-  <canvas id="banter"></canvas>
-
-  <!--
-    Not a module, on purpose: this has to run even when the module above never does. If main.js
-    fails to load at all, nothing in it can report that — the page just sits there as a blank
-    canvas with no error anywhere a person would look.
-
-    The way that happens in practice: scripts are fingerprinted, so rebuilding the project while
-    the dev server is still serving leaves the page importing a filename that no longer exists.
-    The fix is to restart the server, and this is what says so.
-  -->
-  <script>
-    setTimeout(function () {
-      if (window.__banterBooted) return;
-      var c = document.getElementById('banter');
-      var g = c.getContext('2d');
-      g.fillStyle = '#14161a'; g.fillRect(0, 0, c.width, c.height);
-      g.fillStyle = '#e6e8eb'; g.font = '15px sans-serif';
-      g.fillText('Banter did not start.', 24, 40);
-      g.fillStyle = '#8b93a1'; g.font = '13px sans-serif';
-      g.fillText('Its script did not load. If the project was rebuilt while this server was', 24, 68);
-      g.fillText('running, the page is asking for a filename that no longer exists — restart', 24, 90);
-      g.fillText('the dev server. Otherwise the browser console has the reason.', 24, 112);
-    }, 15000);
-  </script>
+  <!-- The engine draws the entire UI here. No HTML widgets, no Blazor — just a canvas. -->
+  <canvas id="cupri"></canvas>
 </body>
 
 </html>
