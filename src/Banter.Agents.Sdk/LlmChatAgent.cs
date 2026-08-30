@@ -13,7 +13,7 @@ namespace Banter.Agents.Sdk;
 public sealed class LlmChatAgent : BanterAgent
 {
     private readonly LlmChatAgentOptions _llm;
-    private readonly OpenAiChatClient _client;
+    private readonly IChatModel _model;
 
     /// <summary>Rolling context per room. Guarded because turns run off the receive loop.</summary>
     private readonly Dictionary<string, List<ChatTurn>> _context = [];
@@ -23,7 +23,19 @@ public sealed class LlmChatAgent : BanterAgent
         : base(agent)
     {
         _llm = llm;
-        _client = new OpenAiChatClient(llm, handler);
+        _model = new OpenAiChatClient(llm, handler);
+    }
+
+    /// <summary>
+    /// Runs on a model the caller supplies rather than an HTTP endpoint — a CLI driven as a
+    /// subprocess, say. Everything above the model is unchanged: the same per-room context, the
+    /// same streaming, the same room rules.
+    /// </summary>
+    public LlmChatAgent(BanterAgentOptions agent, LlmChatAgentOptions llm, IChatModel model)
+        : base(agent)
+    {
+        _llm = llm;
+        _model = model;
     }
 
     /// <summary>
@@ -82,7 +94,7 @@ public sealed class LlmChatAgent : BanterAgent
             var calls = new List<ToolCallRequest>();
             var said = new System.Text.StringBuilder();
 
-            await foreach (var delta in _client.StreamAsync(messages, specs, calls, cancellationToken)
+            await foreach (var delta in _model.StreamAsync(messages, specs, calls, cancellationToken)
                                .ConfigureAwait(false))
             {
                 // Yielded as it arrives even mid-tool-loop: a model that says "let me check" and

@@ -37,13 +37,38 @@ public sealed record ChatTurn(string Role, string Content)
 }
 
 /// <summary>
+/// What a room agent needs from a model: turns in, text out, a chunk at a time.
+///
+/// <para>The seam exists because not every backend is an HTTP endpoint. A CLI-driven one is a
+/// subprocess with a different protocol entirely, and the agent above this should not know which
+/// it is talking to.</para>
+/// </summary>
+public interface IChatModel : IDisposable
+{
+    /// <summary>
+    /// Stream a reply, yielding content as it arrives. Any tool calls the model asks for are
+    /// accumulated into <paramref name="toolCalls"/> by the time the enumeration ends — a
+    /// collection parameter rather than a return value, because an async iterator cannot have one.
+    ///
+    /// <para>A backend that owns its own tools ignores both tool arguments. That is not a gap: in
+    /// this suite tools run server-side under per-agent grants and are announced in the room, so a
+    /// backend bringing its own would be doing them unaudited.</para>
+    /// </summary>
+    IAsyncEnumerable<string> StreamAsync(
+        IReadOnlyList<ChatTurn> messages,
+        IReadOnlyList<ToolSpec> tools,
+        ICollection<ToolCallRequest>? toolCalls,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// A minimal streaming client for the OpenAI <c>/chat/completions</c> shape — enough for LM
 /// Studio, Ollama's compatibility endpoint, vLLM, or OpenAI itself.
 ///
 /// <para>Hand-rolled rather than pulling in an SDK: the suite is deliberately dependency-light,
 /// and the streaming half of this API is a dozen lines of server-sent events.</para>
 /// </summary>
-public sealed class OpenAiChatClient : IDisposable
+public sealed class OpenAiChatClient : IChatModel
 {
     private readonly HttpClient _http;
     private readonly LlmChatAgentOptions _options;

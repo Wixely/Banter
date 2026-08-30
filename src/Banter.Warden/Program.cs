@@ -72,6 +72,18 @@ if (pass is null || model is null || Has("--help") || Has("-h"))
           --assigned-only       with --work-tasks, only run tasks assigned to this agent -
                                 never take work off the open board
 
+        Backends:
+          --copilot             answer through the GitHub Copilot CLI as a subprocess rather
+                                than an OpenAI-compatible endpoint. --llm is then unused;
+                                --model is still required and names the agent's advertised
+                                model, while --copilot-model picks Copilot's own.
+          --copilot-model <id>  which model Copilot should use (default: its own choice)
+          --copilot-tools       let Copilot use ITS OWN tools - shell, file edits, the GitHub
+                                MCP server. OFF by default and best left off: this agent is
+                                prompted by whatever a room says to it, and Banter's tools run
+                                server-side under per-agent grants with every call announced,
+                                which its own would bypass.
+
         --pass also reads BANTER_PASS; --model reads BANTER_MODEL; --llm reads BANTER_LLM.
         """);
     return 1;
@@ -124,7 +136,18 @@ if (systemPrompt is { Length: > 0 })
     llmOptions = llmOptions with { SystemPrompt = systemPrompt };
 }
 
-await using var agent = new LlmChatAgent(agentOptions, llmOptions);
+// A Copilot-backed agent drives the CLI as a subprocess instead of calling an HTTP endpoint.
+// Its tools are OFF: this agent's prompts are whatever a room types at it, so anything it can do
+// is something the room can talk it into doing — and Banter's own tools run server-side under
+// per-agent grants with every call announced (PLAN 8c), which a backend bringing its own would
+// bypass entirely.
+await using var agent = Has("--copilot")
+    ? new LlmChatAgent(agentOptions, llmOptions, new CopilotCliChatModel(new CopilotCliOptions
+    {
+        Model = Arg("--copilot-model") ?? "",
+        AllowCopilotTools = Has("--copilot-tools"),
+    }))
+    : new LlmChatAgent(agentOptions, llmOptions);
 agent.TurnStarted += (room, sender) => Console.WriteLine($"[{room}] answering {sender}...");
 
 try
@@ -137,7 +160,14 @@ catch (Exception ex)
     return 1;
 }
 
-Console.WriteLine($"{user} is in {string.Join(", ", rooms)} using {model} at {endpoint}");
+// Naming the backend rather than always the --llm endpoint: in Copilot mode that endpoint is
+// never called, and printing it says the agent is somewhere it is not.
+var backend = Has("--copilot")
+    ? $"the GitHub Copilot CLI{(Arg("--copilot-model") is { Length: > 0 } m ? $" ({m})" : "")}"
+      + (Has("--copilot-tools") ? " WITH ITS OWN TOOLS" : "")
+    : $"{model} at {endpoint}";
+
+Console.WriteLine($"{user} is in {string.Join(", ", rooms)} using {backend}");
 Console.WriteLine($"Announced as {locality}, clearance {clearance}, skills [{string.Join(", ", skills)}].");
 if (worksTasks)
 {
