@@ -57,6 +57,13 @@ public sealed class BanterClient : IAsyncDisposable
 
     public event Action<MsgPayload>? MessageReceived;
     public event Action<PrivMsgPayload>? PrivateMessageReceived;
+
+    /// <summary>A message in a room this client is in was changed by its author.</summary>
+    public event Action<EditPayload>? MessageEdited;
+
+    /// <summary>A message was taken back. Its text is gone from the server; a client showing it
+    /// should stop showing the words, not merely grey them.</summary>
+    public event Action<DeletePayload>? MessageDeleted;
     public event Action<JoinPayload>? MemberJoined;
     public event Action<PartPayload>? MemberParted;
     public event Action<TopicPayload>? TopicChanged;
@@ -112,6 +119,20 @@ public sealed class BanterClient : IAsyncDisposable
     /// <see cref="MessageReceived"/> echo to every member including this sender.</summary>
     public ValueTask SendMessageAsync(string room, string text, CancellationToken cancellationToken = default) =>
         SendAsync(_codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null)), cancellationToken);
+
+    /// <summary>
+    /// Changes what one of your own messages says. Only the author may edit; the server refuses
+    /// anyone else with NOT_YOURS, which arrives as <see cref="ServerError"/>.
+    /// </summary>
+    public ValueTask EditMessageAsync(string room, string messageId, string text, CancellationToken cancellationToken = default) =>
+        SendAsync(_codec.CreateEnvelope(new EditPayload(room, messageId, text)), cancellationToken);
+
+    /// <summary>
+    /// Takes a message back. The author may remove their own; an admin may remove anyone's. The
+    /// text is deleted on the server rather than hidden.
+    /// </summary>
+    public ValueTask DeleteMessageAsync(string room, string messageId, CancellationToken cancellationToken = default) =>
+        SendAsync(_codec.CreateEnvelope(new DeletePayload(room, messageId)), cancellationToken);
 
     /// <summary>Sends a user-to-user message. Completes on the server's Ok (delivered to at
     /// least one of the recipient's sessions); throws <see cref="BanterErrorException"/> with
@@ -533,6 +554,12 @@ public sealed class BanterClient : IAsyncDisposable
                         break;
                     case PrivMsgPayload priv:
                         PrivateMessageReceived?.Invoke(priv);
+                        break;
+                    case EditPayload edit:
+                        MessageEdited?.Invoke(edit);
+                        break;
+                    case DeletePayload delete:
+                        MessageDeleted?.Invoke(delete);
                         break;
                     case JoinPayload join:
                         MemberJoined?.Invoke(join);

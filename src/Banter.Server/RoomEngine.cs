@@ -229,6 +229,12 @@ internal sealed class RoomEngine(
             case HistoryReqPayload history:
                 await HandleHistoryAsync(session, envelope, history).ConfigureAwait(false);
                 break;
+            case EditPayload edit:
+                await HandleEditAsync(session, envelope, edit).ConfigureAwait(false);
+                break;
+            case DeletePayload delete:
+                await HandleDeleteAsync(session, envelope, delete).ConfigureAwait(false);
+                break;
             case RoomListPayload:
                 session.Send(new RoomListPayload(
                     _rooms.Values
@@ -1068,6 +1074,104 @@ internal sealed class RoomEngine(
         Broadcast(room, authoritative);
     }
 
+    /// <summary>
+    /// Change what a message says. <b>Only the author</b>, deliberately: an operator rewriting
+    /// someone else's line would be putting words in their mouth under their name, and a room
+    /// where that is possible is one where nothing anybody reads can be trusted. Moderation is
+    /// <see cref="HandleDeleteAsync"/>, which takes words away rather than substituting them.
+    /// </summary>
+    private async ValueTask HandleEditAsync(ClientSession session, BanterEnvelope envelope, EditPayload edit)
+    {
+        if (!TryGetJoinedRoom(session, envelope, edit.Room, out var room))
+        {
+            return;
+        }
+
+        if (edit.Text.Length == 0)
+        {
+            // An edit to nothing is a delete, and going through the other verb keeps one rule for
+            // who may remove what.
+            session.Send(
+                new ErrorPayload("EMPTY_EDIT", "An edit needs text. To remove a message, delete it."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var existing = await store.GetMessageAsync(edit.Room, edit.MessageId).ConfigureAwait(false);
+        if (existing is null || existing.DeletedAt is not null)
+        {
+            session.Send(
+                new ErrorPayload("NO_SUCH_MESSAGE", "That message is not in this room."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!string.Equals(existing.Sender, session.Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            session.Send(
+                new ErrorPayload("NOT_YOURS", "Only the person who wrote a message may edit it."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var editedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (!await store.EditMessageAsync(edit.Room, edit.MessageId, edit.Text, editedAt).ConfigureAwait(false))
+        {
+            session.Send(
+                new ErrorPayload("NO_SUCH_MESSAGE", "That message is not in this room."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        Broadcast(room, edit with { Sender = existing.Sender, EditedAt = editedAt });
+    }
+
+    /// <summary>
+    /// Take a message back. The author may remove their own; an admin may remove anyone's, which
+    /// is the moderation path. The words go from storage — a delete that only stops clients
+    /// drawing them has not done what it was asked.
+    /// </summary>
+    private async ValueTask HandleDeleteAsync(ClientSession session, BanterEnvelope envelope, DeletePayload delete)
+    {
+        if (!TryGetJoinedRoom(session, envelope, delete.Room, out var room))
+        {
+            return;
+        }
+
+        var existing = await store.GetMessageAsync(delete.Room, delete.MessageId).ConfigureAwait(false);
+        if (existing is null || existing.DeletedAt is not null)
+        {
+            // Deleting an already-deleted message is not an error worth raising, but saying it is
+            // gone is honest and idempotent for a client retrying.
+            session.Send(
+                new ErrorPayload("NO_SUCH_MESSAGE", "That message is not in this room."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var mine = string.Equals(existing.Sender, session.Nick, StringComparison.OrdinalIgnoreCase);
+        if (!mine && !session.IsAdmin)
+        {
+            session.Send(
+                new ErrorPayload("NOT_YOURS", "Only the author or an admin may delete a message."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var deletedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (!await store.DeleteMessageAsync(delete.Room, delete.MessageId, deletedAt).ConfigureAwait(false))
+        {
+            session.Send(
+                new ErrorPayload("NO_SUCH_MESSAGE", "That message is not in this room."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        // The author is named, not whoever pressed delete: the room is being told whose message
+        // went, and an admin removing something is visible in that it went at all.
+        Broadcast(room, delete with { Sender = existing.Sender, DeletedAt = deletedAt });
+    }
+
     private void HandlePrivMsg(ClientSession session, BanterEnvelope envelope, PrivMsgPayload priv)
     {
         if (!_sessionsByNick.TryGetValue(priv.Recipient, out var recipients))
@@ -1292,7 +1396,9 @@ internal sealed class RoomEngine(
         }
 
         var messages = page.Messages
-            .Select(m => new MsgPayload(m.Room, m.Sender, m.Text, m.Timestamp, m.FileId, m.MessageId))
+            .Select(m => new MsgPayload(
+                m.Room, m.Sender, m.Text, m.Timestamp, m.FileId, m.MessageId,
+                m.EditedAt ?? 0, m.DeletedAt ?? 0))
             .ToArray();
         session.Send(new HistoryChunkPayload(room.Name, messages, page.NextCursor), replyTo: envelope.MsgId);
     }

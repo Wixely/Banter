@@ -283,5 +283,21 @@ public static class SchemaManifest
                 PRIMARY KEY (agent, tool)
             );
             """),
+        new(
+            6,
+            "message-edit-and-delete",
+            // Two timestamps rather than a flag and a copy of the old text: an audit of what was
+            // said before is a different feature with different consent, and keeping it here would
+            // mean "delete" quietly retained the words it promised to remove.
+            SqliteSql:
+            """
+            ALTER TABLE messages ADD COLUMN edited_at INTEGER NULL;
+            ALTER TABLE messages ADD COLUMN deleted_at INTEGER NULL;
+            """,
+            PostgresSql:
+            """
+            ALTER TABLE messages ADD COLUMN edited_at BIGINT NULL;
+            ALTER TABLE messages ADD COLUMN deleted_at BIGINT NULL;
+            """),
     ];
 }

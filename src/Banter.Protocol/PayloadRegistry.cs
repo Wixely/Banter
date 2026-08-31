@@ -30,6 +30,8 @@ public static class PayloadRegistry
         [BanterMessageType.Typing] = typeof(TypingPayload),
         [BanterMessageType.HistoryReq] = typeof(HistoryReqPayload),
         [BanterMessageType.HistoryChunk] = typeof(HistoryChunkPayload),
+        [BanterMessageType.Edit] = typeof(EditPayload),
+        [BanterMessageType.Delete] = typeof(DeletePayload),
         [BanterMessageType.FilePutStart] = typeof(FilePutStartPayload),
         [BanterMessageType.FilePutChunk] = typeof(FilePutChunkPayload),
         [BanterMessageType.FilePutEnd] = typeof(FilePutEndPayload),

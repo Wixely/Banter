@@ -132,7 +132,11 @@ public sealed record MsgPayload(
     [property: Key(2)] string Text,
     [property: Key(3)] long Timestamp,
     [property: Key(4)] string? FileId,
-    [property: Key(5)] string? MessageId = null);
+    [property: Key(5)] string? MessageId = null,
+    // Carried so replayed history looks like the room did. Without them a reconnect loses every
+    // "edited" marker, and a message someone took back comes back as a blank line.
+    [property: Key(6)] long EditedAt = 0,
+    [property: Key(7)] long DeletedAt = 0);
 
 [MessagePackObject]
 public sealed record PrivMsgPayload(
@@ -145,6 +149,38 @@ public sealed record PrivMsgPayload(
 public sealed record TypingPayload(
     [property: Key(0)] string Room,
     [property: Key(1)] string Nick);
+
+/// <summary>
+/// Change what a message says. The client sends room, id and the new text; the server fills
+/// <c>Sender</c> and <c>EditedAt</c> on the copy it broadcasts.
+///
+/// <para>Only the author may edit. An operator rewriting somebody else's line would be putting
+/// words in their mouth under their name, which is worse than having no edit at all — moderation
+/// is what <see cref="DeletePayload"/> is for.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record EditPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string MessageId,
+    [property: Key(2)] string Text,
+    [property: Key(3)] string? Sender = null,
+    [property: Key(4)] long EditedAt = 0);
+
+/// <summary>
+/// Take a message back. The author may delete their own; an admin may delete anyone's, which is
+/// the moderation path.
+///
+/// <para>The text is removed from storage rather than hidden — "delete" that only stops rendering
+/// is a lie to whoever asked for it. What remains is the fact of the deletion, because clients
+/// have already drawn the message and history pages are cursored by message id: a row that simply
+/// vanished would strand any client paging through it.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record DeletePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string MessageId,
+    [property: Key(2)] string? Sender = null,
+    [property: Key(3)] long DeletedAt = 0);
 
 /// <summary>Cursor-paged history request. <see cref="BeforeMessageId"/> null means "latest".</summary>
 [MessagePackObject]

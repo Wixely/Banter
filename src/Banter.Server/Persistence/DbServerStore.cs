@@ -13,6 +13,18 @@ public sealed record RoomRecord(string Name, string? Topic);
 public interface IServerStore
 {
     ValueTask AppendMessageAsync(ChatMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>One message, or null if this room has no such id. Used to find out who wrote it
+    /// before allowing an edit or a delete.</summary>
+    ValueTask<ChatMessage?> GetMessageAsync(string room, string messageId, CancellationToken cancellationToken = default);
+
+    /// <summary>Replaces the text and stamps <c>EditedAt</c>. False if the message is gone or
+    /// already deleted — editing something taken back would put the words straight back.</summary>
+    ValueTask<bool> EditMessageAsync(string room, string messageId, string text, long editedAt, CancellationToken cancellationToken = default);
+
+    /// <summary>Clears the text and stamps <c>DeletedAt</c>, keeping the row. False if it was not
+    /// there, or was already deleted.</summary>
+    ValueTask<bool> DeleteMessageAsync(string room, string messageId, long deletedAt, CancellationToken cancellationToken = default);
     ValueTask<HistoryPage?> GetHistoryPageAsync(string room, string? beforeMessageId, int limit, CancellationToken cancellationToken = default);
     ValueTask UpsertRoomAsync(string name, string? topic, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<RoomRecord>> GetRoomsAsync(CancellationToken cancellationToken = default);
@@ -20,7 +32,9 @@ public interface IServerStore
 
 public sealed class DbServerStore(BanterDatabase database) : IServerStore
 {
-    private sealed record MessageRow(long Seq, string MessageId, string Room, string Sender, string Text, long Timestamp, string? FileId);
+    private sealed record MessageRow(
+        long Seq, string MessageId, string Room, string Sender, string Text, long Timestamp,
+        string? FileId, long? EditedAt, long? DeletedAt);
 
     public async ValueTask AppendMessageAsync(ChatMessage message, CancellationToken cancellationToken = default)
     {
@@ -53,7 +67,8 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
         var rows = (await connection.QueryAsync<MessageRow>(
             """
             SELECT seq AS Seq, message_id AS MessageId, room AS Room, sender AS Sender,
-                   text AS Text, timestamp AS Timestamp, file_id AS FileId
+                   text AS Text, timestamp AS Timestamp, file_id AS FileId,
+                   edited_at AS EditedAt, deleted_at AS DeletedAt
             FROM messages
             WHERE room = @Room AND (@BeforeSeq IS NULL OR seq < @BeforeSeq)
             ORDER BY seq DESC
@@ -72,9 +87,67 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
         }
 
         var messages = rows
-            .Select(m => new ChatMessage(m.MessageId, m.Room, m.Sender, m.Text, m.Timestamp, m.FileId))
+            .Select(m => new ChatMessage(m.MessageId, m.Room, m.Sender, m.Text, m.Timestamp, m.FileId)
+            {
+                EditedAt = m.EditedAt,
+                DeletedAt = m.DeletedAt,
+            })
             .ToArray();
         return new HistoryPage(messages, nextCursor);
+    }
+
+    public async ValueTask<ChatMessage?> GetMessageAsync(
+        string room, string messageId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<MessageRow>(
+            """
+            SELECT seq AS Seq, message_id AS MessageId, room AS Room, sender AS Sender,
+                   text AS Text, timestamp AS Timestamp, file_id AS FileId,
+                   edited_at AS EditedAt, deleted_at AS DeletedAt
+            FROM messages
+            WHERE room = @Room AND message_id = @MessageId
+            """,
+            new { Room = room, MessageId = messageId }).ConfigureAwait(false);
+
+        return row is null
+            ? null
+            : new ChatMessage(row.MessageId, row.Room, row.Sender, row.Text, row.Timestamp, row.FileId)
+            {
+                EditedAt = row.EditedAt,
+                DeletedAt = row.DeletedAt,
+            };
+    }
+
+    public async ValueTask<bool> EditMessageAsync(
+        string room, string messageId, string text, long editedAt, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var changed = await connection.ExecuteAsync(
+            """
+            UPDATE messages SET text = @Text, edited_at = @EditedAt
+            WHERE room = @Room AND message_id = @MessageId AND deleted_at IS NULL
+            """,
+            new { Room = room, MessageId = messageId, Text = text, EditedAt = editedAt }).ConfigureAwait(false);
+
+        return changed > 0;
+    }
+
+    public async ValueTask<bool> DeleteMessageAsync(
+        string room, string messageId, long deletedAt, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        // The text goes, not just a flag: whoever asked for this asked for the words to be gone,
+        // and a row that still holds them has not honoured that.
+        var changed = await connection.ExecuteAsync(
+            """
+            UPDATE messages SET text = '', file_id = NULL, deleted_at = @DeletedAt
+            WHERE room = @Room AND message_id = @MessageId AND deleted_at IS NULL
+            """,
+            new { Room = room, MessageId = messageId, DeletedAt = deletedAt }).ConfigureAwait(false);
+
+        return changed > 0;
     }
 
     public async ValueTask UpsertRoomAsync(string name, string? topic, CancellationToken cancellationToken = default)
