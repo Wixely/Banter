@@ -44,7 +44,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | One user, many clients: per-account presence, per-session delivery | implemented, tested |
 | App: room hierarchy in the sidebar, browse/join other rooms, `/join` and `/rooms` | implemented, tested |
 | App: multi-line messages (`white-space: pre-wrap`, needs CupriFace 0.5.0) | implemented, tested |
-| Message edit and delete (`/edit`, `/delete`) | implemented, tested — only the author may edit, author or admin may delete, and a delete removes the text from storage |
+| Message edit and delete (right-click a message, or `/edit` / `/delete`) | implemented, tested — only the author may edit, author or admin may delete, and a delete removes the text from storage |
 | App: inline image previews (cached, size-capped, aspect preserved) | implemented, tested |
 | App: right-click menu, copy selected text and copy image to the clipboard | implemented, tested; right-click needs a real window to confirm |
 | Fan-out to several agents on request, clearance filter unchanged (§8a) | implemented, tested |

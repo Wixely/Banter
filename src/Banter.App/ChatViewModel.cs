@@ -320,6 +320,9 @@ public sealed partial class ChatViewModel
         return "";
     }
 
+    /// <summary>One row by id, for a head that has been handed an id and needs the message.</summary>
+    public MessageRow? FindMessage(string room, string messageId) => Find(room, messageId);
+
     private MessageRow? Find(string room, string messageId) =>
         messageId.Length > 0 && _rooms.TryGetValue(room, out var rows)
             ? rows.FirstOrDefault(r => r.Id == messageId)

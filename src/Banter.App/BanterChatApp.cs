@@ -465,12 +465,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         // Right-click menu items. CupriFace opens the menu at the pointer and leaves the
         // clipboard to the host, so every one of these ends in a call through IClipboard.
-        // Which message the menu will act on. A right-click dispatches a click at the same point
-        // before the menu opens, so this runs first and the menu is already aimed. Not marked
-        // handled: the click must still do its ordinary work, like starting a text selection.
-        doc.OnAction("data-msg", e =>
+        // Which message the menu will act on, from the element the right-click or long-press
+        // actually landed on (CupriFace#85). e.Value, not e.Model: the attribute carries the id,
+        // while Model is the ROOT model — data-repeat discards each item once its bindings are
+        // substituted, so there is no row object to hand back.
+        doc.OnContext("data-msg", e =>
         {
-            SetContextMessage(e.Model as MessageRow);
+            SetContextMessage(e.Value);
             return false;
         });
 
@@ -751,8 +752,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// offered only over your own: the server refuses anybody else, and a menu item that always
     /// fails is worse than one that is not there.
     /// </summary>
-    private void SetContextMessage(MessageRow? row)
+    private void SetContextMessage(string? messageId)
     {
+        var row = ViewModel.FindMessage(ViewModel.Model.ActiveRoom, messageId ?? "");
         _contextMessage = row;
 
         var actionable = row is not null && row.Id.Length > 0 && !row.RowClass.Contains("deleted", StringComparison.Ordinal);

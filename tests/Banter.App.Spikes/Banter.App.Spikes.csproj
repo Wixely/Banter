@@ -8,6 +8,6 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
     <!-- Engine only: CupriApp.CreateDocument() renders headlessly with no window host. -->
-    <PackageReference Include="CupriFace" Version="0.8.0" />
+    <PackageReference Include="CupriFace" Version="0.9.0" />
   </ItemGroup>
 </Project>
