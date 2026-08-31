@@ -94,7 +94,35 @@ public sealed partial class ChatViewModel
         Model.StatusClass = connected ? "status on" : "status off";
     }
 
-    public void SetNick(string nick) => Model.Nick = nick;
+    public void SetNick(string nick)
+    {
+        Model.Nick = nick;
+        Model.NickInitials = InitialsOf(nick);
+    }
+
+    /// <summary>
+    /// Two letters for an avatar. Letters and digits only, so "[bot]dagger" reads as DA rather
+    /// than "[B" — punctuation is common in nicks and carries nothing a reader can recognise.
+    /// </summary>
+    public static string InitialsOf(string nick)
+    {
+        Span<char> taken = stackalloc char[2];
+        var count = 0;
+
+        foreach (var c in nick)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                taken[count++] = char.ToUpperInvariant(c);
+                if (count == 2)
+                {
+                    break;
+                }
+            }
+        }
+
+        return new string(taken[..count]);
+    }
 
     public void AddRoom(string room)
     {
@@ -176,6 +204,8 @@ public sealed partial class ChatViewModel
         {
             Id = id,
             Sender = sender,
+            // System lines have no author, so they get no avatar and sit inset instead.
+            Initials = rowClass == "line system" ? "" : InitialsOf(sender),
             Text = text,
             Time = FormatTime(timestamp),
             // An egress announcement is the one message in a room that must never be skimmed
@@ -509,6 +539,7 @@ public sealed partial class ChatViewModel
         var rows = agents.Select(a => new AgentRow
         {
             Nick = a.Nick,
+            Initials = InitialsOf(a.Nick),
             Locality = a.IsLocal ? "local" : "frontier",
             Skills = a.Skills,
             Role = a.IsDelegator ? "delegator" : "",

@@ -118,7 +118,12 @@ public sealed class ChromeDetailTests
 
         // The room tab in the sidebar: a thing that responds to a click should say so before it
         // is clicked.
-        var tab = Walk(doc.Root).First(n => n.Node.Style?.Cursor == CursorType.Pointer);
+        //
+        // Only nodes with area count. The rail's tool button also carries a pointer and is declared
+        // first, but it is hidden until a server offers tools — asking what the cursor is over a
+        // box of no size answers about whatever is behind it.
+        var tab = Walk(doc.Root).First(n =>
+            n.Node.Style?.Cursor == CursorType.Pointer && n.Node.Width > 0 && n.Node.Height > 0);
         var cursor = doc.CursorAt(tab.Left + (tab.Node.Width / 2), tab.Top + (tab.Node.Height / 2));
 
         Assert.Equal(CursorType.Pointer, cursor);
@@ -146,7 +151,19 @@ public sealed class ChromeDetailTests
         // Windows gives a window light chrome unless asked otherwise, which on a dark app is a
         // white band bolted to the top of it.
         Assert.True(app.DarkWindowChrome);
-        Assert.Equal(new SkiaSharp.SKColor(0x14, 0x16, 0x1a), app.Background);
+
+        // The host clears to Background before the first frame and during a resize, so it has to
+        // be whatever the stylesheet paints the page — read out of the stylesheet rather than
+        // copied here, because a repaint is exactly the sort of change that leaves a pinned copy
+        // behind and puts a pale edge behind a window being dragged wider.
+        var declared = System.Text.RegularExpressions.Regex.Match(
+            app.Css, @"body\s*\{[^}]*background:\s*#([0-9a-fA-F]{6})");
+        Assert.True(declared.Success, "the stylesheet should give body an explicit background");
+
+        var rgb = Convert.ToInt32(declared.Groups[1].Value, 16);
+        Assert.Equal(
+            new SkiaSharp.SKColor((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb),
+            app.Background);
     }
 
 }

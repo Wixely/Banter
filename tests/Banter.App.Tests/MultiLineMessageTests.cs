@@ -74,8 +74,12 @@ public sealed class MultiLineMessageTests(ITestOutputHelper output)
         output.WriteLine($"single line: {singleHeight:F1}px, three lines: {multiHeight:F1}px");
 
         // Before white-space was honoured these were identical: the newlines collapsed to spaces.
+        //
+        // The gap, not a ratio: a one-line row is as tall as its avatar rather than as tall as its
+        // text, so a floor of ~46px sits under both and swallows any multiple you compare against.
+        // Two extra lines of 13px text is the thing being measured.
         Assert.True(
-            multiHeight > singleHeight * 2,
+            multiHeight - singleHeight > 20,
             $"A three-line message ({multiHeight:F1}px) should be far taller than one line ({singleHeight:F1}px).");
     }
 

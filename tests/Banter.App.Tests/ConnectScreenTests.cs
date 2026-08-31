@@ -195,14 +195,14 @@ public sealed class ConnectScreenTests
         doc.BuildDisplayList(width, height);
         var pixels = doc.RenderToPixels(width, height, SkiaSharp.SKColors.Black);
 
-        // Scan a row through the card and find where its fill (#14161a) starts and ends against
+        // Scan a row through the card and find where its fill (#151920) starts and ends against
         // the darker backdrop behind it.
         const int row = 250;
         int first = -1, last = -1;
         for (var x = 0; x < width; x++)
         {
             var i = ((row * width) + x) * 4;
-            if (pixels[i] == 0x14 && pixels[i + 1] == 0x16 && pixels[i + 2] == 0x1a)
+            if (pixels[i] == 0x15 && pixels[i + 1] == 0x19 && pixels[i + 2] == 0x20)
             {
                 if (first < 0)
                 {
@@ -243,7 +243,7 @@ public sealed class ConnectScreenTests
         {
             var i = ((row * width) + x) * 4;
             Assert.True(
-                pixels[i] == 0x0d && pixels[i + 1] == 0x0f && pixels[i + 2] == 0x13,
+                pixels[i] == 0x0b && pixels[i + 1] == 0x0d && pixels[i + 2] == 0x10,
                 $"x={x} shows #{pixels[i]:x2}{pixels[i + 1]:x2}{pixels[i + 2]:x2} through the connect screen");
         }
     }

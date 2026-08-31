@@ -31,6 +31,12 @@ public sealed partial class MessageRow
     public string RowClass { get; set; } = "line";
 
     /// <summary>
+    /// Two letters standing in for an avatar. Initials rather than a colour block because a room
+    /// is read by scanning down the left edge, and a letter is recognisable where a hue is not.
+    /// </summary>
+    public string Initials { get; set; } = "";
+
+    /// <summary>
     /// " (edited)" once the author has changed it, empty otherwise. Shown because the words a
     /// reader is looking at may not be the ones somebody else replied to.
     /// </summary>
@@ -63,6 +69,9 @@ public sealed partial class MessageRow
 public sealed partial class AgentRow
 {
     public string Nick { get; set; } = "";
+
+    /// <summary>Two letters standing in for an avatar, as in the timeline.</summary>
+    public string Initials { get; set; } = "";
 
     /// <summary>"local" or "frontier" — the axis that decides whether data leaves.</summary>
     public string Locality { get; set; } = "";
@@ -163,6 +172,9 @@ public sealed partial class ChatModel
     public string Status { get; set; } = "Disconnected";
     public string StatusClass { get; set; } = "status off";
     public string Composer { get; set; } = "";
+
+    /// <summary>This account's initials, for the rail and the sidebar footer.</summary>
+    public string NickInitials { get; set; } = "";
 
     /// <summary>
     /// The message the composer is currently rewriting, or empty when it is composing a new one.

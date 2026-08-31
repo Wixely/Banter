@@ -46,17 +46,22 @@ public sealed class ToolPanelLayoutTests(ITestOutputHelper output)
         var vm = Populated();
         var app = new BanterChatApp(vm);
 
-        var closed = PixelAt(app, 20, 20);
+        // Well inside the sidebar's room list, and clear of the rail beside it.
+        var closed = PixelAt(app, 150, 300);
         vm.ShowToolPanel(true);
-        var open = PixelAt(app, 20, 20);
+        var open = PixelAt(app, 150, 300);
 
         output.WriteLine($"closed {closed}, open {open}");
 
-        // Measured: #1b1e24 closed (the sidebar), #0d0f13 open (the panel's backdrop). Naming the
+        // Measured: #0e1116 closed (the sidebar), #151920 open (the panel's card). Naming the
         // colours rather than just asserting they differ is what catches the overlay quietly
         // becoming a third column — which would still change this pixel, and still be wrong.
-        Assert.Equal(new SKColor(0x1b, 0x1e, 0x24), closed);
-        Assert.Equal(new SKColor(0x0d, 0x0f, 0x13), open);
+        Assert.Equal(new SKColor(0x0e, 0x11, 0x16), closed);
+        Assert.Equal(new SKColor(0x15, 0x19, 0x20), open);
+
+        // And the overlay reaches the window's own edge rather than starting after the rail: this
+        // point is left of the card's inset, where its backdrop shows.
+        Assert.Equal(new SKColor(0x0b, 0x0d, 0x10), PixelAt(app, 10, 300));
     }
 
     [Fact]

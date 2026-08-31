@@ -45,6 +45,27 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A point that really is inside the composer, found by asking the document what is painted
+    /// under it. The field is one row among several in the bar, so a guessed offset lands on
+    /// whichever neighbour the layout last moved into the way.
+    /// </summary>
+    private static (float X, float Y) PointOnComposer(CupriFace.CupriDocument doc)
+    {
+        for (var y = (float)Height - 1; y > Height - 140; y -= 2)
+        {
+            for (var x = 40f; x < Width - 40; x += 8)
+            {
+                if (doc.HitTest(x, y)?.Element?.Closest("cupri-textarea") is not null)
+                {
+                    return (x, y);
+                }
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException("nothing painted belongs to the composer");
+    }
+
+    /// <summary>
     /// Fastest of several layouts of a room holding <paramref name="messages"/>. The minimum, not
     /// the mean: scheduler noise only ever adds time, so the best sample is the closest thing to
     /// the cost of the work itself on a machine running six test assemblies at once.
@@ -188,8 +209,12 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
         using var doc = app.CreateDocument();
         doc.BuildDisplayList(Width, Height);
 
-        // Click into the composer near the bottom of the window, then type.
-        doc.DispatchClick(500, Height - 40, 1);
+        // Click into the composer, found by asking the document where it actually is. A fixed
+        // offset up from the bottom edge used to do, and quietly stopped landing on the field the
+        // day a hint line was added under it — the click still went somewhere, and typing went
+        // nowhere.
+        var (cx, cy) = PointOnComposer(doc);
+        doc.DispatchClick(cx, cy, 1);
         foreach (var ch in "hey")
         {
             doc.DispatchKey(ch.ToString(), EditKey.None);
