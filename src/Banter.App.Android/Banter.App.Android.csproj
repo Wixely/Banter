@@ -14,6 +14,6 @@
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
-    <PackageReference Include="CupriFace.Android" Version="0.9.0" />
+    <PackageReference Include="CupriFace.Android" Version="0.10.0" />
   </ItemGroup>
 </Project>

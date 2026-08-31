@@ -187,12 +187,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="composer-wrap">
               <div class="composer-row">
                 <span class="prompt">&gt;</span>
-                <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
+                <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message" data-composer="1" submit-on-enter></cupri-textarea>
                 <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
                 <cupri-button class="{{AttachButtonClass}}">Attach</cupri-button>
                 <cupri-button class="send">Send</cupri-button>
               </div>
-              <div class="composer-hint">/help for commands · @name to reach an agent directly</div>
+              <div class="composer-hint">Enter to send · Shift+Enter for a newline · /help for commands · @name to reach an agent directly</div>
             </div>
             <div class="{{VoiceRowClass}}">
               <span class="voice-status">{{VoiceStatus}}</span>
@@ -525,15 +525,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".attach-open", _ => PickAttachment());
         doc.OnClick(".connect-go", _ => Connect());
 
-        // Ctrl+Enter would send, and Escape would abandon an edit; plain Enter stays a newline,
-        // which is what a multi-line composer needs.
+        // Enter sends and Shift+Enter writes a newline, which is what people expect of a chat
+        // composer and what they type without being told.
         //
-        // Neither of these fires yet, and the composer's placeholder no longer promises one of
-        // them. OnShortcut only matches single-character text, while Enter and Escape reach the
-        // document as an EditKey with no text at all, so the registration is dead on arrival
-        // (CupriFace#88). Left registered: they start working the moment that does, and a binding
-        // that is merely early is better than a feature nobody remembers to add back.
-        doc.OnShortcut(KeyMods.Ctrl, "Enter", Send);
+        // Per-field rather than a global Enter shortcut: a global one would eat the newline in
+        // every other multi-line field on the page. The engine commits the edit buffer before
+        // calling this, so Send reads the character just typed, and keeps focus afterwards — a
+        // composer goes on composing.
+        doc.OnSubmit("data-composer", _ =>
+        {
+            Send();
+            return true;
+        });
+
+        // Escape abandons an edit. It fires below the engine's own dismissals, so an open context
+        // menu closes first and only a spare Escape reaches this — and it arrives before the
+        // field is blurred, so it still means "cancel" while the field being cancelled has focus.
         doc.OnShortcut(KeyMods.None, "Escape", CancelEdit);
 
         // Room tabs carry their own name, so one handler serves every repeated row.

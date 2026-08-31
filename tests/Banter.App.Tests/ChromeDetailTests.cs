@@ -130,20 +130,6 @@ public sealed class ChromeDetailTests
     }
 
     [Fact]
-    public void TheComposerDoesNotPromiseAShortcutThatCannotFire()
-    {
-        // This test used to assert the placeholder SAID "Ctrl+Enter to send", and passed for weeks
-        // while the shortcut did nothing: OnShortcut only matches single-character text, and Enter
-        // arrives as an EditKey with none (CupriFace#88). It pinned the promise rather than the
-        // behaviour, which is the more useful thing to have learnt from it.
-        //
-        // Restore the hint when #88 lands — the binding is still registered and waiting.
-        var app = new BanterChatApp(new ChatViewModel());
-
-        Assert.DoesNotContain("Ctrl+Enter", app.Html);
-    }
-
-    [Fact]
     public void TheWindowChromeMatchesTheApp()
     {
         var app = new BanterChatApp(new ChatViewModel());
