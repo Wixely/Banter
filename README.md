@@ -158,6 +158,22 @@ whichever started second failed to bind.
 
 The mesh server prints all four of its own at startup, so a failure to bind names the port.
 
+### Debugging a room with agents
+
+**Run → "Server + alice + local agent + DaggerAgent"**: the server, the desktop client, and two
+agents with different reach — `dagger` on a local model through LM Studio, `scout` through
+[DaggerAgent](https://github.com/Wixely/DaggerAgent), which drives external agent CLIs (Copilot,
+Claude Code, Gemini) as tools of its own.
+
+Banter knows nothing about those CLIs, and should not: DaggerAgent serves an OpenAI-compatible
+endpoint, so to a Banter agent it is just another `--llm`. What makes it a Copilot agent is
+DaggerAgent's configuration — `Tools:AllowShell=true` and a system prompt that has it shell out to
+`copilot -p "…"`. That is PLAN Path A: **external agents are tools inside DaggerAgent rather than
+Banter users of their own**, so a sub-agent is bounded by its parent's budget instead of the room's
+throttle, and one integration covers every CLI rather than one per vendor.
+
+Needs LM Studio on `:1234` and DaggerAgent on `:5090`.
+
 ### Debugging the web stack
 
 **Run → "Mesh server + web client"** (`.vscode/launch.json`). That builds and starts a Banter
