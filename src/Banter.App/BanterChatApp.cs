@@ -170,7 +170,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="composer-row">
               <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
               <cupri-button class="{{AttachButtonClass}}">Attach</cupri-button>
-              <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message  ·  Ctrl+Enter to send"></cupri-textarea>
+              <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message"></cupri-textarea>
               <cupri-button class="send">Send</cupri-button>
             </div>
             <div class="{{VoiceRowClass}}">
@@ -436,11 +436,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".attach-open", _ => PickAttachment());
         doc.OnClick(".connect-go", _ => Connect());
 
-        // Ctrl+Enter sends; plain Enter stays a newline in the textarea, which is what a
-        // multi-line composer needs and what the CupriFace guidance recommends.
+        // Ctrl+Enter would send, and Escape would abandon an edit; plain Enter stays a newline,
+        // which is what a multi-line composer needs.
+        //
+        // Neither of these fires yet, and the composer's placeholder no longer promises one of
+        // them. OnShortcut only matches single-character text, while Enter and Escape reach the
+        // document as an EditKey with no text at all, so the registration is dead on arrival
+        // (CupriFace#88). Left registered: they start working the moment that does, and a binding
+        // that is merely early is better than a feature nobody remembers to add back.
         doc.OnShortcut(KeyMods.Ctrl, "Enter", Send);
-        // Escape abandons an edit. Without a way out, loading a message into the composer would
-        // trap whatever was half-typed there before.
         doc.OnShortcut(KeyMods.None, "Escape", CancelEdit);
 
         // Room tabs carry their own name, so one handler serves every repeated row.
