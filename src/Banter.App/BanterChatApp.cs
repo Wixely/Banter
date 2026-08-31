@@ -341,7 +341,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .pfp { width: 36px; height: 36px; border-radius: 11px; display: flex;
                align-items: center; justify-content: center; font-size: 11px; font-weight: bold;
                background: #262d38; border: 1px solid #384150; color: #cbd5e1; }
-        .msg-main { display: flex; flex-direction: column; flex: 1; padding-left: 10px; }
+        .msg-main { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-left: 10px; }
         .msg-head { display: flex; flex-direction: row; align-items: center; }
         .sender { color: #f8fafc; font-size: 12px; font-weight: bold; }
         .time { color: #596474; font-size: 9px; padding-left: 8px; }
@@ -394,29 +394,58 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .prompt { color: #fb7185; font-weight: bold; padding: 0 9px 0 3px; }
         /* Styled explicitly. The engine's defaults for a text field and a button are a white box
            and a light button, which on a dark app look like two controls that failed to load. */
-        .composer { flex: 1; min-height: 22px; max-height: 110px; background: #11151b;
-                    color: #f3f5f7; border: 0; padding: 3px 0; caret-color: #fb7185; }
-        .composer-hint { font-size: 10px; color: #5f6877; margin: 7px 4px 0 4px; }
+        /* The padding centres the line, and the minimum is one line of it. Asking for a taller
+           minimum instead puts all of the slack under the text, which reads as a field whose
+           contents have slipped.
 
-        .mic { margin-left: 8px; min-width: 64px; height: 32px; padding: 0 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
-               border: 1px solid #333a46; border-radius: 10px; line-height: 32px; }
+           min-width: 0 is what actually lets it flex. A flex item defaults to min-width: auto and
+           will not shrink below its own content, and this component reports a wide one — so the
+           field kept 288px it had no room for and shoved Send off the right edge of the window
+           the moment a third button appeared beside it. Measured: with it, the row ends exactly
+           where the composer does; without it, 92px past.
+
+           The transparent border is space held open for the one the component draws when the
+           pointer is over the field or it has focus. That border is 2px and lands OUTSIDE the
+           box, because the engine sizes content-box and does not honour box-sizing
+           (CupriFace#76) — so a field with no border at rest grew 4px taller the moment the
+           pointer crossed it, and lifted the whole composer, its buttons and the hint under it
+           by 2.4px. Reserving the space here means only the colour changes. */
+        .composer { flex: 1; min-width: 0; min-height: 18px; max-height: 110px; background: #11151b;
+                    color: #f3f5f7; border: 2px solid transparent; padding: 3px 0;
+                    caret-color: #fb7185; }
+        /* The component's own focus ring is amber, which on this palette reads as a warning
+           rather than as "you are typing here". Colour only — the width is already reserved. */
+        .composer:focus { border-color: #fb7185; }
+        .composer-hint { font-size: 10px; color: #5f6877; margin: 7px 0 0 0; }
+
+        /* Buttons are sized by padding, never by height. An explicit height leaves the label
+           against the top of the box — line-height does not move it — and the border sits outside
+           that height, so a bordered button and a borderless one declared the same height come out
+           2px apart and sit on different lines. Every button here carries a border for that
+           reason, the accent ones in their own colour.
+
+           text-align centres the word. A min-width stretches the label's own box to the button's
+           full inner width, and text in a box is left-aligned, so every button wider than its
+           word wore the word against its left padding. */
+        .mic { margin-left: 8px; min-width: 64px; padding: 6px 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
+               border: 1px solid #333a46; border-radius: 10px; text-align: center; }
         /* The gate's state, said in colour as well as in words: a room microphone is watched
            from across a desk, where the label is too small to read. */
         .mic.armed { background: #2b3a4a; }
         .mic.hearing { background: #2f6b3f; }
         .mic.working { background: #6b5a2f; }
         .mic.hidden { display: none; }
-        .attach-open { margin-left: 8px; min-width: 66px; height: 32px; padding: 0 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
-                       border: 1px solid #333a46; border-radius: 10px; line-height: 32px; }
+        .attach-open { margin-left: 8px; min-width: 66px; padding: 6px 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
+                       border: 1px solid #333a46; border-radius: 10px; text-align: center; }
         .attach-open.hidden { display: none; }
-        .send { min-width: 62px; height: 32px; padding: 0 14px; font-size: 13px; margin-left: 8px; background: #ef4444; color: #ffffff;
-                border: 0; border-radius: 10px; font-weight: bold; line-height: 32px; }
+        .send { min-width: 62px; padding: 6px 14px; font-size: 13px; margin-left: 8px; background: #ef4444; color: #ffffff;
+                border: 1px solid #ef4444; border-radius: 10px; font-weight: bold; text-align: center; }
 
-        .voice-row { display: flex; flex-direction: row; padding: 0 18px 10px 18px; }
+        .voice-row { display: flex; flex-direction: row; align-items: center; padding: 0 18px 10px 18px; }
         .voice-row.hidden { display: none; }
         .voice-status { flex: 1; color: #8d97a6; font-size: 12px; }
-        .readback { height: 30px; background: #1b2029; color: #8d97a6; border: 1px solid #333a46;
-                    border-radius: 10px; font-size: 12px; line-height: 30px; }
+        .readback { padding: 5px 12px; background: #1b2029; color: #8d97a6; border: 1px solid #333a46;
+                    border-radius: 10px; font-size: 12px; text-align: center; }
         .readback.hidden { display: none; }
 
         .roster { width: 236px; background: #0e1116; border-left: 1px solid #20262f;
@@ -463,13 +492,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            the engine sizes content-box and does not honour `box-sizing` (CupriFace#76). */
         .toolpanel-inner { display: flex; flex-direction: column; flex: 1; margin: 36px 56px;
                            background: #151920; border-radius: 14px; padding: 16px; }
-        .toolpanel-head { display: flex; flex-direction: row; padding-bottom: 12px; }
+        .toolpanel-head { display: flex; flex-direction: row; align-items: center; padding-bottom: 12px; }
         .toolpanel-title { flex: 1; font-weight: bold; }
         .toolpanel-status { color: #8d97a6; font-size: 12px; padding-right: 12px; }
-        .tools-save { min-width: 72px; height: 32px; padding: 0 14px; font-size: 13px; margin-right: 8px; background: #ef4444; color: #ffffff;
-                      border: 0; border-radius: 10px; line-height: 32px; }
-        .tools-close { min-width: 72px; height: 32px; padding: 0 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
-                       border: 1px solid #333a46; border-radius: 10px; line-height: 32px; }
+        .tools-save { min-width: 72px; padding: 6px 14px; font-size: 13px; margin-right: 8px; background: #ef4444; color: #ffffff;
+                      border: 1px solid #ef4444; border-radius: 10px; text-align: center; }
+        .tools-close { min-width: 72px; padding: 6px 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
+                       border: 1px solid #333a46; border-radius: 10px; text-align: center; }
         .toolpanel-body { display: flex; flex-direction: row; flex: 1; }
 
         .tool-agents { width: 180px; padding-right: 12px; }
@@ -485,7 +514,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* Granted tools are marked as clearly as frontier agents are, and for the same reason:
            what an agent can reach is the thing an operator most needs to see at a glance. */
         .tool.granted { background: #16301c; }
-        .tool-line { display: flex; flex-direction: row; }
+        .tool-line { display: flex; flex-direction: row; align-items: center; }
         .tool-mark { width: 24px; color: #34d399; font-size: 11px; }
         .tool-name { flex: 1; font-size: 13px; }
         .tool-server { color: #8d97a6; font-size: 11px; }
@@ -510,8 +539,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .connect-label { font-size: 11px; color: #8d97a6; padding-bottom: 4px; padding-top: 8px; }
         .connect-field { background: #0d1014; color: #f3f5f7; border: 1px solid #252b35;
                          border-radius: 10px; padding: 7px 10px; }
-        .connect-go { margin-top: 16px; height: 36px; padding: 0; font-size: 13px; text-align: center; background: #ef4444; color: #ffffff; border: 0;
-                      border-radius: 10px; font-weight: bold; line-height: 36px; }
+        .connect-go { margin-top: 16px; padding: 9px 0; font-size: 13px; text-align: center;
+                      background: #ef4444; color: #ffffff; border: 1px solid #ef4444;
+                      border-radius: 10px; font-weight: bold; }
         .connect-status { font-size: 12px; color: #fb7185; padding-top: 10px; }
         """;
 
