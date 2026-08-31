@@ -39,6 +39,12 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
     /// <summary>Delegator nick per room, as last announced by the server. Null means none.</summary>
     private readonly Dictionary<string, string?> _delegators = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Weighs a request this agent was handed directly. Always the keyword rules, never a model —
+    /// a frontier agent asking its own model "may I send this?" has already sent it.
+    /// </summary>
+    private readonly Banter.Core.IRequestClassifier _directClassifier = new Banter.Core.KeywordRequestClassifier();
     private readonly Dictionary<string, RoomDispatchMode> _modes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _roomStateLock = new();
 
@@ -183,6 +189,15 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// way a non-delegator speaks, which is what stops five agents answering one question.</para>
     ///
     /// <para>In a <b>mention</b> room every agent answers when named.</para>
+    ///
+    /// <para><b>An @mention from a person goes straight to the agent named</b>, delegated room or
+    /// not: asking someone directly and being answered by whoever happens to hold the room is not
+    /// what anybody means by it. Only from a person — an agent writing "@scout" still goes through
+    /// the delegator, or two agents could hand work back and forth around the election.</para>
+    ///
+    /// <para>What that bypasses is <i>who answers</i>, not <i>what may leave</i>: a frontier agent
+    /// reached this way still classifies before it sends anything to a third party (see
+    /// <c>SpeaksForFree</c>).</para>
     /// </summary>
     protected virtual bool ShouldRespond(MsgPayload m)
     {
@@ -194,6 +209,12 @@ public abstract partial class BanterAgent : IAsyncDisposable
         if (m.Sender == AgentGuardrailNames.System)
         {
             return false;
+        }
+
+        // Named directly by a person: answer, whatever the room's dispatch mode says.
+        if (Mentioned(m) && !IsAgentSender(m))
+        {
+            return true;
         }
 
         if (ModeFor(m.Room) == RoomDispatchMode.Delegated)
@@ -216,7 +237,30 @@ public abstract partial class BanterAgent : IAsyncDisposable
         return Options.RespondToEveryMessage || Addressed(m);
     }
 
+    /// <summary>
+    /// Named at all — either "@nick" or the bare nick a delegator uses when handing work over.
+    /// </summary>
     private bool Addressed(MsgPayload m) => m.Text.Contains(Nick, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Named with an explicit <c>@nick</c>, which is a deliberate act rather than a mention in
+    /// passing. Bare-nick matching is deliberately not enough here: "ask scout about it" addresses
+    /// the room, and treating it as a summons would have every agent answering every sentence its
+    /// name appeared in.
+    /// </summary>
+    private bool Mentioned(MsgPayload m)
+    {
+        var text = m.Text;
+        var at = text.IndexOf('@' + Nick, StringComparison.OrdinalIgnoreCase);
+        if (at < 0)
+        {
+            return false;
+        }
+
+        // "@scouting the area" is not scout. The mention has to end where the nick does.
+        var after = at + 1 + Nick.Length;
+        return after >= text.Length || !char.IsLetterOrDigit(text[after]);
+    }
 
     /// <summary>
     /// Open a child room, bring the chosen agents into it, and put the request there. Returns
@@ -455,6 +499,53 @@ public abstract partial class BanterAgent : IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// Whether a third-party agent may act on something it was handed directly.
+    ///
+    /// <para>Being named bypasses <i>who answers</i>. It must not bypass the egress rule, or the
+    /// whole clearance model (PLAN §8a) would come undone by typing an "@": a delegator classifies
+    /// before routing to a frontier agent and announces what is leaving, and a mention that skipped
+    /// the delegator would skip both. So the agent does it for itself — declines what it is not
+    /// cleared for, and says so in the room rather than going quiet.</para>
+    ///
+    /// <para>Local agents pass straight through: nothing leaves, so there is nothing to weigh.</para>
+    /// </summary>
+    private async Task<bool> MayTakeDirectlyAsync(MsgPayload m)
+    {
+        if (Options.Locality != AgentLocality.Frontier ||
+            IsAgentSender(m) ||
+            !Mentioned(m))
+        {
+            return true;
+        }
+
+        // The keyword rules, not a model: asking a third-party model whether it is safe to send
+        // something to a third-party model has already sent it.
+        var classification = await _directClassifier
+            .ClassifyAsync(StripAddress(m.Text), _stopping.Token)
+            .ConfigureAwait(false);
+
+        if (classification.Sensitivity > Options.Clearance)
+        {
+            await SayAsync(
+                m.Room,
+                $"(not taking that one: it classifies " +
+                $"{classification.Sensitivity.ToString().ToLowerInvariant()} " +
+                $"and I am a third-party agent cleared for " +
+                $"{Options.Clearance.ToString().ToLowerInvariant()}. {classification.Rationale}.)")
+                .ConfigureAwait(false);
+            return false;
+        }
+
+        await SayAsync(
+            m.Room,
+            $"[egress] answering this myself, and I am a third-party agent. " +
+            $"Classified {classification.Sensitivity.ToString().ToLowerInvariant()}: {classification.Rationale}.")
+            .ConfigureAwait(false);
+
+        return true;
+    }
+
     private async Task TakeTurnAsync(MsgPayload m)
     {
         // One turn at a time. Two overlapping streams from one agent interleave in the room and
@@ -469,6 +560,13 @@ public abstract partial class BanterAgent : IAsyncDisposable
             // Routing first: if the work belongs to another agent, hand it over and stop. The
             // turn gate is still held, so a second message cannot start a competing hand-off.
             if (await TryRouteAsync(m).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            // An @mention reaches a third-party agent without passing a delegator, so the check
+            // the delegator would have done has to happen here instead.
+            if (!await MayTakeDirectlyAsync(m).ConfigureAwait(false))
             {
                 return;
             }
