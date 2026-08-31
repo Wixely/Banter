@@ -124,40 +124,6 @@
       "stopAtEntry": false
     },
     {
-      // Backed by the GitHub Copilot CLI as a subprocess rather than an HTTP endpoint, so it needs
-      // no LM Studio — just `copilot` on PATH and logged in.
-      //
-      // --frontier is not decoration: the room's contents go to GitHub, which is exactly what that
-      // flag means. It keeps this agent out of sensitive rooms and off sensitive requests, and
-      // lets the local agent win the delegator election (PLAN 8a).
-      //
-      // Copilot's OWN tools stay off. This agent is prompted by whatever the room says to it, so
-      // its tools would be the room's tools — and Banter runs tools server-side under per-agent
-      // grants with every call announced, which its own would bypass. --copilot-tools turns them
-      // on if you ever want that, and you probably do not.
-      "name": "Agent (scout, GitHub Copilot CLI)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/Banter.Warden/bin/Debug/net10.0/banter-warden.dll",
-      "args": [
-        "--server", "tcp://127.0.0.1:7770",
-        "--user", "scout",
-        "--pass", "banter",
-        "--room", "#main",
-        "--copilot",
-        "--model", "github-copilot",
-        "--frontier",
-        "--clearance", "public",
-        "--skills", "web,github,research",
-        "--cost", "5",
-        "--system", "You are scout, a research assistant in a group chat. Keep replies to a sentence or two."
-      ],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "stopAtEntry": false
-    },
-    {
       "name": "CLI client (bob)",
       "type": "coreclr",
       "request": "launch",
@@ -239,22 +205,6 @@
       // processes on purpose — the browser is a real peer here, not a hosted page.
       "name": "Mesh server + web client",
       "configurations": ["Mesh server (Nodestar + WebRTC)", "Web client (Edge)"],
-      "stopAll": true
-    },
-    {
-      // Server, the desktop client, and two agents with different backends: dagger on a local
-      // model through LM Studio, scout on the GitHub Copilot CLI. One local and one third-party is
-      // the interesting pair — dagger is eligible to be delegator and to see sensitive rooms,
-      // scout is neither, so the routing rules are visible rather than theoretical.
-      //
-      // Needs LM Studio on :1234 for dagger, and `copilot` on PATH and logged in for scout.
-      "name": "Server + alice + local agent + Copilot agent",
-      "configurations": [
-        "Server",
-        "Desktop app (alice)",
-        "Agent (dagger, local)",
-        "Agent (scout, GitHub Copilot CLI)"
-      ],
       "stopAll": true
     },
     {
