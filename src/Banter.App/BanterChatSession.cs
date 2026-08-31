@@ -54,6 +54,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.MessageStreamDelta += OnStreamDelta;
         _client.MessageStreamEnded += OnStreamEnd;
         _client.PrivateMessageReceived += OnPrivate;
+        _client.MessageEdited += OnEdited;
+        _client.MessageDeleted += OnDeleted;
         _client.ServerError += OnServerError;
         _client.Disconnected += OnDisconnected;
         _client.Reconnecting += OnReconnecting;
@@ -294,6 +296,15 @@ public sealed partial class BanterChatSession : IDisposable
             case "files":
                 await ListFilesAsync(room).ConfigureAwait(false);
                 break;
+            case "edit" when rest.Length > 0:
+                await EditLastAsync(room, rest).ConfigureAwait(false);
+                break;
+            case "edit":
+                _vm.Post(() => _vm.System(room, "usage: /edit <the corrected message>"));
+                break;
+            case "delete":
+                await DeleteLastAsync(room).ConfigureAwait(false);
+                break;
             case "task" when rest.Length > 0:
                 await Guard(room, async () =>
                 {
@@ -337,6 +348,7 @@ public sealed partial class BanterChatSession : IDisposable
             case "help":
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
+                    "/edit <text> | /delete | " +
                     "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /help"));
                 break;
             default:
@@ -560,6 +572,42 @@ public sealed partial class BanterChatSession : IDisposable
         }
     }
 
+    /// <summary>
+    /// Changes the last thing this account said here. Acting on "what I just said" rather than on
+    /// a chosen message, because the timeline is painted to a canvas and has no per-message
+    /// affordance yet — and asking somebody to find a message id would be worse than no feature.
+    /// </summary>
+    private async Task EditLastAsync(string room, string text)
+    {
+        var id = _vm.LastOwnMessageId(room);
+        if (id.Length == 0)
+        {
+            _vm.Post(() => _vm.System(room, "nothing of yours to edit here."));
+            return;
+        }
+
+        await Guard(room, () => _client.EditMessageAsync(room, id, text).AsTask()).ConfigureAwait(false);
+    }
+
+    /// <summary>Takes back the last thing this account said here.</summary>
+    private async Task DeleteLastAsync(string room)
+    {
+        var id = _vm.LastOwnMessageId(room);
+        if (id.Length == 0)
+        {
+            _vm.Post(() => _vm.System(room, "nothing of yours to delete here."));
+            return;
+        }
+
+        await Guard(room, () => _client.DeleteMessageAsync(room, id).AsTask()).ConfigureAwait(false);
+    }
+
+    private void OnEdited(Protocol.EditPayload e) =>
+        _vm.Post(() => _vm.MarkEdited(e.Room, e.MessageId, e.Text));
+
+    private void OnDeleted(Protocol.DeletePayload d) =>
+        _vm.Post(() => _vm.MarkDeleted(d.Room, d.MessageId));
+
     private async Task FetchAttachmentInfoAsync(string fileId)
     {
         try
@@ -665,6 +713,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.MessageStreamDelta -= OnStreamDelta;
         _client.MessageStreamEnded -= OnStreamEnd;
         _client.PrivateMessageReceived -= OnPrivate;
+        _client.MessageEdited -= OnEdited;
+        _client.MessageDeleted -= OnDeleted;
         _client.ServerError -= OnServerError;
         _client.Disconnected -= OnDisconnected;
         _client.Reconnecting -= OnReconnecting;

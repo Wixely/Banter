@@ -30,6 +30,12 @@ public sealed partial class MessageRow
     /// </summary>
     public string RowClass { get; set; } = "line";
 
+    /// <summary>
+    /// " (edited)" once the author has changed it, empty otherwise. Shown because the words a
+    /// reader is looking at may not be the ones somebody else replied to.
+    /// </summary>
+    public string EditedMark { get; set; } = "";
+
     /// <summary>Attached file, when the message carries one. Empty otherwise.</summary>
     public string FileId { get; set; } = "";
 

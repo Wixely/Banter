@@ -258,6 +258,73 @@ public sealed partial class ChatViewModel
         }
     }
 
+    /// <summary>
+    /// The author changed a message. Marked rather than swapped silently: somebody may already
+    /// have read it, or replied to it, and a reader deserves to know the words moved.
+    /// </summary>
+    public void MarkEdited(string room, string messageId, string text)
+    {
+        if (Find(room, messageId) is not { } row)
+        {
+            return;
+        }
+
+        row.Text = text;
+        row.EditedMark = " (edited)";
+    }
+
+    /// <summary>
+    /// A message was taken back. The words go from the row as they have gone from the server —
+    /// leaving them on screen greyed out would be showing exactly what was asked to be removed.
+    /// </summary>
+    public void MarkDeleted(string room, string messageId)
+    {
+        if (Find(room, messageId) is not { } row)
+        {
+            return;
+        }
+
+        row.Text = "message deleted";
+        row.EditedMark = "";
+        row.RowClass = "line deleted";
+        row.FileId = "";
+        row.AttachClass = "attach hidden";
+        row.AttachText = "";
+        row.ImageSrc = "";
+        row.ImageClass = "inline-image hidden";
+    }
+
+    /// <summary>
+    /// The id of this account's most recent message in a room, for the commands that act on "what
+    /// I just said" — a canvas timeline has no per-message affordance to click yet, and asking
+    /// somebody to copy a message id would be worse than not offering the feature.
+    /// </summary>
+    public string LastOwnMessageId(string room)
+    {
+        if (!_rooms.TryGetValue(room, out var rows))
+        {
+            return "";
+        }
+
+        for (var i = rows.Count - 1; i >= 0; i--)
+        {
+            var row = rows[i];
+            if (row.Id.Length > 0 &&
+                row.RowClass != "line deleted" &&
+                string.Equals(row.Sender, Model.Nick, StringComparison.OrdinalIgnoreCase))
+            {
+                return row.Id;
+            }
+        }
+
+        return "";
+    }
+
+    private MessageRow? Find(string room, string messageId) =>
+        messageId.Length > 0 && _rooms.TryGetValue(room, out var rows)
+            ? rows.FirstOrDefault(r => r.Id == messageId)
+            : null;
+
     /// <summary>Byte count in the largest unit that keeps it readable.</summary>
     public static string FormatSize(long bytes) => bytes switch
     {

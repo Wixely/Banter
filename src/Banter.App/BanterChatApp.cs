@@ -151,7 +151,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
                 <div class="{{RowClass}}" data-repeat="Messages">
                   <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
-                  <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
+                  <span class="text"><span class="body">{{Text}}</span><span class="edited">{{EditedMark}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
                 </div>
               </cupri-virtual>
               <cupri-menu-item class="copy-selection">Copy</cupri-menu-item>
@@ -379,6 +379,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .connect-go { margin-top: 16px; background: #2f4a7a; color: #e6e8eb;
                       border: 1px solid #3d5f96; border-radius: 4px; }
         .connect-status { font-size: 12px; color: #e88c8c; padding-top: 10px; }
+
+        /* Quiet, because it is a footnote to the message rather than part of it. */
+        .edited { color: #6b7280; font-size: 11px; }
+        /* A taken-back message keeps its place in the conversation and loses its content: the
+           gap would otherwise make a reply above it look like a reply to nothing. */
+        .line.deleted .body { color: #6b7280; font-style: italic; }
 
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         /* Styled explicitly. The engine's defaults for a text field and a button are a white box
