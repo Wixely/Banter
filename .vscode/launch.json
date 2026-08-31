@@ -128,13 +128,28 @@
       //
       // Nothing here knows about Copilot: DaggerAgent serves an OpenAI-compatible endpoint
       // (POST /v1/chat/completions), so to Banter it is just another --llm. What makes it a
-      // Copilot agent is DaggerAgent's own configuration — `Tools:AllowShell=true` plus a system
-      // prompt telling it to shell out to `copilot -p "..."` for research. That is PLAN Path A:
-      // external agents are tools INSIDE DaggerAgent rather than Banter users of their own, so a
-      // sub-agent is bounded by its parent's budget instead of the room's throttle.
+      // Copilot agent is DaggerAgent's own configuration. That is PLAN Path A: external agents
+      // are tools INSIDE DaggerAgent rather than Banter users of their own, so a sub-agent is
+      // bounded by its parent's budget instead of the room's throttle.
       //
-      // NEEDS: DaggerAgent running in HTTP mode on :5090 (its quick start), configured with
-      // AllowShell and an upstream model. It is a separate repo — github.com/Wixely/DaggerAgent.
+      // Since DaggerAgent v1.8.0 the way to do it is ACP rather than a shell, which is both
+      // better and safer — a long-lived session per job instead of a process per turn, activity
+      // on the progress feed, and no shell access to grant at all:
+      //
+      //   "Tools": {
+      //     "AllowCliDelegation": true,
+      //     "AcpAgents": [{
+      //       "Name": "copilot", "Command": "copilot", "Arguments": ["--acp"],
+      //       "Enabled": true, "Protocol": "acp", "PermissionPolicy": "deny"
+      //     }]
+      //   }
+      //
+      // That exposes a delegate_to_acp_copilot tool. Keep PermissionPolicy at "deny": "ask"
+      // routes the child's permission requests to whoever is driving the job, and nobody is
+      // driving a chat room — it would stall until PermissionTimeoutSeconds and then deny anyway.
+      //
+      // NEEDS: DaggerAgent running in HTTP mode on :5090 (its quick start) with an upstream
+      // model. It is a separate repo — github.com/Wixely/DaggerAgent.
       //
       // --frontier is not decoration: whatever this agent is handed reaches Copilot, and through
       // it GitHub. That keeps it out of sensitive rooms and lets the local agent be delegator.

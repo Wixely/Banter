@@ -572,6 +572,14 @@ public sealed partial class BanterChatSession : IDisposable
         }
     }
 
+    /// <summary>Rewrites a message by id, for the right-click menu.</summary>
+    public Task EditAsync(string room, string messageId, string text) =>
+        Guard(room, () => _client.EditMessageAsync(room, messageId, text).AsTask());
+
+    /// <summary>Takes back a message by id, for the right-click menu.</summary>
+    public Task DeleteAsync(string room, string messageId) =>
+        Guard(room, () => _client.DeleteMessageAsync(room, messageId).AsTask());
+
     /// <summary>
     /// Changes the last thing this account said here. Acting on "what I just said" rather than on
     /// a chosen message, because the timeline is painted to a canvas and has no per-message

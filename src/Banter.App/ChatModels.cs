@@ -163,6 +163,25 @@ public sealed partial class ChatModel
     public string Status { get; set; } = "Disconnected";
     public string StatusClass { get; set; } = "status off";
     public string Composer { get; set; } = "";
+
+    /// <summary>
+    /// The message the composer is currently rewriting, or empty when it is composing a new one.
+    /// Editing reuses the composer rather than opening a field over the timeline: it is the only
+    /// place in this app where text is typed, and a second one would need its own keyboard, IME
+    /// and paste handling for no gain.
+    /// </summary>
+    public string EditingId { get; set; } = "";
+
+    /// <summary>Banner above the composer while an edit is in progress; hidden otherwise.</summary>
+    public string EditingClass { get; set; } = "editing-banner hidden";
+
+    /// <summary>Whether "Edit" appears on the right-click menu — only over your own messages,
+    /// because the server refuses anyone else and offering it would be a lie.</summary>
+    public string EditItemClass { get; set; } = "menu-edit hidden";
+
+    /// <summary>Whether "Delete" appears. Shown over any message: the author may remove their
+    /// own and an admin may remove anyone's, and which of those applies is the server's to say.</summary>
+    public string DeleteItemClass { get; set; } = "menu-delete hidden";
     public string Nick { get; set; } = "";
 
     /// <summary>Label for the load-earlier control; also carries its own visibility class.</summary>

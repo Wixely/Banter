@@ -194,6 +194,8 @@ var app = new BanterChatApp(vm)
     RoomSelected = _ => { },
     LoadOlderAsync = room => session.LoadOlderAsync(room, settings.HistoryPageSize),
     CommandAsync = session.CommandAsync,
+    EditAsync = session.EditAsync,
+    DeleteAsync = session.DeleteAsync,
     DownloadAsync = session.DownloadAsync,
     JoinRoomAsync = room => session.JoinAsync(room, settings.HistoryPageSize),
     ToolsOpenAsync = session.LoadToolsAsync,

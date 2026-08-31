@@ -74,6 +74,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public Func<string, string, string, Task> ConnectAsync { get; init; } = (_, _, _) => Task.CompletedTask;
 
+    /// <summary>Rewrites a message already sent. Only the author may; the server enforces it.</summary>
+    public Func<string, string, string, Task> EditAsync { get; init; } = (_, _, _) => Task.CompletedTask;
+
+    /// <summary>Takes a message back. The author may remove their own, an admin anyone's.</summary>
+    public Func<string, string, Task> DeleteAsync { get; init; } = (_, _) => Task.CompletedTask;
+
     /// <summary>
     /// Called when the user taps the microphone: true to open it, false to close it.
     ///
@@ -149,15 +155,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-context-menu class="timeline-menu">
               <cupri-virtual class="timeline" height="620" item-height="34" anchor="bottom">
-                <div class="{{RowClass}}" data-repeat="Messages">
+                <div class="{{RowClass}}" data-repeat="Messages" data-msg="{{Id}}">
                   <span class="time">{{Time}}</span><span class="sender">{{Sender}}</span>
                   <span class="text"><span class="body">{{Text}}</span><span class="edited">{{EditedMark}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
                 </div>
               </cupri-virtual>
+              <cupri-menu-item class="{{EditItemClass}}">Edit message</cupri-menu-item>
+              <cupri-menu-item class="{{DeleteItemClass}}">Delete message</cupri-menu-item>
               <cupri-menu-item class="copy-selection">Copy</cupri-menu-item>
               <cupri-menu-item class="copy-image">Copy image</cupri-menu-item>
               <cupri-menu-item class="copy-room">Copy room name</cupri-menu-item>
             </cupri-context-menu>
+            <div class="{{EditingClass}}">editing a message — Esc to cancel</div>
             <div class="composer-row">
               <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
               <cupri-button class="{{AttachButtonClass}}">Attach</cupri-button>
@@ -386,6 +395,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            gap would otherwise make a reply above it look like a reply to nothing. */
         .line.deleted .body { color: #6b7280; font-style: italic; }
 
+        .editing-banner { padding: 6px 14px; background: #22304a; color: #b9c6da; font-size: 12px; }
+        .editing-banner.hidden { display: none; }
+        .menu-edit.hidden, .menu-delete.hidden { display: none; }
+
         .composer-row { display: flex; flex-direction: row; padding: 10px 14px; background: #1b1e24; }
         /* Styled explicitly. The engine's defaults for a text field and a button are a white box
            and a light button, which on a dark app look like two controls that failed to load. */
@@ -426,6 +439,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         // Ctrl+Enter sends; plain Enter stays a newline in the textarea, which is what a
         // multi-line composer needs and what the CupriFace guidance recommends.
         doc.OnShortcut(KeyMods.Ctrl, "Enter", Send);
+        // Escape abandons an edit. Without a way out, loading a message into the composer would
+        // trap whatever was half-typed there before.
+        doc.OnShortcut(KeyMods.None, "Escape", CancelEdit);
 
         // Room tabs carry their own name, so one handler serves every repeated row.
         doc.OnAction("data-room", e =>
@@ -449,6 +465,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         // Right-click menu items. CupriFace opens the menu at the pointer and leaves the
         // clipboard to the host, so every one of these ends in a call through IClipboard.
+        // Which message the menu will act on. A right-click dispatches a click at the same point
+        // before the menu opens, so this runs first and the menu is already aimed. Not marked
+        // handled: the click must still do its ordinary work, like starting a text selection.
+        doc.OnAction("data-msg", e =>
+        {
+            SetContextMessage(e.Model as MessageRow);
+            return false;
+        });
+
+        doc.OnClick(".menu-edit", _ => BeginEdit());
+        doc.OnClick(".menu-delete", _ => DeleteContextMessage());
         doc.OnClick(".copy-selection", _ => CopySelection());
         doc.OnClick(".copy-image", _ => CopyMostRecentImage());
         doc.OnClick(".copy-room", _ => Clipboard.SetText(ViewModel.Model.ActiveRoom));
@@ -719,6 +746,73 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         });
     }
 
+    /// <summary>
+    /// Remembers the message under the pointer, and decides which menu items suit it. Edit is
+    /// offered only over your own: the server refuses anybody else, and a menu item that always
+    /// fails is worse than one that is not there.
+    /// </summary>
+    private void SetContextMessage(MessageRow? row)
+    {
+        _contextMessage = row;
+
+        var actionable = row is not null && row.Id.Length > 0 && !row.RowClass.Contains("deleted", StringComparison.Ordinal);
+        var mine = actionable && string.Equals(row!.Sender, ViewModel.Model.Nick, StringComparison.OrdinalIgnoreCase);
+
+        ViewModel.Model.EditItemClass = mine ? "menu-edit" : "menu-edit hidden";
+        ViewModel.Model.DeleteItemClass = actionable ? "menu-delete" : "menu-delete hidden";
+    }
+
+    /// <summary>
+    /// Loads the message into the composer to be rewritten. The composer rather than an overlay:
+    /// it is the one place this app types, and a second editor would need its own keyboard, IME
+    /// and paste handling to no benefit.
+    /// </summary>
+    private void BeginEdit()
+    {
+        if (_contextMessage is not { Id.Length: > 0 } row)
+        {
+            return;
+        }
+
+        ViewModel.Model.EditingId = row.Id;
+        ViewModel.Model.Composer = row.Text;
+        ViewModel.Model.EditingClass = "editing-banner";
+        _doc?.Refresh();
+    }
+
+    /// <summary>Abandons an edit, leaving the message as it was.</summary>
+    public void CancelEdit()
+    {
+        if (ViewModel.Model.EditingId.Length == 0)
+        {
+            return;
+        }
+
+        ViewModel.Model.EditingId = "";
+        ViewModel.Model.Composer = "";
+        ViewModel.Model.EditingClass = "editing-banner hidden";
+        _doc?.Refresh();
+    }
+
+    private void DeleteContextMessage()
+    {
+        if (_contextMessage is not { Id.Length: > 0 } row)
+        {
+            return;
+        }
+
+        // If it was the one being edited, that edit no longer has a subject.
+        if (ViewModel.Model.EditingId == row.Id)
+        {
+            CancelEdit();
+        }
+
+        _ = DeleteAsync(ViewModel.Model.ActiveRoom, row.Id);
+    }
+
+    /// <summary>The message the right-click menu is aimed at, set as the click lands.</summary>
+    private MessageRow? _contextMessage;
+
     /// <summary>Send the composer's contents to the active room and clear it.</summary>
     public void Send()
     {
@@ -726,6 +820,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         var room = ViewModel.Model.ActiveRoom;
         if (text.Length == 0 || room.Length == 0)
         {
+            return;
+        }
+
+        // An edit in progress takes the composer's contents instead of the room doing so.
+        if (ViewModel.Model.EditingId is { Length: > 0 } editing)
+        {
+            ViewModel.Model.EditingId = "";
+            ViewModel.Model.Composer = "";
+            ViewModel.Model.EditingClass = "editing-banner hidden";
+            _doc?.Refresh();
+            _ = EditAsync(room, editing, text);
             return;
         }
 

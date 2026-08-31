@@ -168,10 +168,26 @@ Claude Code, Gemini) as tools of its own.
 
 Banter knows nothing about those CLIs, and should not: DaggerAgent serves an OpenAI-compatible
 endpoint, so to a Banter agent it is just another `--llm`. What makes it a Copilot agent is
-DaggerAgent's configuration — `Tools:AllowShell=true` and a system prompt that has it shell out to
-`copilot -p "…"`. That is PLAN Path A: **external agents are tools inside DaggerAgent rather than
-Banter users of their own**, so a sub-agent is bounded by its parent's budget instead of the room's
-throttle, and one integration covers every CLI rather than one per vendor.
+DaggerAgent's configuration. That is PLAN Path A: **external agents are tools inside DaggerAgent
+rather than Banter users of their own**, so a sub-agent is bounded by its parent's budget instead of
+the room's throttle, and one integration covers every CLI rather than one per vendor.
+
+Since [DaggerAgent v1.8.0](https://github.com/Wixely/DaggerAgent/releases/tag/v1.8.0) that is done
+over **ACP** rather than a shell — a long-lived session per job instead of a process per turn, and
+no shell access to grant:
+
+```json
+"Tools": {
+  "AllowCliDelegation": true,
+  "AcpAgents": [{
+    "Name": "copilot", "Command": "copilot", "Arguments": ["--acp"],
+    "Enabled": true, "Protocol": "acp", "PermissionPolicy": "deny"
+  }]
+}
+```
+
+Leave `PermissionPolicy` at `deny`. `ask` forwards the child's permission requests to whoever is
+driving the job, and in a chat room nobody is — it would stall until the timeout and deny anyway.
 
 Needs LM Studio on `:1234` and DaggerAgent on `:5090`.
 

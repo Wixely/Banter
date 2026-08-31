@@ -35,6 +35,8 @@ public static class BanterWeb
             RoomSelected = _ => { },
             LoadOlderAsync = room => _session?.LoadOlderAsync(room, HistoryPageSize) ?? Task.CompletedTask,
             CommandAsync = (room, text) => _session?.CommandAsync(room, text) ?? Task.CompletedTask,
+            EditAsync = (room, id, text) => _session?.EditAsync(room, id, text) ?? Task.CompletedTask,
+            DeleteAsync = (room, id) => _session?.DeleteAsync(room, id) ?? Task.CompletedTask,
             DownloadAsync = id => _session?.DownloadAsync(id) ?? Task.CompletedTask,
             JoinRoomAsync = room => _session?.JoinAsync(room, HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = filter => _session?.LoadToolsAsync(filter) ?? Task.CompletedTask,
