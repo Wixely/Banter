@@ -404,12 +404,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            the moment a third button appeared beside it. Measured: with it, the row ends exactly
            where the composer does; without it, 92px past.
 
-           The transparent border is space held open for the one the component draws when the
-           pointer is over the field or it has focus. That border is 2px and lands OUTSIDE the
-           box, because the engine sizes content-box and does not honour box-sizing
-           (CupriFace#76) — so a field with no border at rest grew 4px taller the moment the
-           pointer crossed it, and lifted the whole composer, its buttons and the hint under it
-           by 2.4px. Reserving the space here means only the colour changes. */
+           The transparent border is the focus ring, held at its full width in every state. Since
+           CupriFace 0.10.1 the component's hover and focus rules set border-color ALONE, so the
+           width is the app's to declare and the component only recolours what it finds — which
+           means `border: 0` here does not give a borderless field, it gives a field with no
+           visible focus ring at all. Declaring the width up front is also what stops the bar
+           twitching as the pointer crosses it: before 0.10.1 those rules redeclared the whole
+           shorthand, and a field written with no border grew 4px on hover and lifted the
+           composer, its buttons and the hint with it (CupriFace#93). The padding is 2px lighter
+           than it would otherwise be, to pay for the border. */
         .composer { flex: 1; min-width: 0; min-height: 18px; max-height: 110px; background: #11151b;
                     color: #f3f5f7; border: 2px solid transparent; padding: 3px 0;
                     caret-color: #fb7185; }
@@ -488,8 +491,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .toolpanel { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                      display: flex; background: #0b0d10; }
         .toolpanel.hidden { display: none; }
-        /* The inset lives here, not on the overlay: `width: 100%` plus padding overflows, because
-           the engine sizes content-box and does not honour `box-sizing` (CupriFace#76). */
+        /* The inset is a margin on the card rather than padding on the overlay. The overlay is
+           `width: 100%`, and padding adds to a width unless the box is told otherwise, so padding
+           there would have pushed 112px of the panel off the right edge. */
         .toolpanel-inner { display: flex; flex-direction: column; flex: 1; margin: 36px 56px;
                            background: #151920; border-radius: 14px; padding: 16px; }
         .toolpanel-head { display: flex; flex-direction: row; align-items: center; padding-bottom: 12px; }
@@ -522,15 +526,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         /* Over everything, and its own colour: until this is dealt with there is no room to
            look at behind it. */
-        /* No padding here, and the offset is on the card instead. `width: 100%` plus padding
-           overflows, because the engine sizes content-box and does not honour `box-sizing`
-           (CupriFace#76) — which put the centre 60px right of the viewport's. */
+        /* No padding here; the offset is on the card instead, for the reason the tool panel has
+           the same shape — this is `width: 100%`, and padding adds to a width unless the box is
+           told otherwise. Padding here once put the card's centre 60px right of the viewport's. */
         .connect { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                    display: flex; justify-content: center; background: #0b0d10; }
         .connect.hidden { display: none; }
-        /* Centred by the container, not by auto margins on the item: the engine does not honour
-           `margin: auto` on a flex item either. Top-aligned on purpose — a short viewport must
-           not push the card off-screen. */
+        /* Centred by the container rather than by auto margins on the card — one lone child is
+           what justify-content is for. Top-aligned on purpose: a short viewport must not push the
+           card off-screen. */
         .connect-card { width: 360px; margin-top: 60px;
                         display: flex; flex-direction: column; background: #151920;
                         border-radius: 14px; padding: 20px; height: 252px;

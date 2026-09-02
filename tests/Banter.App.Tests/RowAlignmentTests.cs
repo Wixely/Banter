@@ -158,6 +158,57 @@ public sealed class RowAlignmentTests(ITestOutputHelper output)
         Assert.Equal(resting, focused);
     }
 
+    /// <summary>
+    /// Focusing the composer paints a ring you can see.
+    ///
+    /// <para>The companion to the test above, and it exists because passing that one is not enough.
+    /// CupriFace 0.10.1 changed the component's hover and focus rules to set <c>border-color</c>
+    /// alone, leaving the width to the app — so <c>border: 0</c> stopped meaning "no border" and
+    /// started meaning "a ring with nothing to paint". Nothing moved, the alignment test stayed
+    /// green, and the focused field was pixel-for-pixel identical to the resting one.</para>
+    /// </summary>
+    [Fact]
+    public void FocusingTheComposerShowsARing()
+    {
+        var vm = Furnished();
+        using var doc = new BanterChatApp(vm).CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+
+        var field = Walk(doc.Root).First(n => n.Node.Element?.TagName == "CUPRI-TEXTAREA");
+        var (px, py) = PointOnComposer(doc);
+
+        // A line through the field's own top edge, where its border is drawn.
+        var row = (int)(field.Top + 1);
+
+        int AccentPixels()
+        {
+            doc.BuildDisplayList(Width, Height);
+            var pixels = doc.RenderToPixels(Width, Height, SkiaSharp.SKColors.Black);
+            var hits = 0;
+            for (var x = (int)field.Left; x < field.Left + field.Node.Width; x++)
+            {
+                var i = ((row * Width) + x) * 4;
+
+                // The ring is #fb7185. Compared loosely: it is drawn over the field's own dark
+                // ground and the edge pixels are blended.
+                if (pixels[i] > 0x90 && pixels[i + 1] < 0xa0 && pixels[i + 2] > 0x50 && pixels[i + 2] < 0xd0)
+                {
+                    hits++;
+                }
+            }
+
+            return hits;
+        }
+
+        var resting = AccentPixels();
+        doc.DispatchClick(px, py, 1);
+        var focused = AccentPixels();
+
+        output.WriteLine($"accent pixels along the field's top edge: resting {resting}, focused {focused}");
+        Assert.True(resting == 0, $"the resting field should have no ring, found {resting} accent pixels");
+        Assert.True(focused > 20, $"the focused field should be ringed, found only {focused} accent pixels");
+    }
+
     /// <summary>A point that really is inside the composer, found by asking what is painted there.</summary>
     private static (float X, float Y) PointOnComposer(CupriFace.CupriDocument doc)
     {
