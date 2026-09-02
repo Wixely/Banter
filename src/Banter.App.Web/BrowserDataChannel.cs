@@ -55,6 +55,22 @@ public sealed partial class BrowserDataChannel : IDataChannel
 
     public EndPoint LocalEndPoint { get; }
 
+    /// <summary>
+    /// What SCTP negotiated as the largest single message, or 0 before the association is up.
+    ///
+    /// <para>CupriNet 0.6.0 refuses a vessel that cannot carry a legal rite frame
+    /// (<c>RiteTransport.RequiredMessageBytes</c>), naming both numbers, rather than letting the
+    /// pairing fail later and namelessly on the wire. That check is only as good as this answer,
+    /// so this asks the browser instead of assuming: the negotiated figure is the smaller of what
+    /// the two ends offered, and a guess that came out low would refuse connections that work.
+    /// Chromium settles on 262144 against this node.</para>
+    ///
+    /// <para>0 means "not known yet", which the check treats as unbounded and skips. That is the
+    /// honest answer before the channel opens and the right one after a failure — the alternative
+    /// is refusing a connection on the strength of a number we never had.</para>
+    /// </summary>
+    public int MaxMessageBytes => ReferenceEquals(_current, this) ? RtcMaxMessageSize() : 0;
+
     /// <summary>Dials the node the link describes and waits for the channel to open.</summary>
     /// <exception cref="InvalidOperationException">
     /// The link carries no WebRTC endpoint, or the connection failed. A link without one belongs to
@@ -230,6 +246,10 @@ public sealed partial class BrowserDataChannel : IDataChannel
 
     [JSImport("error", "banter/rtc")]
     internal static partial string RtcError();
+
+    /// <summary>What SCTP agreed a message may be, or 0 before the association is up.</summary>
+    [JSImport("maxMessageSize", "banter/rtc")]
+    internal static partial int RtcMaxMessageSize();
 
     [JSImport("send", "banter/rtc")]
     internal static partial bool RtcSend([JSMarshalAs<JSType.MemoryView>] ArraySegment<byte> message);

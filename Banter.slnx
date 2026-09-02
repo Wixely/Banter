@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/Banter.Protocol/Banter.Protocol.csproj" />
     <Project Path="src/Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
+    <Project Path="src/Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
+    <Project Path="src/Banter.Transport.Shrine.Nodestar/Banter.Transport.Shrine.Nodestar.csproj" />
     <Project Path="src/Banter.Core/Banter.Core.csproj" />
     <Project Path="src/Banter.Server/Banter.Server.csproj" />
     <Project Path="src/Banter.Client.Core/Banter.Client.Core.csproj" />
@@ -14,6 +16,7 @@
     <Project Path="src/Banter.App/Banter.App.csproj" />
     <Project Path="src/Banter.App.Desktop/Banter.App.Desktop.csproj" />
     <Project Path="src/Banter.Cli/Banter.Cli.csproj" />
+    <Project Path="src/Banter.Server.Nodestar/Banter.Server.Nodestar.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Banter.Protocol.Tests/Banter.Protocol.Tests.csproj" />
@@ -22,5 +25,6 @@
     <Project Path="tests/Banter.Integration.Tests/Banter.Integration.Tests.csproj" />
     <Project Path="tests/Banter.App.Spikes/Banter.App.Spikes.csproj" />
     <Project Path="tests/Banter.App.Tests/Banter.App.Tests.csproj" />
+    <Project Path="tests/Banter.Transport.Shrine.Tests/Banter.Transport.Shrine.Tests.csproj" />
   </Folder>
 </Solution>

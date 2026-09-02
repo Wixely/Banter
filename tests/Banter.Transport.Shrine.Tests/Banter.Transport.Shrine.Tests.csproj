@@ -14,7 +14,7 @@
     <!-- The end-to-end test runs a real server on a real node and dials it. -->
     <ProjectReference Include="../../src/Banter.Server/Banter.Server.csproj" />
     <ProjectReference Include="../../src/Banter.Client.Core/Banter.Client.Core.csproj" />
-    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.6.local" />
-    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.10" />
+    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
   </ItemGroup>
 </Project>

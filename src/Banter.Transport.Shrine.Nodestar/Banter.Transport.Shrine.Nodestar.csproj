@@ -8,7 +8,7 @@
     <!-- The site half, and the only reason Nodestar is referenced anywhere. Split out from the
          client half on purpose: Nodestar brings Kestrel, and the web head would otherwise make a
          browser download an HTTP server to join a chat room. -->
-    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.6.local" />
-    <PackageReference Include="CupriNet.Vessel" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.10" />
+    <PackageReference Include="CupriNet.Vessel" Version="0.6.2" />
   </ItemGroup>
 </Project>

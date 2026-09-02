@@ -146,16 +146,12 @@ public sealed class ShrineClientTransport(
         {
             await inner.DisposeAsync().ConfigureAwait(false);
 
-            try
-            {
-                await shrine.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (ObjectDisposedException)
-            {
-                // A session the far side has already ended has torn its own vessel down, and
-                // disposing it again throws rather than doing nothing (CupriNodestar#3). Closing a
-                // connection must not fail, and there is nothing left here to release.
-            }
+            // No catch here. A session the far side had already ended used to throw when disposed
+            // again rather than doing nothing (CupriNodestar#3), and closing a connection must not
+            // fail — but swallowing ObjectDisposedException made "already closed, nothing to do"
+            // indistinguishable from a genuine disposal fault anywhere beneath it. CupriNet 0.6.0
+            // made dispose idempotent; ClosingAConnectionTwiceIsNotAnError is what says so here.
+            await shrine.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

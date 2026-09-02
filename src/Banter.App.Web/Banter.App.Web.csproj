@@ -34,7 +34,7 @@
          that brings Kestrel, and a browser has no business downloading an HTTP server to join a
          chat room. -->
     <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
-    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
   </ItemGroup>
 
 </Project>

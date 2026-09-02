@@ -115,6 +115,29 @@ public sealed class ConduitEndToEndTests(ITestOutputHelper output) : IAsyncLifet
     private Uri Link() => new(new NodestarLinkProvider(
         _node.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1)).Current().Link);
 
+    /// <summary>
+    /// Closing a connection twice does nothing the second time.
+    ///
+    /// <para>This exists because the code it guards was deleted. Disposing a session whose far end
+    /// had already gone used to throw rather than doing nothing (CupriNodestar#3), so the transport
+    /// swallowed <see cref="ObjectDisposedException"/> at its connection seam — which also made
+    /// "already closed" indistinguishable from a real disposal fault anywhere beneath it. CupriNet
+    /// 0.6.0 made dispose idempotent and the catch is gone; if that ever regresses, the exception
+    /// now reaches here instead of being quietly absorbed in production.</para>
+    /// </summary>
+    [Fact]
+    public async Task ClosingAConnectionTwiceIsNotAnError()
+    {
+        var client = await BanterClient
+            .ConnectAsync(ClientTransport(), Link(), "alice", "pw")
+            .WaitAsync(Patience);
+
+        await client.JoinAsync("#twice");
+
+        await client.DisposeAsync().AsTask().WaitAsync(Patience);
+        await client.DisposeAsync().AsTask().WaitAsync(Patience);
+    }
+
     [Fact]
     public async Task AClientReachesTheServerOverAConduit()
     {

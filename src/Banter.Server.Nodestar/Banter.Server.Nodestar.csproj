@@ -8,7 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="../Banter.Server/Banter.Server.csproj" />
     <ProjectReference Include="../Banter.Transport.Shrine.Nodestar/Banter.Transport.Shrine.Nodestar.csproj" />
-    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.6.local" />
-    <PackageReference Include="CupriNet.Nodestar.WebRtc" Version="0.1.0-alpha.6.local" />
+    <PackageReference Include="CupriNet.Nodestar" Version="0.1.0-alpha.10" />
+    <PackageReference Include="CupriNet.Nodestar.WebRtc" Version="0.1.0-alpha.10" />
   </ItemGroup>
 </Project>

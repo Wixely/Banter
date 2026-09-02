@@ -7,12 +7,12 @@
     <!-- The client half only: Pilgrimage, ShrineSession and the Conduit rite. Nodestar lives in
          Banter.Transport.Shrine.Nodestar, so this project restores from the feed alone and can be
          referenced from a browser. -->
-    <PackageReference Include="CupriNet.Shrine" Version="0.3.6" />
-    <PackageReference Include="CupriNet.Rites" Version="0.3.6" />
-    <PackageReference Include="CupriNet.Hosting" Version="0.3.6" />
-    <PackageReference Include="CupriNet.Abstractions" Version="0.3.6" />
-    <PackageReference Include="CupriNet.Alembic" Version="0.3.6" />
-    <PackageReference Include="CupriNet.Core" Version="0.3.6" />
-    <PackageReference Include="CupriNet.Vessel" Version="0.3.6" />
+    <PackageReference Include="CupriNet.Shrine" Version="0.6.2" />
+    <PackageReference Include="CupriNet.Rites" Version="0.6.2" />
+    <PackageReference Include="CupriNet.Hosting" Version="0.6.2" />
+    <PackageReference Include="CupriNet.Abstractions" Version="0.6.2" />
+    <PackageReference Include="CupriNet.Alembic" Version="0.6.2" />
+    <PackageReference Include="CupriNet.Core" Version="0.6.2" />
+    <PackageReference Include="CupriNet.Vessel" Version="0.6.2" />
   </ItemGroup>
 </Project>

@@ -15,6 +15,22 @@ public sealed record BanterClientOptions
 
     public TimeSpan ReconnectInitialDelay { get; init; } = TimeSpan.FromMilliseconds(250);
     public TimeSpan ReconnectMaxDelay { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How often to ping the server when nothing else is being said. <see cref="TimeSpan.Zero"/>
+    /// turns it off.
+    ///
+    /// <para>Chat is mostly silence, and silence is indistinguishable from a connection that has
+    /// died — so a client that never speaks unprompted finds out it was disconnected only when
+    /// someone tries to type. Worse, a CupriNet node closes a Pilgrimage that has gone quiet for
+    /// five minutes (measured, and not configurable through Nodestar), which for a room nobody
+    /// has spoken in is the normal case rather than the exceptional one.</para>
+    ///
+    /// <para>Two minutes leaves room for a missed one inside that five, and costs a round trip
+    /// per client per two minutes. The reply is what proves the path is alive in both
+    /// directions; the request alone would only prove we can still write.</para>
+    /// </summary>
+    public TimeSpan KeepAliveInterval { get; init; } = TimeSpan.FromMinutes(2);
 }
 
 /// <summary>
@@ -37,6 +53,7 @@ public sealed class BanterClient : IAsyncDisposable
     private readonly CancellationTokenSource _lifecycle = new();
     private volatile IBanterConnection? _connection;
     private Task? _sessionLoop;
+    private Task? _keepAliveLoop;
     private bool _disposed;
 
     private BanterClient(IBanterClientTransport transport, Uri endpoint, string username, string secret, BanterClientOptions options)
@@ -94,6 +111,7 @@ public sealed class BanterClient : IAsyncDisposable
         var client = new BanterClient(transport, endpoint, username, secret, options ?? new BanterClientOptions());
         client._connection = await client.DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
         client._sessionLoop = Task.Run(client.RunSessionsAsync, CancellationToken.None);
+        client._keepAliveLoop = Task.Run(client.RunKeepAliveAsync, CancellationToken.None);
         return client;
     }
 
@@ -357,6 +375,55 @@ public sealed class BanterClient : IAsyncDisposable
         var sent = DateTimeOffset.UtcNow;
         await RequestAsync<PongPayload>(new PingPayload(sent.ToUnixTimeMilliseconds()), cancellationToken).ConfigureAwait(false);
         return DateTimeOffset.UtcNow - sent;
+    }
+
+    /// <summary>
+    /// Pings while the connection is otherwise quiet, so the session stays alive and a dead one is
+    /// noticed promptly rather than at the moment someone tries to speak.
+    ///
+    /// <para>Failures are swallowed on purpose. A ping that does not come back means the
+    /// connection has gone, which the session loop is already watching for and already knows how
+    /// to redial — reporting it here as well would surface one drop twice, and tearing the client
+    /// down over it would defeat reconnect entirely.</para>
+    /// </summary>
+    private async Task RunKeepAliveAsync()
+    {
+        if (_options.KeepAliveInterval <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        using var ticks = new PeriodicTimer(_options.KeepAliveInterval);
+
+        try
+        {
+            while (await ticks.WaitForNextTickAsync(_lifecycle.Token).ConfigureAwait(false))
+            {
+                // Nothing to keep alive between a drop and the redial, and a request sent then
+                // would only wait out its own timeout.
+                if (_connection is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await PingAsync(_lifecycle.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (_lifecycle.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch
+                {
+                    // The session loop owns what a dead connection means.
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Disposed.
+        }
     }
 
     // ---- Connection lifecycle ----
@@ -684,6 +751,11 @@ public sealed class BanterClient : IAsyncDisposable
         if (_sessionLoop is not null)
         {
             await _sessionLoop.ConfigureAwait(false);
+        }
+
+        if (_keepAliveLoop is not null)
+        {
+            await _keepAliveLoop.ConfigureAwait(false);
         }
 
         _lifecycle.Dispose();

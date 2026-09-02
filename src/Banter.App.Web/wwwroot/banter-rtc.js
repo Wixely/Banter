@@ -126,6 +126,17 @@ export function state() { return rtc.state; }
 export function error() { return rtc.error; }
 
 /**
+ * What SCTP actually agreed a single message may be, or 0 before the association is up — which
+ * CupriNet reads as "unknown" and lets pass. Reported rather than assumed: the number is the
+ * smaller of what the two ends offered, so it is not ours to predict, and a guess that came out
+ * too low would refuse pairings that work.
+ */
+export function maxMessageSize() {
+    const sctp = rtc.pc && rtc.pc.sctp;
+    return sctp && sctp.maxMessageSize ? sctp.maxMessageSize : 0;
+}
+
+/**
  * Copies the next queued message into a caller-owned buffer and returns its length: -1 when there
  * is nothing waiting, -2 when the message will not fit (which the caller reports rather than
  * silently truncating).

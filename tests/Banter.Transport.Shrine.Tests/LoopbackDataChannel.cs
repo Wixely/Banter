@@ -33,6 +33,21 @@ public sealed class LoopbackDataChannel : IDataChannel
 
     public EndPoint RemoteEndPoint { get; }
 
+    /// <summary>
+    /// What a browser would say it negotiated. Chromium settles on 262144 against a Nodestar node,
+    /// so that is what this double reports rather than 0 ("unknown", which CupriNet's connect-time
+    /// check waves through): a double that opts out of the check would not be modelling the thing
+    /// it exists to model.
+    ///
+    /// <para>The number is load-bearing from CupriNet 0.6.0, which refuses a vessel that cannot
+    /// carry a legal rite frame — <c>RiteTransport.RequiredMessageBytes</c>, 237568 — rather than
+    /// letting the pairing fail namelessly on the wire later. Lower this below that and the
+    /// connection is refused at the handshake, which is the whole point of the gate and exactly
+    /// the mismatch <see cref="DataChannelConduitTests.AFrameBecomesExactlyOneDataChannelMessage"/>
+    /// documents.</para>
+    /// </summary>
+    public int MaxMessageBytes { get; init; } = 262144;
+
     /// <summary>How many discrete messages this end has sent, and the largest of them.</summary>
     public int MessagesSent { get; private set; }
 
