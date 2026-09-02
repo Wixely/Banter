@@ -185,6 +185,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </cupri-context-menu>
             <div class="{{EditingClass}}">editing a message — Esc to cancel</div>
             <div class="composer-wrap">
+              <div class="{{MentionsClass}}">
+                <div class="{{RowClass}}" data-repeat="Mentions" data-mention="{{Nick}}">
+                  <span class="mention-pfp">{{Initials}}</span><span class="mention-nick">{{Nick}}</span><span class="mention-meta">{{Meta}}</span>
+                </div>
+                <div class="mention-hint">Ctrl+Up / Ctrl+Down to choose · Enter to insert</div>
+              </div>
               <div class="composer-row">
                 <span class="prompt">&gt;</span>
                 <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message" data-composer="1" submit-on-enter></cupri-textarea>
@@ -421,6 +427,29 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .composer:focus { border-color: #fb7185; }
         .composer-hint { font-size: 10px; color: #5f6877; margin: 7px 0 0 0; }
 
+        /* Above the composer, not below it: a list that drops downwards would fall off the
+           bottom of the window, which is exactly where the composer already is. */
+        .mentions { display: flex; flex-direction: column; margin-bottom: 6px; padding: 5px;
+                    background: #151920; border: 1px solid #303744; border-radius: 12px;
+                    box-shadow: 0 18px 55px #00000052; }
+        .mentions.hidden { display: none; }
+        .mention { display: flex; flex-direction: row; align-items: center; padding: 5px 7px;
+                   border-radius: 8px; cursor: pointer; }
+        .mention:hover { background: #1b2029; }
+        /* The selected row is what Enter takes, so it is marked as plainly as the active room —
+           and the name in the accent, because at a glance the colour is read before the fill. */
+        .mention.selected { background: #262d3a; }
+        .mention.selected .mention-nick { color: #fb7185; font-weight: bold; }
+        .mention-pfp { width: 24px; height: 24px; border-radius: 8px; display: flex;
+                       align-items: center; justify-content: center; font-size: 9px;
+                       font-weight: bold; background: #262d38; border: 1px solid #384150;
+                       color: #cbd5e1; }
+        .mention-nick { flex: 1; min-width: 0; font-size: 13px; padding-left: 9px; }
+        .mention-meta { font-size: 10px; color: #8d97a6; }
+        /* Said here rather than in the composer hint, because it is only true while this is up —
+           and Ctrl on an arrow is not a guess anyone makes unprompted. */
+        .mention-hint { font-size: 9px; color: #5f6877; padding: 4px 7px 1px 7px; }
+
         /* Buttons are sized by padding, never by height. An explicit height leaves the label
            against the top of the box — line-height does not move it — and the border sits outside
            that height, so a bordered button and a borderless one declared the same height come out
@@ -568,14 +597,70 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         // composer goes on composing.
         doc.OnSubmit("data-composer", _ =>
         {
+            // Enter takes the highlighted suggestion when the list is up, and only sends when it
+            // is not. This lives inside the submit handler rather than in a shortcut of its own
+            // because a bare "Enter" binding wins against submit-on-enter outright — measured —
+            // which would leave the composer unable to send at all.
+            if (ViewModel.TakeMention(out var rubOut, out var typeIn))
+            {
+                for (var i = 0; i < rubOut; i++)
+                {
+                    doc.DispatchKey("", EditKey.Backspace);
+                }
+
+                foreach (var ch in typeIn)
+                {
+                    doc.DispatchKey(ch.ToString(), EditKey.None);
+                }
+
+                doc.Refresh();
+                return true;
+            }
+
             Send();
+            return true;
+        });
+
+        // Ctrl, not a bare arrow, and not by choice. A focused field swallows plain Up and Down
+        // before any shortcut sees them — measured: with the composer focused the keystroke comes
+        // back handled and the binding never fires — while a Ctrl chord is delivered wherever
+        // focus is. Raised upstream; when a bare arrow can reach an open list this loses the Ctrl.
+        //
+        // Nothing is taken away from editing a draft either way: the composer does not move its
+        // caret vertically at all today, so plain Up and Down are inert in it.
+        doc.OnShortcut(KeyMods.Ctrl, "Down", () => MoveMention(1));
+        doc.OnShortcut(KeyMods.Ctrl, "Up", () => MoveMention(-1));
+
+        // Clicking one takes it by rewriting the composer, which the keyboard path deliberately
+        // cannot do: a click has already moved focus off the field, so there is no buffer of its
+        // own left to contradict the assignment.
+        doc.OnAction("data-mention", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value) || !ViewModel.AcceptMention(e.Value))
+            {
+                return false;
+            }
+
+            doc.Refresh();
             return true;
         });
 
         // Escape abandons an edit. It fires below the engine's own dismissals, so an open context
         // menu closes first and only a spare Escape reaches this — and it arrives before the
         // field is blurred, so it still means "cancel" while the field being cancelled has focus.
-        doc.OnShortcut(KeyMods.None, "Escape", CancelEdit);
+        doc.OnShortcut(KeyMods.None, "Escape", () =>
+        {
+            // The list first: Escape means "put away the thing that just appeared", and losing a
+            // half-written edit because a suggestion happened to be showing would be maddening.
+            if (ViewModel.MentionsOpen)
+            {
+                ViewModel.CloseMentions();
+                doc.Refresh();
+                return;
+            }
+
+            CancelEdit();
+        });
 
         // Room tabs carry their own name, so one handler serves every repeated row.
         doc.OnAction("data-room", e =>
@@ -731,6 +816,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 _doc?.VirtualListInserted("Messages", 0, prepended);
             }
 
+            _doc?.Refresh();
+        }
+
+        // Typing is written into the model by the engine rather than queued as a mutation, so the
+        // suggestion list is recomputed here. It compares one string on a frame where nothing was
+        // typed, which is nearly all of them.
+        if (ViewModel.RefreshMentions())
+        {
             _doc?.Refresh();
         }
 
@@ -913,6 +1006,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         ViewModel.Model.EditingId = row.Id;
         ViewModel.Model.Composer = row.Text;
         ViewModel.Model.EditingClass = "editing-banner";
+        _doc?.Refresh();
+    }
+
+    /// <summary>Walks the suggestion list, if it is up. A no-op otherwise, so the arrows stay
+    /// harmless when nobody is naming anyone.</summary>
+    private void MoveMention(int delta)
+    {
+        if (!ViewModel.MentionsOpen)
+        {
+            return;
+        }
+
+        ViewModel.MoveMentionSelection(delta);
         _doc?.Refresh();
     }
 

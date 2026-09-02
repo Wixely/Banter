@@ -151,6 +151,22 @@ public sealed partial class ToolAgentRow
     public string RowClass { get; set; } = "tool-agent";
 }
 
+/// <summary>One agent offered while an "@" is being typed.</summary>
+[CupriBindable]
+public sealed partial class MentionRow
+{
+    public string Nick { get; set; } = "";
+
+    /// <summary>The same two letters the timeline and roster use, so the eye recognises the row.</summary>
+    public string Initials { get; set; } = "";
+
+    /// <summary>"local · chat, code" — locality first, because it decides whether data leaves.</summary>
+    public string Meta { get; set; } = "";
+
+    /// <summary>Drives styling: <c>mention</c> or <c>mention selected</c>.</summary>
+    public string RowClass { get; set; } = "mention";
+}
+
 /// <summary>A room on the server the user is not in, offered for joining.</summary>
 [CupriBindable]
 public sealed partial class BrowseRow
@@ -220,6 +236,12 @@ public sealed partial class ChatModel
 
     /// <summary>Rooms on the server the user has not joined. Hidden when there are none.</summary>
     public List<BrowseRow> Browse { get; set; } = [];
+
+    /// <summary>Agents matching the "@" being typed, empty when the list is down.</summary>
+    public List<MentionRow> Mentions { get; set; } = [];
+
+    /// <summary>Drives the suggestion popup: <c>mentions</c> or <c>mentions hidden</c>.</summary>
+    public string MentionsClass { get; set; } = "mentions hidden";
     public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
 

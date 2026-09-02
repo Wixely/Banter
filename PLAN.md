@@ -1112,8 +1112,22 @@ carries the ICE credentials and fingerprint, so the browser offers and writes th
 itself. Proven end to end: connect, join, send, and the message read back out of the server's
 database. This was the path nothing upstream had exercised.
 
-*Blocked on publication:* CupriNet is on the feed at 0.3.6, but `CupriNet.Nodestar` still publishes
-`0.1.0-alpha.4` — alpha.6 is a local build, held off the feed by a GitHub artifact-storage quota.
+*Unblocked 2026-09-02.* The quota was the Nodestar repository being private; with that fixed the
+packages publish again, so the three per-project `NuGet.config` files and the `.local` version
+suffix are gone and `Banter.Transport.Shrine{,.Nodestar}`, `Banter.Server.Nodestar` and the Shrine
+tests are in `Banter.slnx` — the conduit path is covered by `dotnet test` rather than by a build
+nobody runs. Banter is on `CupriNet.Nodestar` alpha.10 and CupriNet 0.6.2.
+
+That upgrade brought three Wards that are on by default and change behaviour silently, of which
+one matters here: `PilgrimageIdleTimeout` closes a Pilgrimage that has gone quiet for five
+minutes, and for a room nobody has spoken in that is the normal state. Measured against a live
+node rather than inferred — moving the knob to 15s and 45s ended the session at 15.0s and 45.0s,
+over a TCP vessel on loopback with WebRTC off, so nothing to do with a browser. `NodestarOptions`
+exposes none of the Wards, so the answer is a client keepalive: `BanterClient` pings every two
+minutes when nothing else is being said, over the `Ping`/`Pong` pair that had existed all along
+and that only the CLI's `/ping` ever called. `MaxPilgrimagesPerAddress` is 8 and is the other one
+to watch — everyone behind one NAT shares an address, and the ninth is refused as "Vessel closed
+during the Toll exchange".
 *Exit: phone and desktop app in the same room as CLI users; a file uploaded from one client is
 listed and fetched from another via room grant; browser client joins the same room text-only.*
 
