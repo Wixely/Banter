@@ -76,6 +76,9 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
+
+    /// <summary>Whether this account may run operator actions — agent identities, above all.</summary>
+    public bool IsAdmin { get; private set; }
     public string SessionId { get; private set; } = "";
     /// <summary>The banter.core ordinal agreed with the server during HELLO (CupriMark).</summary>
     public ushort NegotiatedCoreVersion { get; private set; } = 1;
@@ -497,6 +500,7 @@ public sealed partial class BanterClient : IAsyncDisposable
                 case AuthOkPayload ok:
                     Nick = ok.Nick;
                     IsAgent = ok.IsAgent;
+                    IsAdmin = ok.IsAdmin;
                     SessionId = ok.SessionId;
                     return connection;
                 case AuthFailPayload fail:

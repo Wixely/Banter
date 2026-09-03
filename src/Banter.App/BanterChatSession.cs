@@ -70,6 +70,10 @@ public sealed partial class BanterChatSession : IDisposable
         {
             _vm.AddRoom(room);
             _vm.SetNick(_client.Nick);
+
+            // The rail's agents button appears only for an operator. The server refuses everybody
+            // else anyway, and a button that always ends in NOT_ADMIN is worse than no button.
+            _vm.SetIsAdmin(_client.IsAdmin);
         });
 
         var page = await _client.GetHistoryAsync(room, limit: history, cancellationToken: cancellationToken)

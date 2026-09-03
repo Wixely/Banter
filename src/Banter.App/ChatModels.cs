@@ -151,6 +151,24 @@ public sealed partial class ToolAgentRow
     public string RowClass { get; set; } = "tool-agent";
 }
 
+/// <summary>One agent identity on the agents page.</summary>
+[CupriBindable]
+public sealed partial class AdminAgentRow
+{
+    public string Nick { get; set; } = "";
+    public string Initials { get; set; } = "";
+
+    /// <summary>"local · sensitive · #main" — the routing attributes, read at a glance.</summary>
+    public string Detail { get; set; } = "";
+
+    /// <summary>The key fingerprint, or what is missing instead.</summary>
+    public string State { get; set; } = "";
+
+    public string StateClass { get; set; } = "admin-state";
+
+    public string RowClass { get; set; } = "admin-agent";
+}
+
 /// <summary>One agent offered while an "@" is being typed.</summary>
 [CupriBindable]
 public sealed partial class MentionRow
@@ -242,6 +260,38 @@ public sealed partial class ChatModel
 
     /// <summary>Drives the suggestion popup: <c>mentions</c> or <c>mentions hidden</c>.</summary>
     public string MentionsClass { get; set; } = "mentions hidden";
+
+    // ---- The agents page (admin only) ----
+
+    /// <summary>Drives the rail button: <c>admin-open</c>, or hidden for anyone who is not an admin.</summary>
+    public string AdminButtonClass { get; set; } = "admin-open hidden";
+
+    /// <summary>Drives the page: <c>adminpanel</c> or <c>adminpanel hidden</c>.</summary>
+    public string AdminClass { get; set; } = "adminpanel hidden";
+
+    public List<AdminAgentRow> AdminAgents { get; set; } = [];
+
+    /// <summary>Which identity the edit controls act on.</summary>
+    public string AdminSelected { get; set; } = "";
+
+    public string AdminStatus { get; set; } = "";
+
+    /// <summary>
+    /// A freshly minted enrolment code. Shown once — the server keeps only a hash, so this is the
+    /// only moment it exists anywhere a person can read it.
+    /// </summary>
+    public string AdminCode { get; set; } = "";
+
+    public string AdminCodeClass { get; set; } = "admin-code hidden";
+
+    public string AdminCodeFor { get; set; } = "";
+
+    // The add form.
+    public string NewAgentNick { get; set; } = "";
+    public string NewAgentRooms { get; set; } = "";
+    public string NewAgentSkills { get; set; } = "";
+    public string NewAgentLocality { get; set; } = "local";
+    public string NewAgentClearance { get; set; } = "sensitive";
     public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
 

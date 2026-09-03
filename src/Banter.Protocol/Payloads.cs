@@ -35,7 +35,12 @@ public sealed record AuthPayload(
 public sealed record AuthOkPayload(
     [property: Key(0)] string SessionId,
     [property: Key(1)] string Nick,
-    [property: Key(2)] bool IsAgent);
+    [property: Key(2)] bool IsAgent,
+
+    // A trailing optional field, so an older peer that never sends it simply reads as "not an
+    // admin" rather than failing to decode. The client needs this to decide whether to offer
+    // operator UI at all — a button that always ends in NOT_ADMIN is worse than no button.
+    [property: Key(3)] bool IsAdmin = false);
 
 [MessagePackObject]
 public sealed record AuthFailPayload(

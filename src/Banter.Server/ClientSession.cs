@@ -223,7 +223,7 @@ internal sealed class ClientSession(
         IsAgent = true;
         IsAdmin = false;
         await engine.RegisterAsync(this).ConfigureAwait(false);
-        Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent), replyTo: envelope.MsgId);
+        Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent, IsAdmin), replyTo: envelope.MsgId);
     }
 
     private async Task HandleEnrolAsync(BanterEnvelope envelope, AgentEnrolPayload payload, CancellationToken cancellationToken)
@@ -402,7 +402,7 @@ internal sealed class ClientSession(
         IsAgent = account.IsAgent;
         IsAdmin = account.IsAdmin;
         await engine.RegisterAsync(this).ConfigureAwait(false);
-        Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent), replyTo: envelope.MsgId);
+        Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent, IsAdmin), replyTo: envelope.MsgId);
     }
 
     private static bool IsFilePayload(object payload) => payload is FilePutStartPayload or FilePutChunkPayload

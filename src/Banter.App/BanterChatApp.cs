@@ -1,3 +1,4 @@
+using Banter.Protocol;
 using CupriFace;
 using CupriFace.Interaction;
 
@@ -52,6 +53,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Called when the operator saves: the selected agent and its complete new grant set.</summary>
     public Func<string, IReadOnlyList<string>, Task> ToolsSaveAsync { get; init; } =
         (_, _) => Task.CompletedTask;
+
+    /// <summary>
+    /// The agents page (admin only). A head that wires these gets agent management; one that does
+    /// not simply never shows the button, because the server would refuse a non-admin anyway.
+    /// </summary>
+    public Func<Task> AgentsListAsync { get; init; } = () => Task.CompletedTask;
+
+    /// <summary>Creates an identity. The head reports the enrolment code back through the model.</summary>
+    public Func<string, IReadOnlyList<string>, IReadOnlyList<string>, AgentLocality, DataSensitivity, Task>
+        AgentCreateAsync { get; init; } = (_, _, _, _, _) => Task.CompletedTask;
+
+    /// <summary>A fresh code for a new machine, retiring the key the old one holds.</summary>
+    public Func<string, Task> AgentReissueAsync { get; init; } = _ => Task.CompletedTask;
+
+    /// <summary>Removes an identity. Its key stops working at once.</summary>
+    public Func<string, Task> AgentRemoveAsync { get; init; } = _ => Task.CompletedTask;
 
     /// <summary>
     /// The system clipboard. Defaults to a no-op so the app runs headlessly; the desktop head
@@ -133,6 +150,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           <div class="rail">
             <div class="logo">B</div>
             <div class="{{ToolsButtonClass}}" data-tools-open="1">T</div>
+            <div class="{{AdminButtonClass}}" data-admin-open="1">A</div>
           </div>
           <div class="sidebar">
             <div class="workspace">
@@ -245,6 +263,56 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                     <div class="tool-desc">{{Description}}</div>
                   </div>
                 </cupri-virtual>
+              </div>
+            </div>
+          </div>
+          <div class="{{AdminClass}}">
+            <div class="adminpanel-inner">
+              <div class="toolpanel-head">
+                <span class="toolpanel-title">Agents</span>
+                <span class="toolpanel-status">{{AdminStatus}}</span>
+                <cupri-button class="admin-close">Close</cupri-button>
+              </div>
+              <div class="{{AdminCodeClass}}">
+                <div class="admin-code-note">{{AdminCodeFor}}</div>
+                <div class="admin-code-row">
+                  <span class="admin-code-value">{{AdminCode}}</span>
+                  <cupri-button class="admin-copy">Copy</cupri-button>
+                </div>
+              </div>
+              <div class="adminpanel-body">
+                <div class="admin-list">
+                  <div class="{{RowClass}}" data-repeat="AdminAgents" data-admin-agent="{{Nick}}">
+                    <div class="admin-agent-row">
+                      <span class="admin-pfp">{{Initials}}</span>
+                      <span class="admin-agent-main">
+                        <span class="admin-nick">{{Nick}}</span>
+                        <span class="admin-detail">{{Detail}}</span>
+                        <span class="{{StateClass}}">{{State}}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="admin-side">
+                  <div class="admin-section">Add an agent</div>
+                  <div class="connect-label">Name</div>
+                  <cupri-textfield class="admin-field" value="{{NewAgentNick}}" placeholder="scribe"></cupri-textfield>
+                  <div class="connect-label">Rooms</div>
+                  <cupri-textfield class="admin-field" value="{{NewAgentRooms}}" placeholder="#main, #notes"></cupri-textfield>
+                  <div class="connect-label">Skills</div>
+                  <cupri-textfield class="admin-field" value="{{NewAgentSkills}}" placeholder="notes, minutes"></cupri-textfield>
+                  <div class="admin-toggles">
+                    <cupri-button class="admin-locality">{{NewAgentLocality}}</cupri-button>
+                    <cupri-button class="admin-clearance">{{NewAgentClearance}}</cupri-button>
+                  </div>
+                  <div class="admin-hint">A frontier agent runs on somebody else's model, so anything it is shown leaves.</div>
+                  <cupri-button class="admin-add">Create and get a code</cupri-button>
+
+                  <div class="admin-section">Selected: {{AdminSelected}}</div>
+                  <cupri-button class="admin-reissue">New code for a new machine</cupri-button>
+                  <cupri-button class="admin-remove">Remove this agent</cupri-button>
+                  <div class="admin-hint">Removing takes effect at once — its key stops working on the next thing it tries.</div>
+                </div>
               </div>
             </div>
           </div>
@@ -553,6 +621,78 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .tool-server { color: #8d97a6; font-size: 11px; }
         .tool-desc { color: #8d97a6; font-size: 11px; padding-left: 24px; }
 
+
+        /* The agents page. Same overlay shape as the tool panel, for the same reason: managing who
+           may speak in a room is a deliberate, occasional act that wants the width. */
+        .admin-open { width: 42px; height: 42px; border-radius: 14px; display: flex;
+                      align-items: center; justify-content: center; font-size: 12px;
+                      font-weight: bold; background: #1b2029; color: #bec5cf; cursor: pointer;
+                      margin-top: 10px; }
+        .admin-open:hover { background: #242a34; color: #ffffff; }
+        .admin-open.hidden { display: none; }
+
+        .adminpanel { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                      display: flex; background: #0b0d10; }
+        .adminpanel.hidden { display: none; }
+        .adminpanel-inner { display: flex; flex-direction: column; flex: 1; margin: 36px 56px;
+                            background: #151920; border-radius: 14px; padding: 16px; }
+        .adminpanel-body { display: flex; flex-direction: row; flex: 1; }
+
+        .admin-list { flex: 1; min-width: 0; padding-right: 14px; overflow: scroll; }
+        .admin-agent { padding: 8px; border-radius: 9px; margin-bottom: 6px; background: #111419;
+                       cursor: pointer; }
+        .admin-agent:hover { background: #171b22; }
+        .admin-agent.selected { background: #202530; }
+        .admin-agent-row { display: flex; flex-direction: row; align-items: center; }
+        .admin-pfp { width: 30px; height: 30px; border-radius: 10px; display: flex;
+                     align-items: center; justify-content: center; font-size: 10px;
+                     font-weight: bold; background: #262d38; border: 1px solid #384150;
+                     color: #cbd5e1; }
+        .admin-agent-main { display: flex; flex-direction: column; flex: 1; min-width: 0;
+                            padding-left: 10px; }
+        .admin-nick { font-size: 13px; font-weight: bold; }
+        .admin-detail { font-size: 10px; color: #8d97a6; margin-top: 1px; }
+        /* The fingerprint when there is one; what is missing when there is not. An identity with no
+           key cannot connect, and that is the thing an operator most needs to see. */
+        .admin-state { font-size: 10px; color: #34d399; margin-top: 2px; }
+        .admin-state.pending { color: #fbbf24; }
+
+        .admin-side { width: 300px; display: flex; flex-direction: column; }
+        .admin-section { font-size: 10px; font-weight: bold; color: #717c8d; padding: 10px 0 2px 0; }
+        .admin-field { background: #0d1014; color: #f3f5f7; border: 1px solid #252b35;
+                       border-radius: 10px; padding: 7px 10px; }
+        .admin-toggles { display: flex; flex-direction: row; margin-top: 10px; }
+        .admin-locality, .admin-clearance { flex: 1; min-width: 0; padding: 6px 10px; font-size: 12px;
+                                            background: #1b2029; color: #f3f5f7;
+                                            border: 1px solid #333a46; border-radius: 10px;
+                                            text-align: center; margin-right: 8px; }
+        .admin-hint { font-size: 10px; color: #5f6877; margin: 8px 0; }
+        .admin-add { margin-top: 4px; padding: 7px 14px; font-size: 13px; background: #ef4444;
+                     color: #ffffff; border: 1px solid #ef4444; border-radius: 10px;
+                     font-weight: bold; text-align: center; }
+        .admin-reissue { margin-top: 4px; padding: 6px 14px; font-size: 12px; background: #1b2029;
+                         color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
+                         text-align: center; }
+        .admin-remove { margin-top: 6px; padding: 6px 14px; font-size: 12px; background: #2a1618;
+                        color: #fca5a5; border: 1px solid #4c1d1d; border-radius: 10px;
+                        text-align: center; }
+        .admin-close { min-width: 72px; padding: 6px 14px; font-size: 13px; background: #1b2029;
+                       color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
+                       text-align: center; }
+
+        /* The code is the one secret on this screen and it is shown exactly once, so it is given
+           the width of the page rather than tucked into the form that produced it. */
+        .admin-code { display: flex; flex-direction: column; background: #16301c;
+                      border: 1px solid #2f6b3f; border-radius: 12px; padding: 10px 12px;
+                      margin-bottom: 12px; }
+        .admin-code.hidden { display: none; }
+        .admin-code-note { font-size: 11px; color: #a7e3bb; }
+        .admin-code-row { display: flex; flex-direction: row; align-items: center; margin-top: 6px; }
+        .admin-code-value { flex: 1; min-width: 0; font-size: 13px; color: #ffffff; }
+        .admin-copy { min-width: 64px; padding: 5px 12px; font-size: 12px; background: #1b2029;
+                      color: #f3f5f7; border: 1px solid #333a46; border-radius: 9px;
+                      text-align: center; }
+
         /* Over everything, and its own colour: until this is dealt with there is no room to
            look at behind it. */
         /* No padding here; the offset is on the card instead, for the reason the tool panel has
@@ -660,6 +800,85 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             CancelEdit();
+        });
+
+        // ---- The agents page ----
+
+        doc.OnAction("data-admin-open", _unused =>
+        {
+            ViewModel.ShowAdminPanel(true);
+            _ = AgentsListAsync();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnClick(".admin-close", _unused =>
+        {
+            ViewModel.ShowAdminPanel(false);
+            doc.Refresh();
+        });
+
+        doc.OnAction("data-admin-agent", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.SelectAdminAgent(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
+        // Two values and three values respectively, so a tap that cycles beats a control the engine
+        // has no dropdown for.
+        doc.OnClick(".admin-locality", _unused =>
+        {
+            ViewModel.CycleNewAgentLocality();
+            doc.Refresh();
+        });
+
+        doc.OnClick(".admin-clearance", _unused =>
+        {
+            ViewModel.CycleNewAgentClearance();
+            doc.Refresh();
+        });
+
+        doc.OnClick(".admin-add", _unused =>
+        {
+            if (ViewModel.ReadNewAgent() is not { } form)
+            {
+                doc.Refresh();
+                return;
+            }
+
+            _ = AgentCreateAsync(form.Nick, form.Rooms, form.Skills, form.Locality, form.Clearance);
+        });
+
+        doc.OnClick(".admin-reissue", _unused =>
+        {
+            if (ViewModel.Model.AdminSelected.Length > 0)
+            {
+                _ = AgentReissueAsync(ViewModel.Model.AdminSelected);
+            }
+        });
+
+        doc.OnClick(".admin-remove", _unused =>
+        {
+            if (ViewModel.Model.AdminSelected.Length > 0)
+            {
+                _ = AgentRemoveAsync(ViewModel.Model.AdminSelected);
+            }
+        });
+
+        // The code exists in readable form for as long as this page is open and no longer, so
+        // copying it is the whole point of showing it.
+        doc.OnClick(".admin-copy", _unused =>
+        {
+            if (ViewModel.Model.AdminCode.Length > 0)
+            {
+                Clipboard.SetText(ViewModel.Model.AdminCode);
+            }
         });
 
         // Room tabs carry their own name, so one handler serves every repeated row.

@@ -40,6 +40,27 @@
       "stopAtEntry": false
     },
     {
+      // The agents page lives behind the "A" button in the left rail, and only an admin sees it.
+      // The server creates the admin account on first run with BANTER_ADMIN_PASSWORD, which the
+      // plain "Server" configuration leaves unset — so it is "admin", and the server says so
+      // loudly at startup.
+      "name": "Desktop app (admin)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.App.Desktop/bin/Debug/net10.0/banter.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "admin",
+        "--pass", "admin",
+        "--room", "#main",
+        "--settings", "${workspaceFolder}/.banter-dev/admin.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
       "name": "Desktop app (bob)",
       "type": "coreclr",
       "request": "launch",
@@ -280,6 +301,22 @@
       // The one to pick for a first smoke test: server plus two clients in one room.
       "name": "Server + alice + bob",
       "configurations": ["Server", "Desktop app (alice)", "Desktop app (bob)"],
+      "stopAll": true
+    },
+    {
+      // Managing agents: sign in as the operator, open the "A" button in the left rail, and add
+      // one. Creating it hands back a one-time enrolment code — the agent's own machine turns
+      // that into a key, so nothing secret is copied out of this window except the code itself,
+      // and that is spent the moment it is used.
+      "name": "Server + admin (agents page)",
+      "configurations": ["Server", "Desktop app (admin)"],
+      "stopAll": true
+    },
+    {
+      // The operator and an ordinary user side by side, for watching an agent appear in the room
+      // as soon as it enrols.
+      "name": "Server + admin + alice",
+      "configurations": ["Server", "Desktop app (admin)", "Desktop app (alice)"],
       "stopAll": true
     },
     {
