@@ -227,8 +227,33 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
     [Fact]
     public void StreamedReplyRendersWhileItIsStillArriving()
     {
+        // A ratio rather than a millisecond budget, the same conversion TimelineCostStaysFlat
+        // already went through and for the same reason. What this test is for is catching a
+        // stream delta that re-lays-out the whole room, and that shows up as per-token cost
+        // scaling with the backlog. The 50 ms wall-clock budget it used to assert measured the
+        // runner instead: GitHub's shared runners spend ~51 ms on work a desktop does in a few,
+        // so the suite failed on every push without a line of app code changing.
+        var small = BestDeltaMilliseconds(100);
+        var large = BestDeltaMilliseconds(2_000);
+        var growth = large / Math.Max(small, 0.001);
+
+        output.WriteLine(
+            $"cheapest per-token rebind + layout — 100 messages: {small:F3} ms, 2,000: {large:F3} ms (x{growth:F1})");
+
+        Assert.True(growth < 8, $"Per-token cost grew x{growth:F1} between a 100- and 2,000-message room.");
+    }
+
+    /// <summary>
+    /// Fastest of thirty stream deltas into a room holding <paramref name="backlog"/> messages.
+    /// The minimum, not the mean, as everywhere else here: scheduler noise only ever ADDS time,
+    /// so on a machine running seven test assemblies at once the mean measures the machine and
+    /// the minimum measures the work. Taking the mean here once made this the suite's most
+    /// reliable false failure — one hiccup in thirty deltas was enough.
+    /// </summary>
+    private static double BestDeltaMilliseconds(int backlog)
+    {
         var (app, vm, _) = Build();
-        for (var i = 0; i < 500; i++)
+        for (var i = 0; i < backlog; i++)
         {
             vm.Append("#main", "bob", $"backlog {i}", 0);
         }
@@ -238,11 +263,6 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
 
         vm.StreamStart("#main", "dagger", "s1");
 
-        // The cheapest delta, not the average of them — the same rule LayoutMilliseconds follows
-        // just above, and for the same reason. Scheduler noise only ever ADDS time, so on a machine
-        // running seven test assemblies at once the mean measures the machine and the minimum
-        // measures the work. Taking the mean here made this the suite's most reliable false
-        // failure: one hiccup in thirty deltas was enough to fail a budget the code meets easily.
         var best = double.MaxValue;
         for (var i = 0; i < 30; i++)
         {
@@ -254,9 +274,8 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
             best = Math.Min(best, sw.Elapsed.TotalMilliseconds);
         }
 
-        output.WriteLine($"cheapest per-token rebind + layout in a 500-message room: {best:F3} ms");
-
+        // The stream still has to have landed in the room for the timing to mean anything.
         Assert.Contains("tok29", vm.Model.Messages[^1].Text);
-        Assert.True(best < 50, $"Per-delta cost {best:F1} ms would stutter a token stream.");
+        return best;
     }
 }
