@@ -15,11 +15,17 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: true
 
-# The Wixely feed needs a PAT, not the workflow token. GitHub Packages scopes a repository's
-# GITHUB_TOKEN to that repository's own packages, so restoring CupriNet.Nodestar from here came
-# back 403 Forbidden (NU1301) even with `packages: read` — the token is not the problem, the
-# cross-repository grant is. PACKAGES_TOKEN is a PAT with read:packages (and write:packages, so the
-# pack job can publish); the fallback keeps forks and PRs building whatever they can reach.
+# PACKAGES_TOKEN is optional and matches what every other Wixely repository does; the fallback to
+# the workflow token is what actually runs.
+#
+# It is here because the first runs failed with 403 Forbidden (NU1301) and a PAT looked like the
+# answer. It was not: the restore named exactly two packages, cuprinet.nodestar and
+# cuprinet.nodestar.webrtc, while CupriNet.Core, CupriMark and every CupriFace package came back
+# fine on the same token in the same restore. A credentials fault does not single out two packages.
+# Those two were published while CupriNodestar was a private repository, and package visibility is
+# fixed at publish time — it does not follow the repository when it goes public. Making them public
+# fixed it. Banter only met it because nothing else consumes Nodestar from the feed: a repository's
+# own token always reads its own packages, so CupriNodestar never had the problem itself.
 jobs:
   build:
     name: Build and test
