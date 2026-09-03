@@ -297,6 +297,64 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
         Assert.IsType<AuthFailPayload>(await RoundTripAsync(new AuthKeyPayload("scribe", correct)));
     }
 
+    /// <summary>
+    /// The whole point: a real agent, through the SDK every agent uses, running on a key rather
+    /// than a password.
+    ///
+    /// <para>Without this the identity model would exist and nothing could reach it — the SDK is
+    /// the only door an agent comes through, DaggerAgent included.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnAgentRunsOnItsKeyThroughTheSdk()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "nell", "pw");
+        await human.JoinAsync("#main");
+
+        await using var agent = new EchoAgent(new Banter.Agents.Sdk.BanterAgentOptions
+        {
+            Server = _server.Endpoint,
+            User = "scribe",
+            PrivateKey = privateKey,          // and no password at all
+            Rooms = ["#main"],
+            Locality = AgentLocality.Local,
+            Clearance = DataSensitivity.Sensitive,
+            Skills = ["chat"],
+        });
+
+        await agent.StartAsync(_transport).WaitAsync(Patience);
+        await human.SendMessageAsync("#main", "@scribe are you there?");
+
+        var deadline = DateTimeOffset.UtcNow + Patience;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var history = await human.GetHistoryAsync("#main", limit: 50);
+            if (history.Messages.Any(m => m.Sender == "scribe"))
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.Fail("the keyed agent never answered");
+    }
+
+    private sealed class EchoAgent(Banter.Agents.Sdk.BanterAgentOptions options)
+        : Banter.Agents.Sdk.BanterAgent(options)
+    {
+        protected override async IAsyncEnumerable<string> RespondAsync(
+            string room, string sender, string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            yield return "here";
+        }
+    }
+
     [Fact]
     public async Task TheServerNeverLearnsThePrivateKey()
     {

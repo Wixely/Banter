@@ -4,7 +4,22 @@ public sealed record BanterAgentOptions
 {
     public required Uri Server { get; init; }
     public required string User { get; init; }
-    public required string Password { get; init; }
+
+    /// <summary>
+    /// The account password, for an agent that has one. Leave empty when <see cref="PrivateKey"/>
+    /// is set — an enrolled agent has no password, and never had one.
+    /// </summary>
+    public string Password { get; init; } = "";
+
+    /// <summary>
+    /// This machine's private key, from enrolment (<c>AgentEnrolment.EnrolAsync</c>). When set, the
+    /// agent proves who it is by signing a challenge instead of sending a secret, and the key is
+    /// never transmitted.
+    ///
+    /// <para>Hold it somewhere the operating system protects — DPAPI on Windows, Keychain on
+    /// macOS, libsecret on Linux. It is the whole of this agent's identity.</para>
+    /// </summary>
+    public byte[]? PrivateKey { get; init; }
     public IReadOnlyList<string> Rooms { get; init; } = ["#main"];
     public string ClientName { get; init; } = "Banter.Agent";
 

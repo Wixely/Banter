@@ -50,10 +50,16 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
     public async Task StartAsync(IBanterClientTransport transport, CancellationToken cancellationToken = default)
     {
-        _client = await BanterClient.ConnectAsync(
-            transport, Options.Server, Options.User, Options.Password,
-            new BanterClientOptions { ClientName = Options.ClientName },
-            cancellationToken).ConfigureAwait(false);
+        var clientOptions = new BanterClientOptions { ClientName = Options.ClientName };
+
+        // An enrolled agent signs a challenge; one still on a password sends it. Both end in the
+        // same place, so nothing below here knows or cares which happened.
+        _client = Options.PrivateKey is { } key
+            ? await BanterClient.ConnectWithKeyAsync(
+                transport, Options.Server, Options.User, key, clientOptions, cancellationToken).ConfigureAwait(false)
+            : await BanterClient.ConnectAsync(
+                transport, Options.Server, Options.User, Options.Password, clientOptions, cancellationToken)
+                .ConfigureAwait(false);
 
         _client.MessageReceived += OnMessage;
         _client.DelegatorChanged += OnDelegatorChanged;
