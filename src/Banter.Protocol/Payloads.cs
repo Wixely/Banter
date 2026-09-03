@@ -541,6 +541,103 @@ public sealed record ToolGrantsPayload(
     [property: Key(1)] IReadOnlyList<string> Tools,
     [property: Key(2)] bool Replace = false);
 
+// ---- Agent identities (PLAN §8a) ----
+
+/// <summary>
+/// One agent identity as an operator sees it. There is no secret here and never will be: the
+/// agent's private key is made on its own machine and never sent, so this is the whole of what
+/// the server knows about who an agent is.
+///
+/// <para><c>Locality</c> is "local" or "frontier" — the axis deciding whether data may leave —
+/// and <c>Clearance</c> is "public", "internal" or "sensitive". <c>KeyFingerprint</c> tells one
+/// machine from another and is empty until a machine has enrolled.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record AgentIdentityPayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] IReadOnlyList<string> Rooms,
+    [property: Key(2)] IReadOnlyList<string> Skills,
+    [property: Key(3)] string Locality,
+    [property: Key(4)] string Clearance,
+    [property: Key(5)] bool Enrolled,
+    [property: Key(6)] string KeyFingerprint,
+    [property: Key(7)] bool EnrolmentPending);
+
+/// <summary>Admin → server: create an identity. Everything but the nick may be changed later.</summary>
+[MessagePackObject]
+public sealed record AgentIdentityCreatePayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] IReadOnlyList<string> Rooms,
+    [property: Key(2)] IReadOnlyList<string> Skills,
+    [property: Key(3)] string Locality,
+    [property: Key(4)] string Clearance);
+
+/// <summary>
+/// Server → admin: the identity, and the one-time code to paste into the machine that will run it.
+///
+/// <para>This is the only message that ever carries the code, and it is only ever sent to the
+/// admin who asked. It is single-use and short-lived: it buys the machine the right to register a
+/// key once, and is spent the moment it does.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record AgentEnrolmentCodePayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] string Code,
+    [property: Key(2)] long ExpiresAtUnix);
+
+/// <summary>Admin → server: change an identity. Null fields are left as they are.</summary>
+[MessagePackObject]
+public sealed record AgentIdentityUpdatePayload(
+    [property: Key(0)] string Nick,
+    [property: Key(1)] IReadOnlyList<string>? Rooms = null,
+    [property: Key(2)] IReadOnlyList<string>? Skills = null,
+    [property: Key(3)] string? Locality = null,
+    [property: Key(4)] string? Clearance = null);
+
+/// <summary>Admin → server: remove an identity. Any session holding its key is dropped.</summary>
+[MessagePackObject]
+public sealed record AgentIdentityDeletePayload([property: Key(0)] string Nick);
+
+/// <summary>Admin → server: a fresh code, for a machine being replaced. Revokes the enrolled key.</summary>
+[MessagePackObject]
+public sealed record AgentIdentityReissuePayload([property: Key(0)] string Nick);
+
+/// <summary>Admin → server: list the identities.</summary>
+[MessagePackObject]
+public sealed record AgentIdentityListPayload;
+
+/// <summary>Server → admin: the identities.</summary>
+[MessagePackObject]
+public sealed record AgentIdentitiesPayload(
+    [property: Key(0)] IReadOnlyList<AgentIdentityPayload> Identities);
+
+/// <summary>
+/// Agent → server: redeem an enrolment code by registering the public half of a key just generated
+/// on this machine. The private half never leaves it, and is not in this message.
+/// <c>PublicKey</c> is SubjectPublicKeyInfo for a P-256 ECDSA key.
+/// </summary>
+[MessagePackObject]
+public sealed record AgentEnrolPayload(
+    [property: Key(0)] string Code,
+    [property: Key(1)] byte[] PublicKey);
+
+/// <summary>Agent → server: I am this nick and I hold its key — send me something to sign.</summary>
+[MessagePackObject]
+public sealed record AuthChallengePayload([property: Key(0)] string Username);
+
+/// <summary>
+/// Server → agent: sign this. A fresh random nonce per attempt, so a captured signature proves
+/// nothing the second time.
+/// </summary>
+[MessagePackObject]
+public sealed record AuthChallengeIssuedPayload([property: Key(0)] byte[] Nonce);
+
+/// <summary>Agent → server: the challenge, signed.</summary>
+[MessagePackObject]
+public sealed record AuthKeyPayload(
+    [property: Key(0)] string Username,
+    [property: Key(1)] byte[] Signature);
+
 // ---- Generic ----
 
 [MessagePackObject]

@@ -91,7 +91,12 @@ await using var server = new BanterServer(
     transport, accounts, new DbServerStore(database), fileStore,
     guardrails: null,
     tasks: new TaskStore(database),
-    tools: toolBroker);
+    tools: toolBroker,
+    // Agent identities: an admin creates one and is handed a single-use enrolment code, the
+    // machine that will run it redeems that code for a key it generates itself, and removal takes
+    // effect on the next thing the agent tries. The server is the authority, so none of this needs
+    // a credential in the wild that has to be waited out.
+    identities: new AgentIdentityStore(database));
 await server.StartAsync(endpoint);
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");

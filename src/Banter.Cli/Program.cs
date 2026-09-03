@@ -161,13 +161,103 @@ async Task<bool> HandleAsync(string line)
             await File.WriteAllBytesAsync(savePath, bytes);
             Print($"* downloaded {bytes.Length} bytes to {savePath}");
             return true;
+        // Agent identities. Admin-only on the server, so a non-admin gets NOT_ADMIN back rather
+        // than a client-side guess about who they are.
+        case "/agent" when argument is not null:
+        {
+            var words = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            switch (words)
+            {
+                case ["list"]:
+                {
+                    var agents = await client.ListAgentsAsync();
+                    if (agents.Count == 0)
+                    {
+                        Print("* no agent identities yet -- /agent add <nick> [rooms] [skills] [local|frontier] [public|internal|sensitive]");
+                        break;
+                    }
+
+                    foreach (var a in agents)
+                    {
+                        // The fingerprint is what tells one machine from another, so it is worth
+                        // showing beside the name rather than hiding behind a detail view.
+                        var state = a.Enrolled ? $"key {a.KeyFingerprint}"
+                            : a.EnrolmentPending ? "awaiting enrolment"
+                            : "no key, no code -- reissue to give it one";
+                        Print($"  {a.Nick,-14} {a.Locality,-8} {a.Clearance,-9} {string.Join(",", a.Rooms),-20} {string.Join(",", a.Skills),-18} {state}");
+                    }
+
+                    break;
+                }
+
+                case ["add", var nick, .. var rest]:
+                {
+                    string[] joinRooms = rest.Length > 0 ? rest[0].Split(',') : [currentRoom!];
+                    string[] joinSkills = rest.Length > 1 ? rest[1].Split(',') : ["chat"];
+                    var locality = rest.Length > 2 && rest[2].Equals("frontier", StringComparison.OrdinalIgnoreCase)
+                        ? AgentLocality.Frontier
+                        : AgentLocality.Local;
+                    var clearance = rest.Length > 3 && Enum.TryParse<DataSensitivity>(rest[3], true, out var c)
+                        ? c
+                        : DataSensitivity.Sensitive;
+
+                    var created = await client.CreateAgentAsync(nick!, joinRooms, joinSkills, locality, clearance);
+                    Print($"* created '{created.Nick}'. Paste this into the machine that will run it, within the hour:");
+                    Print("");
+                    Print($"    {created.Code}");
+                    Print("");
+                    Print("  It works once. Nothing else needs to be copied -- the agent makes its own key.");
+                    break;
+                }
+
+                case ["reissue", var nick]:
+                {
+                    var reissued = await client.ReissueAgentAsync(nick!);
+                    Print($"* '{reissued.Nick}' now has no key, and this code will give it one:");
+                    Print("");
+                    Print($"    {reissued.Code}");
+                    Print("");
+                    Print("  The machine it was on before can no longer connect.");
+                    break;
+                }
+
+                case ["remove", var nick]:
+                    await client.DeleteAgentAsync(nick!);
+                    Print($"* removed '{nick}'. Its key stops working immediately.");
+                    break;
+
+                case ["rooms", var nick, var inRooms]:
+                    await client.UpdateAgentAsync(nick!, rooms: inRooms!.Split(','));
+                    Print($"* '{nick}' is now in {inRooms}");
+                    break;
+
+                case ["skills", var nick, var hasSkills]:
+                    await client.UpdateAgentAsync(nick!, skills: hasSkills!.Split(','));
+                    Print($"* '{nick}' now does {hasSkills}");
+                    break;
+
+                case ["clearance", var nick, var level] when Enum.TryParse<DataSensitivity>(level, true, out var parsed):
+                    await client.UpdateAgentAsync(nick!, clearance: parsed);
+                    Print($"* '{nick}' is cleared for {parsed.ToString().ToLowerInvariant()}");
+                    break;
+
+                default:
+                    Print("! /agent list | add <nick> [rooms] [skills] [local|frontier] [public|internal|sensitive]");
+                    Print("!        | rooms <nick> <a,b> | skills <nick> <a,b> | clearance <nick> <level>");
+                    Print("!        | reissue <nick> | remove <nick>");
+                    break;
+            }
+
+            return true;
+        }
+
         case "/ping":
             Print($"* pong in {(await client.PingAsync()).TotalMilliseconds:F0} ms");
             return true;
         case "/quit":
             return false;
         case "/help":
-            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /files [#room] | /upload <path> | /download <id> [path] | /ping | /quit -- anything else is said in the current room");
+            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /files [#room] | /upload <path> | /download <id> [path] | /agent ... | /ping | /quit -- anything else is said in the current room");
             return true;
         default:
             Print("! unknown or incomplete command -- /help");

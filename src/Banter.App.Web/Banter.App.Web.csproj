@@ -28,7 +28,7 @@
 
   <ItemGroup>
     <!-- The browser host, and the same app the desktop and Android heads run. -->
-    <PackageReference Include="CupriFace.Web.Mono" Version="0.14.0" />
+    <PackageReference Include="CupriFace.Web.Mono" Version="0.15.0" />
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <!-- The conduit transport's CLIENT half. Deliberately not Banter.Transport.Shrine.Nodestar:
          that brings Kestrel, and a browser has no business downloading an HTTP server to join a

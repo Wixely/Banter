@@ -9,6 +9,18 @@ public static class PayloadRegistry
 {
     private static readonly Dictionary<BanterMessageType, Type> ByMessage = new()
     {
+        [BanterMessageType.AgentIdentityCreate] = typeof(AgentIdentityCreatePayload),
+        [BanterMessageType.AgentIdentityUpdate] = typeof(AgentIdentityUpdatePayload),
+        [BanterMessageType.AgentIdentityDelete] = typeof(AgentIdentityDeletePayload),
+        [BanterMessageType.AgentIdentityList] = typeof(AgentIdentityListPayload),
+        [BanterMessageType.AgentIdentities] = typeof(AgentIdentitiesPayload),
+        [BanterMessageType.AgentIdentityReissue] = typeof(AgentIdentityReissuePayload),
+        [BanterMessageType.AgentEnrol] = typeof(AgentEnrolPayload),
+        [BanterMessageType.AgentEnrolmentCode] = typeof(AgentEnrolmentCodePayload),
+        [BanterMessageType.AgentIdentityInfo] = typeof(AgentIdentityPayload),
+        [BanterMessageType.AuthChallenge] = typeof(AuthChallengePayload),
+        [BanterMessageType.AuthChallengeIssued] = typeof(AuthChallengeIssuedPayload),
+        [BanterMessageType.AuthKey] = typeof(AuthKeyPayload),
         [BanterMessageType.Hello] = typeof(HelloPayload),
         [BanterMessageType.Auth] = typeof(AuthPayload),
         [BanterMessageType.AuthOk] = typeof(AuthOkPayload),

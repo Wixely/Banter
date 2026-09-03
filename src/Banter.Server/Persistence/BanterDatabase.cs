@@ -299,5 +299,44 @@ public static class SchemaManifest
             ALTER TABLE messages ADD COLUMN edited_at BIGINT NULL;
             ALTER TABLE messages ADD COLUMN deleted_at BIGINT NULL;
             """),
+        new(
+            7,
+            "agent-identities",
+            // The public key is nullable because an identity exists before any machine has claimed
+            // it: an admin creates it, and it sits unenrolled until somebody redeems its code.
+            //
+            // The enrolment code is stored HASHED, like a password, for the same reason. It is a
+            // bearer secret while it lives, and a table an operator can read over someone's
+            // shoulder should not hand out the right to become an agent.
+            SqliteSql:
+            """
+            CREATE TABLE agent_identities (
+                nick TEXT PRIMARY KEY,
+                rooms TEXT NOT NULL,
+                skills TEXT NOT NULL,
+                locality TEXT NOT NULL,
+                clearance TEXT NOT NULL,
+                public_key BLOB NULL,
+                enrolment_hash BLOB NULL,
+                enrolment_salt BLOB NULL,
+                enrolment_expires_at INTEGER NULL,
+                created_at INTEGER NOT NULL
+            );
+            """,
+            PostgresSql:
+            """
+            CREATE TABLE agent_identities (
+                nick TEXT PRIMARY KEY,
+                rooms TEXT NOT NULL,
+                skills TEXT NOT NULL,
+                locality TEXT NOT NULL,
+                clearance TEXT NOT NULL,
+                public_key BYTEA NULL,
+                enrolment_hash BYTEA NULL,
+                enrolment_salt BYTEA NULL,
+                enrolment_expires_at BIGINT NULL,
+                created_at BIGINT NOT NULL
+            );
+            """),
     ];
 }

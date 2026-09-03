@@ -39,12 +39,18 @@ public sealed record BanterClientOptions
 /// exponential backoff and room rejoin. UI layers (CLI, CupriFace app) and the agent SDK all
 /// sit on this.
 /// </summary>
-public sealed class BanterClient : IAsyncDisposable
+public sealed partial class BanterClient : IAsyncDisposable
 {
     private readonly IBanterClientTransport _transport;
     private readonly Uri _endpoint;
     private readonly string _username;
     private readonly string _secret;
+
+    /// <summary>
+    /// This machine's private key when the account is an enrolled agent, null when it authenticates
+    /// with a password. Set once at connect and never sent — see <see cref="AuthenticateWithKeyAsync"/>.
+    /// </summary>
+    private readonly byte[]? _privateKey;
     private readonly BanterClientOptions _options;
     private readonly BanterCodec _codec = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<object?>> _pending = new();
@@ -56,13 +62,16 @@ public sealed class BanterClient : IAsyncDisposable
     private Task? _keepAliveLoop;
     private bool _disposed;
 
-    private BanterClient(IBanterClientTransport transport, Uri endpoint, string username, string secret, BanterClientOptions options)
+    private BanterClient(
+        IBanterClientTransport transport, Uri endpoint, string username, string secret,
+        BanterClientOptions options, byte[]? privateKey = null)
     {
         _transport = transport;
         _endpoint = endpoint;
         _username = username;
         _secret = secret;
         _options = options;
+        _privateKey = privateKey;
     }
 
     public string Nick { get; private set; } = "";
@@ -109,6 +118,31 @@ public sealed class BanterClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var client = new BanterClient(transport, endpoint, username, secret, options ?? new BanterClientOptions());
+        client._connection = await client.DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
+        client._sessionLoop = Task.Run(client.RunSessionsAsync, CancellationToken.None);
+        client._keepAliveLoop = Task.Run(client.RunKeepAliveAsync, CancellationToken.None);
+        return client;
+    }
+
+    /// <summary>
+    /// Connects as an enrolled agent, proving identity with the key this machine made during
+    /// enrolment rather than with a password.
+    ///
+    /// <para><paramref name="privateKey"/> is the PKCS#8 blob <see cref="AgentEnrolment"/> returned.
+    /// It is used to sign a challenge and is never sent.</para>
+    /// </summary>
+    public static async Task<BanterClient> ConnectWithKeyAsync(
+        IBanterClientTransport transport,
+        Uri endpoint,
+        string username,
+        byte[] privateKey,
+        BanterClientOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(privateKey);
+
+        var client = new BanterClient(
+            transport, endpoint, username, secret: "", options ?? new BanterClientOptions(), privateKey);
         client._connection = await client.DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
         client._sessionLoop = Task.Run(client.RunSessionsAsync, CancellationToken.None);
         client._keepAliveLoop = Task.Run(client.RunKeepAliveAsync, CancellationToken.None);
@@ -454,8 +488,10 @@ public sealed class BanterClient : IAsyncDisposable
                     throw new BanterClientException($"Unexpected HELLO reply: {helloReply?.GetType().Name ?? "null"}.");
             }
 
-            var reply = await RawRequestAsync(connection, new AuthPayload(_username, _secret, IsAgentToken: false), cancellationToken)
-                .ConfigureAwait(false);
+            var reply = _privateKey is null
+                ? await RawRequestAsync(connection, new AuthPayload(_username, _secret, IsAgentToken: false), cancellationToken)
+                    .ConfigureAwait(false)
+                : await AuthenticateWithKeyAsync(connection, cancellationToken).ConfigureAwait(false);
             switch (reply)
             {
                 case AuthOkPayload ok:
@@ -474,6 +510,30 @@ public sealed class BanterClient : IAsyncDisposable
             await connection.DisposeAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Proves this machine holds the agent's key, instead of sending a password.
+    ///
+    /// <para>Two round trips rather than one: the server picks the nonce, so a signature captured
+    /// off the wire is spent and cannot be replayed. The private key is used here and never
+    /// leaves — what crosses the wire is a signature over a number the server chose.</para>
+    /// </summary>
+    private async Task<object?> AuthenticateWithKeyAsync(IBanterConnection connection, CancellationToken cancellationToken)
+    {
+        var issued = await RawRequestAsync(connection, new AuthChallengePayload(_username), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (issued is not AuthChallengeIssuedPayload challenge)
+        {
+            return issued;                              // an error or a surprise; the caller reports it
+        }
+
+        var signature = AgentKeys.Sign(
+            _privateKey!, AgentKeys.ChallengeBytes(_username, challenge.Nonce));
+
+        return await RawRequestAsync(connection, new AuthKeyPayload(_username, signature), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Request/response over a raw connection, skipping pushes. Used only during the

@@ -97,6 +97,44 @@ public enum BanterMessageType : ushort
     ToolGrants = 83,
 
 
+    // Agent identities: who an agent is, and how a new one is let in (90-109)
+    /// <summary>Admin: create an agent identity. The reply carries its one-time enrolment code.</summary>
+    AgentIdentityCreate = 90,
+
+    /// <summary>Admin: change an existing identity's rooms, skills, locality or clearance.</summary>
+    AgentIdentityUpdate = 91,
+
+    /// <summary>Admin: remove an identity. Its key stops working immediately.</summary>
+    AgentIdentityDelete = 92,
+
+    /// <summary>Admin: list the agent identities this server knows.</summary>
+    AgentIdentityList = 93,
+
+    /// <summary>Admin: the identities, in reply to a list.</summary>
+    AgentIdentities = 94,
+
+    /// <summary>Admin: mint a fresh enrolment code for an identity whose machine is being replaced.</summary>
+    AgentIdentityReissue = 95,
+
+    /// <summary>Agent: redeem an enrolment code, registering the public half of a key it just made.</summary>
+    AgentEnrol = 96,
+
+    /// <summary>Agent: ask for a challenge to sign, instead of presenting a password.</summary>
+    AuthChallenge = 97,
+
+    /// <summary>Server: the nonce to sign.</summary>
+    AuthChallengeIssued = 98,
+
+    /// <summary>Agent: the signed challenge.</summary>
+    AuthKey = 99,
+
+    /// <summary>Server → admin only: the one-time code, in reply to a create or reissue.</summary>
+    AgentEnrolmentCode = 100,
+
+    /// <summary>Server → agent: the identity it just enrolled as.</summary>
+    AgentIdentityInfo = 101,
+
+
     // Generic (250–255)
     Error = 250,
     Ok = 251,
