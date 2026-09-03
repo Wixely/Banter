@@ -102,6 +102,41 @@ of precedence:
 An unreadable secret file warns and falls back rather than refusing to start, so a mount typo
 does not turn into a crash loop.
 
+## Using the SDK from another project
+
+An agent is a **client**, not something the server hosts: a separate process that logs in, joins
+rooms and answers. Anything that wants to be one references `Banter.Agents.Sdk` — that is what
+`Banter.Warden` in this repository does, and what [DaggerAgent](https://github.com/Wixely/DaggerAgent)
+does from outside it.
+
+Four packages publish to the Wixely GitHub Packages feed, in lockstep, on a `v*` tag. The SDK pulls
+the other three behind it:
+
+| Package | |
+|---|---|
+| `Banter.Agents.Sdk` | `BanterAgent`, `LlmChatAgent`, the routing attributes — what an agent subclasses |
+| `Banter.Client.Core` | `BanterClient`, enrolment, the key on disk |
+| `Banter.Core` | accounts, agent identities, request classification |
+| `Banter.Protocol` | the wire: verbs, payloads, framing, transports, `AgentKeys` |
+
+Nothing else is published. The server, the CLI, the Warden and the app heads are applications, and
+the voice and transport libraries have no consumer outside this repository yet — all of them say so
+in their project files rather than relying on a filter in CI.
+
+```
+dotnet nuget add source https://nuget.pkg.github.com/Wixely/index.json   --name GitHub-Wixely-Packages --username <your-github-username> --password <a-PAT-with-read:packages>
+dotnet add package Banter.Agents.Sdk
+```
+
+A consuming repository that uses package source mapping needs a `Banter.*` pattern pointing at that
+source, alongside whatever it already has for `CupriNet*` and `CupriFace*`.
+
+**On versions.** The protocol moves, and the four packages move together — mixing versions within
+one surface is the failure this lockstep exists to prevent. Across versions, `banter.core` is
+negotiated through [CupriMark](https://github.com/Wixely/CupriMark) at HELLO, and new payload fields
+are added as trailing optional ones, so a client and a server on different releases agree on what
+they both speak rather than failing to decode.
+
 ## Building
 
 Requires the .NET 10 SDK. Wixely-family packages (CupriNet, CupriFace, Bantz.*) restore from the
@@ -117,10 +152,9 @@ dotnet test Banter.slnx
 ### The Shrine transport (the web head's server half)
 
 `Banter.Transport.Shrine` presents a CupriNet **conduit** as an `IBanterConnection`, so the whole
-stack above the transport seam runs over L2 unchanged. It is **not** in `Banter.slnx` and has no CI
-job, because it restores `CupriNet.Nodestar 0.1.0-alpha.6.local` from a **local build** — the
-publish run died on a GitHub Actions artifact-storage quota rather than on anything in the code, so
-it is not on the feed yet.
+stack above the transport seam runs over L2 unchanged. It is in `Banter.slnx` and covered by the
+ordinary test run: `CupriNet.Nodestar` reached the feed at `0.1.0-alpha.9`, so the local build and
+the three per-project `NuGet.config` files it needed are gone.
 
 A client dials the **site's** vessel host (`ShrineVesselHost`) and pins the **site's** Signet. Both
 halves matter: the node's own listen port reaches the *node*, and a session with no Shrine behind it
