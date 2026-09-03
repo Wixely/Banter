@@ -9,6 +9,8 @@
     compiler bug is not something a consumer can know to re-test.
   -->
   <PropertyGroup>
+    <!-- an application, not a library. -->
+    <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
