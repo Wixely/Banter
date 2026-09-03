@@ -266,3 +266,8 @@ Voice on the phone uses **remote engines only** (PLAN §6a): an OpenAI-compatibl
 Wyoming service, set through `voice.endpoint` or `voice.wyomingAsr`. Local Whisper stays the
 desktop default — a 148 MB model and native inference are not what you want on a phone. A phone
 with neither configured simply has no microphone button.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). The published packages carry the same expression, so a consumer sees
+it on the package as well as on the repository.
