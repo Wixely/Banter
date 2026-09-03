@@ -2,9 +2,16 @@
   // A realistic room: a local delegator that routes, a local specialist that works the task
   // board, and a frontier researcher for public questions.
   //
-  // No secrets here. Each agent's password comes from BANTER_AGENT_<USER>_PASSWORD, so this file
+  // No secrets here, and none of the agents below hold a password at all. Each names a keyFile
+  // written by:
+  //
+  //   banter-warden --enrol <code> --key .banter-dev/keys/<nick>.key
+  //
+  // where <code> is the one-time code an admin minted on the agents page in the desktop client.
+  // The key is generated on this machine during that step and never sent anywhere, so this file
   // is safe to commit - which matters, because a fleet config is exactly the kind of thing that
-  // gets committed.
+  // gets committed. An agent may still use BANTER_AGENT_<USER>_PASSWORD instead by naming a
+  // passwordEnv and no keyFile.
   //
   //   banter-warden --fleet samples/fleet.json
   "server": "tcp://127.0.0.1:7770",
@@ -19,6 +26,7 @@
   "agents": [
     {
       "user": "dagger",
+      "keyFile": ".banter-dev/keys/dagger.key",
       "model": "liquid/lfm2.5-1.2b",
       "rooms": ["#main"],
       "locality": "local",
@@ -30,6 +38,7 @@
     },
     {
       "user": "scout",
+      "keyFile": ".banter-dev/keys/scout.key",
       "model": "qwen/qwen3-4b-2507",
       "rooms": ["#main"],
       // Flagged frontier so the routing rules treat it as third-party. Point "llm" at a real
@@ -42,6 +51,7 @@
     },
     {
       "user": "coder",
+      "keyFile": ".banter-dev/keys/coder.key",
       "model": "qwen/qwen3-4b-2507",
       "rooms": ["#main"],
       "locality": "local",

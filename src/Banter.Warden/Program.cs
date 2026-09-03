@@ -1,10 +1,58 @@
 using Banter.Agents.Sdk;
+using Banter.Client.Core;
 using Banter.Warden;
 using Banter.Protocol;
 using Banter.Protocol.Transport;
 
 // Banter.Warden - agent supervisor. Today it runs a single LlmChatAgent from the command line;
 // the config-driven fleet described in PLAN is the next step.
+
+// Enrolment: redeem the one-time code an admin handed over, keep the key it produces, and stop.
+// Deliberately its own mode rather than something the run path does lazily — enrolling is a thing
+// somebody does once, on purpose, while watching.
+if (Arg("--enrol") is { Length: > 0 } enrolCode)
+{
+    var enrolServer = Arg("--server") ?? "tcp://127.0.0.1:7770";
+    var keyPath = Arg("--key");
+    if (keyPath is null)
+    {
+        Console.Error.WriteLine("usage: banter-warden --enrol <code> --key <path> [--server tcp://host:port]");
+        return 1;
+    }
+
+    if (File.Exists(keyPath))
+    {
+        // Overwriting would strand the identity that key belongs to: the server still has its
+        // public half and nothing else can produce the private one.
+        Console.Error.WriteLine($"error: {keyPath} already exists. Move it aside first if you mean to replace it.");
+        return 1;
+    }
+
+    try
+    {
+        var enrolEndpoint = new Uri(enrolServer);
+        var (identity, privateKey) = await AgentEnrolment
+            .EnrolAsync(BanterTransports.Client(enrolEndpoint), enrolEndpoint, enrolCode)
+            .ConfigureAwait(false);
+
+        await AgentKeyFile.SaveAsync(keyPath, privateKey).ConfigureAwait(false);
+
+        Console.WriteLine($"Enrolled as '{identity.Nick}'.");
+        Console.WriteLine($"  key        {Path.GetFullPath(keyPath)}");
+        Console.WriteLine($"  identifies {identity.KeyFingerprint}");
+        Console.WriteLine($"  rooms      {string.Join(", ", identity.Rooms)}");
+        Console.WriteLine();
+        Console.WriteLine("The code is spent. This key is what identifies the agent now, it never leaves this");
+        Console.WriteLine("machine, and an admin can revoke it at any time.");
+        return 0;
+    }
+    catch (Exception ex) when (ex is InvalidOperationException or IOException
+        or System.Net.Sockets.SocketException or ArgumentException or UriFormatException)
+    {
+        Console.Error.WriteLine($"error: could not enrol: {ex.Message}");
+        return 1;
+    }
+}
 
 // Fleet mode: one config file, many agents, supervised. Falls through to the single-agent
 // command line below when no --fleet is given.
@@ -16,6 +64,7 @@ if (Arg("--fleet") is { Length: > 0 } fleetPath)
 var server = Arg("--server") ?? "tcp://127.0.0.1:7770";
 var user = Arg("--user") ?? "dagger";
 var pass = Arg("--pass") ?? Environment.GetEnvironmentVariable("BANTER_PASS");
+var keyFile = Arg("--key") ?? Environment.GetEnvironmentVariable("BANTER_KEY");
 var rooms = (Arg("--rooms") ?? Arg("--room") ?? "#main")
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -39,12 +88,14 @@ var smartClassifier = Has("--llm-classify");
 var worksTasks = Has("--work-tasks");
 var assignedOnly = Has("--assigned-only");
 
-if (pass is null || model is null || Has("--help") || Has("-h"))
+if ((pass is null && keyFile is null) || model is null || Has("--help") || Has("-h"))
 {
     Console.Error.WriteLine("""
         banter-warden - run an LLM agent as a Banter user
 
+          banter-warden --enrol <code> --key <path>   redeem an enrolment code, once
           banter-warden --fleet <fleet.json>          run a supervised fleet
+          banter-warden --user dagger --key <path> --model <id>      run one enrolled agent
           banter-warden --user dagger --pass <secret> --model <id>   run one agent
                         [--server tcp://127.0.0.1:7770] [--rooms #main,#dev]
                         [--llm http://localhost:1234/v1] [--api-key <key>]
@@ -81,7 +132,11 @@ var agentOptions = new BanterAgentOptions
 {
     Server = new Uri(server),
     User = user,
-    Password = pass,
+
+    // A key when one was given, a password otherwise. An enrolled agent has no password and
+    // never had one — what identifies it is a file on this machine that has never been sent.
+    Password = pass ?? "",
+    PrivateKey = keyFile is { Length: > 0 } ? File.ReadAllBytes(keyFile) : null,
     Rooms = rooms,
     ClientName = "Banter.Warden",
     RespondToEveryMessage = answerAll,

@@ -84,6 +84,14 @@ public sealed record FleetConfig
             {
                 problems.Add($"'{agent.User}' has no model");
             }
+
+            // Named rather than silently preferred: an operator who set both has one of them in
+            // mind, and quietly using the other is how a rotated password appears not to work.
+            if (agent.KeyFile is { Length: > 0 } && agent.PasswordEnv is { Length: > 0 })
+            {
+                problems.Add(
+                    $"'{agent.User}' has both a keyFile and a passwordEnv - it needs one or the other");
+            }
         }
 
         return problems;
@@ -114,9 +122,19 @@ public sealed record AgentConfig
     /// <summary>
     /// Environment variable holding this agent's password. Defaults to
     /// <c>BANTER_AGENT_&lt;USER&gt;_PASSWORD</c> with the nick upper-cased and non-alphanumerics
-    /// replaced by underscores.
+    /// replaced by underscores. Ignored when <see cref="KeyFile"/> is set.
     /// </summary>
     public string? PasswordEnv { get; init; }
+
+    /// <summary>
+    /// Where this machine's private key lives, for an agent enrolled with a code rather than given
+    /// a password. Written by <c>banter-warden --enrol</c> and never transmitted.
+    ///
+    /// <para>Preferred over a password: it cannot be replayed from a captured login, it is useless
+    /// on any other machine once an admin reissues, and revoking it is a row delete on the
+    /// server.</para>
+    /// </summary>
+    public string? KeyFile { get; init; }
 
     public List<string> Rooms { get; init; } = ["#main"];
     public string Model { get; init; } = "";

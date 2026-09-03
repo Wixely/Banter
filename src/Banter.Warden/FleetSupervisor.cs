@@ -98,9 +98,29 @@ public sealed class FleetSupervisor(FleetConfig config, Func<AgentConfig, Banter
     public static (BanterAgentOptions Agent, LlmChatAgentOptions Llm) BuildOptions(
         FleetConfig fleet, AgentConfig agent)
     {
-        var password = Environment.GetEnvironmentVariable(agent.ResolvedPasswordEnv)
-            ?? throw new InvalidOperationException(
-                $"'{agent.User}' has no password: set {agent.ResolvedPasswordEnv}.");
+        // A key if one is configured; a password otherwise. The key is read here rather than at
+        // enrolment time so that replacing the file is enough to move an agent to a new identity.
+        byte[]? privateKey = null;
+        var password = "";
+
+        if (agent.KeyFile is { Length: > 0 } keyFile)
+        {
+            if (!Banter.Client.Core.AgentKeyFile.IsUsable(keyFile))
+            {
+                throw new InvalidOperationException(
+                    $"'{agent.User}' has no usable key at {keyFile}. " +
+                    $"Enrol it first: banter-warden --enrol <code> --key {keyFile}");
+            }
+
+            privateKey = File.ReadAllBytes(keyFile);
+        }
+        else
+        {
+            password = Environment.GetEnvironmentVariable(agent.ResolvedPasswordEnv)
+                ?? throw new InvalidOperationException(
+                    $"'{agent.User}' has no password: set {agent.ResolvedPasswordEnv}, " +
+                    "or give it a keyFile and enrol it.");
+        }
 
         var endpoint = agent.Llm ?? fleet.Llm;
         var apiKey = agent.ResolvedApiKeyEnv is { Length: > 0 } key
@@ -124,6 +144,7 @@ public sealed class FleetSupervisor(FleetConfig config, Func<AgentConfig, Banter
             Server = new Uri(fleet.Server),
             User = agent.User,
             Password = password,
+            PrivateKey = privateKey,
             Rooms = agent.Rooms,
             ClientName = "Banter.Warden",
             RespondToEveryMessage = agent.AnswerAll,

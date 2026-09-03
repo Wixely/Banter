@@ -355,6 +355,76 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
         }
     }
 
+    /// <summary>
+    /// The whole loop, the way an operator walks it: an admin mints a code, the agent's machine
+    /// redeems it and keeps the key on disk, and the agent then runs from that file with no
+    /// password anywhere.
+    /// </summary>
+    [Fact]
+    public async Task AKeyOnDiskIsEnoughToRunAnAgent()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+
+        var keyPath = Path.Combine(_root, "keys", "scribe.key");
+        var (identity, privateKey) = await AgentEnrolment
+            .EnrolAsync(_transport, _server.Endpoint, code)
+            .WaitAsync(Patience);
+        await AgentKeyFile.SaveAsync(keyPath, privateKey);
+
+        Assert.True(AgentKeyFile.IsUsable(keyPath));
+        Assert.Equal("scribe", identity.Nick);
+
+        // Read back from disk, exactly as the fleet supervisor does.
+        var fromDisk = await AgentKeyFile.LoadAsync(keyPath);
+
+        await using var agent = new EchoAgent(new Banter.Agents.Sdk.BanterAgentOptions
+        {
+            Server = _server.Endpoint,
+            User = "scribe",
+            PrivateKey = fromDisk,
+            Rooms = ["#main"],
+            Locality = AgentLocality.Local,
+            Clearance = DataSensitivity.Sensitive,
+            Skills = ["chat"],
+        });
+
+        await agent.StartAsync(_transport).WaitAsync(Patience);
+
+        // It is really in the room, not merely connected: a human sees it arrive.
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "nell", "pw");
+        await human.JoinAsync("#main");
+        await human.SendMessageAsync("#main", "@scribe hello");
+
+        var deadline = DateTimeOffset.UtcNow + Patience;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if ((await human.GetHistoryAsync("#main", limit: 50)).Messages.Any(m => m.Sender == "scribe"))
+            {
+                return;
+            }
+
+            await Task.Delay(25);
+        }
+
+        Assert.Fail("the agent running from a key file never answered");
+    }
+
+    /// <summary>
+    /// A file that is not a key is reported as such, before anything tries to connect — otherwise
+    /// a truncated or empty file looks like a login failure and sends somebody to the server logs.
+    /// </summary>
+    [Fact]
+    public async Task RubbishInTheKeyFileIsCalledOutAsRubbish()
+    {
+        var keyPath = Path.Combine(_root, "keys", "broken.key");
+        Directory.CreateDirectory(Path.GetDirectoryName(keyPath)!);
+        await File.WriteAllTextAsync(keyPath, "not a key");
+
+        Assert.False(AgentKeyFile.IsUsable(keyPath));
+        Assert.False(AgentKeyFile.IsUsable(Path.Combine(_root, "keys", "absent.key")));
+    }
+
     [Fact]
     public async Task TheServerNeverLearnsThePrivateKey()
     {
