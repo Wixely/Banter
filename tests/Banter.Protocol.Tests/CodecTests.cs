@@ -1,4 +1,5 @@
 using Banter.Protocol;
+using MessagePack;
 using Xunit;
 
 namespace Banter.Protocol.Tests;
@@ -55,6 +56,27 @@ public sealed class CodecTests
     [MemberData(nameof(AllPayloads))]
     public void EveryPayloadRoundTripsThroughJsonDebugMode(object payload) =>
         AssertRoundTrip(new BanterCodec(BanterWireFormat.Json), payload);
+
+    /// <summary>
+    /// The guard on <see cref="BanterCodec.Resolver"/>. It carries no dynamic tail, so a payload
+    /// MessagePack's source generator did not reach has no formatter at all — and the first place
+    /// that would show up is a browser decoding a frame, which is a long way from here. Walking the
+    /// registry costs nothing and cannot go stale: a payload added tomorrow is checked tomorrow,
+    /// without anyone remembering to add it to <see cref="AllPayloads"/>.
+    /// </summary>
+    [Fact]
+    public void EveryRegisteredPayloadHasACompileTimeFormatter()
+    {
+        var missing = PayloadRegistry.RegisteredMessageTypes
+            .Select(PayloadRegistry.PayloadTypeFor)
+            .OfType<Type>()
+            .Where(t => BanterCodec.Resolver.GetFormatterDynamic(t) is null)
+            .Select(t => t.Name)
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"No generated MessagePack formatter for: {string.Join(", ", missing)}");
+    }
 
     [Fact]
     public void EnvelopeCarriesVersionTypeAndCorrelation()

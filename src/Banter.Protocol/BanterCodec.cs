@@ -19,9 +19,30 @@ public enum BanterWireFormat
 /// </summary>
 public sealed class BanterCodec(BanterWireFormat format = BanterWireFormat.MessagePack)
 {
+    /// <summary>
+    /// What every codec instance serializes with, and deliberately not <c>StandardResolver</c>.
+    ///
+    /// <para>StandardResolver ends in the four <c>Dynamic*</c> resolvers, which build formatters at
+    /// run time with Reflection.Emit. A browser has no Reflection.Emit, so on the wasm head that
+    /// tail is not a fallback, it is a crash on the first frame decoded — and merely referencing it
+    /// is what failed a trimmed publish (IL2104, "assembly 'MessagePack' produced trim warnings").
+    /// </para>
+    ///
+    /// <para>None of it was ever needed. MessagePack's source generator has already emitted a
+    /// formatter for every <c>[MessagePackObject]</c> in this assembly, at compile time; composing
+    /// that over the builtin primitives is the same behaviour with no code generation at all.
+    /// <c>EveryRegisteredPayloadHasACompileTimeFormatter</c> is what keeps it honest: with the
+    /// dynamic tail gone, a payload the generator missed throws instead of quietly working here and
+    /// failing only in a browser.</para>
+    /// </summary>
+    public static readonly IFormatterResolver Resolver = CompositeResolver.Create(
+        BuiltinResolver.Instance,
+        AttributeFormatterResolver.Instance,
+        GeneratedMessagePackResolver.Instance);
+
     private static readonly MessagePackSerializerOptions MsgPackOptions =
         MessagePackSerializerOptions.Standard
-            .WithResolver(StandardResolver.Instance)
+            .WithResolver(Resolver)
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

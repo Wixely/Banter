@@ -12,3 +12,6 @@ artifacts/
 # Written at runtime by `banter-nodestar --seed-file` so the web client can pre-fill its Server
 # field. A link, not a secret, but it is machine- and run-specific and belongs to nobody else.
 src/Banter.App.Web/wwwroot/seed.json
+
+# Design scratch, not part of the repo: the visual sample the app was built from.
+preview.html

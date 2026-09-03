@@ -20,6 +20,26 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <!-- Browser-only by definition; the JSExport/JSImport platform hints are expected here. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!--
+      The WebAssembly SDK trims Release publishes by default. We do not, because MessagePack is not
+      trim-safe and this app cannot talk without it.
+
+      BanterCodec already avoids the part that matters at run time: it resolves formatters through
+      MessagePack's source generator rather than StandardResolver, so nothing here needs
+      Reflection.Emit, which a browser does not have. But the library still reaches the serializer
+      reflectively from the outside — the non-generic Serialize(Type, object, options) goes through
+      CompiledMethods, MessagePackSerializerOptions.Standard resolves a resolver by type NAME, and
+      MessagePackSecurity hashes through MakeGenericMethod. ILLink cannot see through any of that,
+      reports it (IL2104, "assembly 'MessagePack' produced trim warnings"), and TreatWarningsAsErrors
+      turns the report into NETSDK1144. Silencing it would not make the code reachable again: it
+      would ship a head that builds and then fails on the first frame it decodes, which is worse
+      than a large one.
+
+      The price is the whole BCL: about 12.6 MB brotli, against roughly half that trimmed. Worth
+      revisiting when MessagePack ships trim annotations — the resolver work that would be needed on
+      our side is already done.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
     <!-- AOT is opt-in via `-p:Aot=true`, never via Configuration: a previous AOT publish leaves
          artifacts in obj/ that make a later plain run paint a blank canvas. The host's
          buildTransitive targets supply the interpreter workaround AOT needs. -->
