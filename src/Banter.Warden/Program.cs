@@ -128,6 +128,17 @@ if ((pass is null && keyFile is null) || model is null || Has("--help") || Has("
     return 1;
 }
 
+if (keyFile is { Length: > 0 } && !AgentKeyFile.IsUsable(keyFile))
+{
+    // Report the key file as itself rather than letting the server say "invalid credentials",
+    // which would send someone to the wrong machine. The missing-file case is the first F5 on a
+    // fresh checkout, so the message says exactly what to do about it.
+    Console.Error.WriteLine(File.Exists(keyFile)
+        ? $"error: {keyFile} exists but is not a usable private key. If it was truncated or replaced, an admin must reissue the identity and you must enrol again."
+        : $"error: no key at {keyFile}. Create the agent on the admin UI's agents page (or /agent add in Banter.Cli), then redeem the one-time code it shows:\n\n  banter-warden --enrol <code> --key {keyFile} --server {server}");
+    return 1;
+}
+
 var agentOptions = new BanterAgentOptions
 {
     Server = new Uri(server),

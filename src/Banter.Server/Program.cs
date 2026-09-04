@@ -56,15 +56,16 @@ if (adminPassword == "admin")
 
 if (await accounts.CountAsync() <= 1)
 {
-    // First run against an empty database: seed development users so the suite is usable
-    // immediately. Real deployments create accounts via admin tooling (Banter.Cli, later).
-    // Two agent accounts, because one agent cannot demonstrate delegation: election, hand-off
-    // and the local-vs-frontier rules all need a room with more than one candidate in it.
-    Console.WriteLine("No user accounts found - seeding development users alice/bob and agents dagger/scout (password: banter).");
+    // First run against an empty database: seed development HUMANS so the suite is usable
+    // immediately. Only humans. Agents used to be seeded here too (dagger/scout, password
+    // "banter"), and that was the config-level agent provisioning this suite decided against:
+    // an agent is created on the admin UI's agents page (or /agent add in Banter.Cli), enrols
+    // with the one-time code that hands back, and authenticates with the key it made — the
+    // server never holds an agent password because the agent never has one.
+    Console.WriteLine("No user accounts found - seeding development users alice/bob (password: banter).");
+    Console.WriteLine("Agents are not seeded: create them as admin on the agents page, then enrol with the code.");
     await accounts.CreateUserAsync("alice", "banter");
     await accounts.CreateUserAsync("bob", "banter");
-    await accounts.CreateUserAsync("dagger", "banter", isAgent: true);
-    await accounts.CreateUserAsync("scout", "banter", isAgent: true);
 }
 
 var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA") ?? "banter-data";

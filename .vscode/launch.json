@@ -1,14 +1,23 @@
 {
   // Debug configurations for the Banter suite.
   //
-  // The credentials below are the development accounts Banter.Server seeds into an empty
-  // database on first run (it prints them at startup): humans alice / bob and agents
-  // dagger / scout, all with password "banter".
-  // They are not secrets, which is why they can live in a committed file - a real deployment
-  // creates accounts with admin tooling and supplies the password via --pass or BANTER_PASS.
+  // HUMANS sign in with passwords. alice / bob (password "banter") are the development accounts
+  // Banter.Server seeds into an empty database on first run, and admin / admin is the operator
+  // account it creates when BANTER_ADMIN_PASSWORD is unset. None of these are secrets, which is
+  // why they can live in a committed file.
   //
-  // Each client writes its settings under .banter-dev/ so debugging never touches the real
-  // profile at %APPDATA%/Banter.
+  // AGENTS have no passwords, here or anywhere - they authenticate with a key that never leaves
+  // this machine. First run only, per agent:
+  //
+  //   1. "Server + admin (agents page)" -> the A button in the left rail -> add "dagger"
+  //      (and "scout" if you want the delegation demos). Copy the one-time code it shows.
+  //   2. Run "Enrol an agent (paste code from the agents page)" and paste the code. That
+  //      writes .banter-dev/<name>.key, and the code is spent.
+  //   3. Every agent configuration below now works, forever - the key is the identity.
+  //
+  // If an agent launch says "no key at ...", that is this list telling you where you are in it.
+  // .banter-dev/ is gitignored, so keys and client settings stay out of the repository and
+  // debugging never touches the real profile at %APPDATA%/Banter.
   "version": "0.2.0",
   "configurations": [
     {
@@ -104,7 +113,7 @@
       "args": [
         "--server", "tcp://127.0.0.1:7770",
         "--user", "dagger",
-        "--pass", "banter",
+        "--key", "${workspaceFolder}/.banter-dev/dagger.key",
         "--room", "#main",
         "--llm", "http://localhost:1234/v1",
         "--model", "liquid/lfm2.5-1.2b",
@@ -130,7 +139,7 @@
       "args": [
         "--server", "tcp://127.0.0.1:7770",
         "--user", "scout",
-        "--pass", "banter",
+        "--key", "${workspaceFolder}/.banter-dev/scout.key",
         "--room", "#main",
         "--llm", "http://localhost:1234/v1",
         "--model", "qwen/qwen3-4b-2507",
@@ -182,7 +191,7 @@
       "args": [
         "--server", "tcp://127.0.0.1:7770",
         "--user", "scout",
-        "--pass", "banter",
+        "--key", "${workspaceFolder}/.banter-dev/scout.key",
         "--room", "#main",
         "--llm", "http://localhost:5090/v1",
         "--model", "dagger",
@@ -191,6 +200,25 @@
         "--skills", "web,github,research",
         "--cost", "5",
         "--system", "You are scout, a research assistant in a group chat. Keep replies to a sentence or two."
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      // The one-time step that turns a code from the agents page into a key on this machine.
+      // Enrolment generates the keypair HERE and sends only the public half - which is why this
+      // is a launch configuration and not something the server could do for you. Run it once per
+      // agent; it refuses to overwrite an existing key.
+      "name": "Enrol an agent (paste code from the agents page)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Warden/bin/Debug/net10.0/banter-warden.dll",
+      "args": [
+        "--enrol", "${input:enrolCode}",
+        "--key", "${workspaceFolder}/.banter-dev/${input:agentName}.key",
+        "--server", "tcp://127.0.0.1:7770"
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -287,7 +315,8 @@
       // dagger is eligible to be delegator and to see sensitive rooms, scout is neither, so the
       // routing rules are visible rather than theoretical.
       //
-      // NEEDS: LM Studio on :1234 for dagger, and DaggerAgent on :5090 for scout.
+      // NEEDS: LM Studio on :1234 for dagger, DaggerAgent on :5090 for scout, and both agents
+      // enrolled (see the header).
       "name": "Server + alice + local agent + DaggerAgent",
       "configurations": [
         "Server",
@@ -325,7 +354,8 @@
       "stopAll": true
     },
     {
-      // Chat with an agent: talk to dagger in #main. Needs LM Studio running on :1234.
+      // Chat with an agent: talk to dagger in #main. Needs LM Studio on :1234, and dagger
+      // enrolled (see the header).
       "name": "Server + alice + agent",
       "configurations": ["Server", "Desktop app (alice)", "Agent (dagger, local)"],
       "stopAll": true
@@ -333,7 +363,8 @@
     {
       // The delegation demo: two agents, so one gets elected delegator and the other waits to
       // be handed work. dagger (local) wins; scout (simulated frontier) is ineligible in a
-      // sensitive room and stays quiet until dagger names it.
+      // sensitive room and stays quiet until dagger names it. Both need enrolling first (see
+      // the header).
       "name": "Server + alice + two agents (delegation)",
       "configurations": [
         "Server",
@@ -358,6 +389,18 @@
       "description": "Password (not stored)",
       "password": true
     },
-    { "id": "room", "type": "promptString", "description": "Room to join", "default": "#main" }
+    { "id": "room", "type": "promptString", "description": "Room to join", "default": "#main" },
+    {
+      "id": "agentName",
+      "type": "promptString",
+      "description": "Agent name (the key is written to .banter-dev/<name>.key)",
+      "default": "dagger"
+    },
+    {
+      "id": "enrolCode",
+      "type": "promptString",
+      "description": "One-time enrolment code from the agents page (banter-enrol-...)",
+      "password": true
+    }
   ]
 }
