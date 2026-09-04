@@ -242,13 +242,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <div class="task-status">{{Status}}</div>
               </div>
             </div>
-            <div class="roster-title">Agents</div>
+            <div class="{{RosterAgentsTitleClass}}">Agents</div>
             <div class="{{RowClass}}" data-repeat="Agents">
               <div class="agent-row">
                 <span class="agent-pfp">{{Initials}}</span>
                 <span class="agent-main">
                   <span class="agent-line"><span class="agent-nick">{{Nick}}</span><span class="agent-role">{{Role}}</span></span>
                   <span class="agent-meta">{{Locality}} · {{Skills}}</span>
+                </span>
+              </div>
+            </div>
+            <div class="{{RosterUsersTitleClass}}">Users</div>
+            <div class="{{RowClass}}" data-repeat="Users">
+              <div class="agent-row">
+                <span class="member-pfp">{{Initials}}</span>
+                <span class="agent-main">
+                  <span class="agent-line"><span class="agent-nick">{{Nick}}</span><span class="member-badge">{{Badge}}</span></span>
                 </span>
               </div>
             </div>
@@ -602,6 +611,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .agent { padding: 7px 8px; border-radius: 9px; margin-bottom: 4px; }
         .agent:hover { background: #171b22; }
+        .roster-title.hidden { display: none; }
+
+        /* Humans share the agents' row geometry so the roster reads as one list with a divider,
+           but their avatar is the timeline's squircle where an agent's is a circle — the section
+           label does the telling, the shape merely agrees with it. */
+        .member { padding: 7px 8px; border-radius: 9px; margin-bottom: 4px; }
+        .member:hover { background: #171b22; }
+        .member-pfp { width: 30px; height: 30px; border-radius: 10px; display: flex;
+                      align-items: center; justify-content: center; font-size: 10px;
+                      font-weight: bold; background: linear-gradient(145deg, #3b3f4a, #23262e);
+                      border: 1px solid #3d4653; color: #e2e8f0; }
+        .member-badge { color: #93a5bd; font-size: 9px; }
         /* Frontier agents are marked, not merely listed: whether a third party is in the room is
            the thing a human most needs to be able to see at a glance. */
         .agent.frontier { background: #33261a; }

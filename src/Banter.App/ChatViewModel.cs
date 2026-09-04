@@ -185,6 +185,7 @@ public sealed partial class ChatViewModel
         _prepended = 0;
         RefreshLoadOlderVisibility();
         ShowAgentsFor(room);
+        ShowUsersFor(room);
         ShowTasksFor(room);
     }
 
@@ -529,6 +530,9 @@ public sealed partial class ChatViewModel
     /// <summary>Roster per room, so switching rooms shows that room's agents.</summary>
     private readonly Dictionary<string, List<AgentRow>> _agents = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The humans, kept apart from the agents the same way the roster draws them.</summary>
+    private readonly Dictionary<string, List<RosterUserRow>> _users = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Replace a room's agent roster. <paramref name="delegator"/> is highlighted, and frontier
     /// agents are marked — a human should be able to see at a glance whether anything in this room
@@ -550,6 +554,27 @@ public sealed partial class ChatViewModel
         if (room == Model.ActiveRoom)
         {
             ShowAgentsFor(room);
+        }
+    }
+
+    /// <summary>
+    /// Replace a room's human roster. Everyone in the room appears on one side of the divider or
+    /// the other: agents above with their routing attributes, humans here with at most an "op"
+    /// badge — the label between the sections is what says which kind of thing you are looking at.
+    /// </summary>
+    public void SetRoomUsers(string room, IEnumerable<(string Nick, string Modes)> users)
+    {
+        _users[room] = [.. users.Select(u => new RosterUserRow
+        {
+            Nick = u.Nick,
+            Initials = InitialsOf(u.Nick),
+            Badge = u.Modes.Contains('o', StringComparison.Ordinal) ? "op" : "",
+            RowClass = "member",
+        })];
+
+        if (room == Model.ActiveRoom)
+        {
+            ShowUsersFor(room);
         }
     }
 
@@ -598,9 +623,22 @@ public sealed partial class ChatViewModel
             Model.Agents.AddRange(rows);
         }
 
+        Model.RosterAgentsTitleClass = Model.Agents.Count > 0 ? "roster-title" : "roster-title hidden";
+
         var delegatorRow = Model.Agents.FirstOrDefault(a => a.Role.Length > 0);
         Model.Delegator = delegatorRow?.Nick ?? "no delegator";
         RefreshDispatch();
+    }
+
+    private void ShowUsersFor(string room)
+    {
+        Model.Users.Clear();
+        if (_users.TryGetValue(room, out var rows))
+        {
+            Model.Users.AddRange(rows);
+        }
+
+        Model.RosterUsersTitleClass = Model.Users.Count > 0 ? "roster-title" : "roster-title hidden";
     }
 
     // ── Task board (PLAN §8b) ────────────────────────────────────────────────────────────────

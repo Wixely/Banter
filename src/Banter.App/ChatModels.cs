@@ -184,6 +184,20 @@ public sealed partial class AdminUserRow
     public string RowClass { get; set; } = "admin-agent";
 }
 
+/// <summary>One human in the room's roster. The section heading is what says they are not an
+/// agent; the row itself only needs who they are and whether they hold a mode worth seeing.</summary>
+[CupriBindable]
+public sealed partial class RosterUserRow
+{
+    public string Nick { get; set; } = "";
+    public string Initials { get; set; } = "";
+
+    /// <summary>"op" for operators, empty for everyone else — worn like the delegator's marker.</summary>
+    public string Badge { get; set; } = "";
+
+    public string RowClass { get; set; } = "member";
+}
+
 /// <summary>One agent offered while an "@" is being typed.</summary>
 [CupriBindable]
 public sealed partial class MentionRow
@@ -265,6 +279,12 @@ public sealed partial class ChatModel
 
     public List<RoomRow> Rooms { get; set; } = [];
     public List<AgentRow> Agents { get; set; } = [];
+    public List<RosterUserRow> Users { get; set; } = [];
+
+    // Section labels in the roster, hidden when their section is empty — a heading over nothing
+    // reads as something failing to load.
+    public string RosterAgentsTitleClass { get; set; } = "roster-title hidden";
+    public string RosterUsersTitleClass { get; set; } = "roster-title hidden";
     public List<TaskRow> Tasks { get; set; } = [];
 
     /// <summary>Rooms on the server the user has not joined. Hidden when there are none.</summary>

@@ -23,6 +23,51 @@ public sealed class AgentRosterTests
         (nick, local, skills, delegator);
 
     [Fact]
+    public void HumansAndAgentsShareTheRosterSeparatedByTheirLabels()
+    {
+        var vm = Room();
+
+        vm.SetAgents("#main", [Agent("dagger")]);
+        vm.SetRoomUsers("#main", [("alice", "o"), ("bob", "")]);
+
+        // One list, two labelled sections: the heading is what says which kind of thing each row
+        // is, so both headings show only while their section has rows.
+        Assert.Equal("dagger", Assert.Single(vm.Model.Agents).Nick);
+        Assert.Equal(["alice", "bob"], vm.Model.Users.Select(u => u.Nick));
+        Assert.DoesNotContain("hidden", vm.Model.RosterAgentsTitleClass, StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden", vm.Model.RosterUsersTitleClass, StringComparison.Ordinal);
+
+        // An op wears a badge the way the delegator wears one; everyone else wears nothing.
+        Assert.Equal("op", vm.Model.Users.Single(u => u.Nick == "alice").Badge);
+        Assert.Equal("", vm.Model.Users.Single(u => u.Nick == "bob").Badge);
+    }
+
+    [Fact]
+    public void AnEmptySectionTakesItsHeadingWithIt()
+    {
+        var vm = Room();
+
+        // A room of only humans: no "Agents" heading over nothing.
+        vm.SetRoomUsers("#main", [("alice", "")]);
+        Assert.Contains("hidden", vm.Model.RosterAgentsTitleClass, StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden", vm.Model.RosterUsersTitleClass, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheUsersSectionFollowsTheActiveRoomLikeTheAgentsDo()
+    {
+        var vm = Room();
+        vm.AddRoom("#other");
+        vm.SetRoomUsers("#main", [("alice", "")]);
+        vm.SetRoomUsers("#other", [("carol", "")]);
+
+        Assert.Equal("alice", Assert.Single(vm.Model.Users).Nick);
+
+        vm.SwitchTo("#other");
+        Assert.Equal("carol", Assert.Single(vm.Model.Users).Nick);
+    }
+
+    [Fact]
     public void AFrontierAgentIsMarkedDistinctlyFromALocalOne()
     {
         var vm = Room();

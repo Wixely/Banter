@@ -90,7 +90,7 @@ public sealed partial class BanterChatSession : IDisposable
             _vm.SetHistoryCursor(room, page.NextCursor);
         });
 
-        await RefreshAgentsAsync(room, cancellationToken).ConfigureAwait(false);
+        await RefreshRosterAsync(room, cancellationToken).ConfigureAwait(false);
         await RefreshTasksAsync(room, cancellationToken).ConfigureAwait(false);
         await RefreshRoomsAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -135,11 +135,16 @@ public sealed partial class BanterChatSession : IDisposable
         _vm.Post(() => _vm.SetTask(t.Room, t.TaskId, t.Title, t.State.ToString(), t.Assignee));
 
     /// <summary>
-    /// Re-read who is in the room. Called on join and whenever membership or the delegator
-    /// changes, because a roster that only reflects the moment you joined would quietly stop
-    /// telling the truth — including about whether a third-party agent is present.
+    /// Re-read who is in the room — agents and humans both. Called on join and whenever
+    /// membership or the delegator changes, because a roster that only reflects the moment you
+    /// joined would quietly stop telling the truth — including about whether a third-party agent
+    /// is present.
+    ///
+    /// <para>Two reads on purpose: the agent listing carries the routing attributes only agents
+    /// have, and the member listing is where the humans are. Agents appear in both, so the member
+    /// half keeps only the people.</para>
     /// </summary>
-    public async Task RefreshAgentsAsync(string room, CancellationToken cancellationToken = default)
+    public async Task RefreshRosterAsync(string room, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -151,6 +156,11 @@ public sealed partial class BanterChatSession : IDisposable
                     IsLocal: a.Locality == Protocol.AgentLocality.Local,
                     Skills: string.Join(", ", a.Skills),
                     a.IsDelegator))));
+
+            var members = await _client.GetMembersAsync(room, cancellationToken).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetRoomUsers(
+                room,
+                members.Members.Where(m => !m.IsAgent).Select(m => (m.Nick, m.Modes))));
         }
         catch (Exception)
         {
@@ -161,7 +171,7 @@ public sealed partial class BanterChatSession : IDisposable
     private void OnDelegatorChanged(Protocol.RoomDelegatorPayload p)
     {
         _vm.Post(() => _vm.SetDelegator(p.Room, p.Nick));
-        _ = RefreshAgentsAsync(p.Room);
+        _ = RefreshRosterAsync(p.Room);
     }
 
     private void OnRoomModeChanged(Protocol.RoomModePayload p) =>
@@ -638,7 +648,7 @@ public sealed partial class BanterChatSession : IDisposable
     private void OnJoined(Protocol.JoinPayload j)
     {
         _vm.Post(() => _vm.System(j.Room, $"{j.Nick} joined"));
-        _ = RefreshAgentsAsync(j.Room);
+        _ = RefreshRosterAsync(j.Room);
 
         // Being put into a room by the admin rule or a delegator arrives as a join for us, with
         // no JoinAsync of our own to hang the setup off.
@@ -659,7 +669,7 @@ public sealed partial class BanterChatSession : IDisposable
     private void OnParted(Protocol.PartPayload p)
     {
         _vm.Post(() => _vm.System(p.Room, p.Reason is { Length: > 0 } r ? $"{p.Nick} left ({r})" : $"{p.Nick} left"));
-        _ = RefreshAgentsAsync(p.Room);
+        _ = RefreshRosterAsync(p.Room);
     }
 
     private void OnTopic(Protocol.TopicPayload t) =>
