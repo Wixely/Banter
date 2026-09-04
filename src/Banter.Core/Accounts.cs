@@ -34,6 +34,10 @@ public interface IAccountAdminStore
 
     Task<bool> ExistsAsync(string username, CancellationToken cancellationToken = default);
 
+    /// <summary>The account as it stands, or null — for the callers that need the current role,
+    /// not just existence, before deciding what a change amounts to.</summary>
+    Task<BanterAccount?> FindAsync(string username, CancellationToken cancellationToken = default);
+
     Task CreateUserAsync(string username, string secret, bool isAgent = false, bool isAdmin = false, CancellationToken cancellationToken = default);
 
     Task SetAdminAsync(string username, bool isAdmin, CancellationToken cancellationToken = default);
@@ -83,6 +87,11 @@ public sealed class InMemoryAccountStore : IAccountStore, IAccountAdminStore
 
     public Task<bool> ExistsAsync(string username, CancellationToken cancellationToken = default) =>
         Task.FromResult(_accounts.ContainsKey(username));
+
+    public Task<BanterAccount?> FindAsync(string username, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_accounts.TryGetValue(username, out var entry)
+            ? new BanterAccount(username, entry.IsAgent, entry.IsAdmin)
+            : null);
 
     Task IAccountAdminStore.CreateUserAsync(string username, string secret, bool isAgent, bool isAdmin, CancellationToken cancellationToken)
     {

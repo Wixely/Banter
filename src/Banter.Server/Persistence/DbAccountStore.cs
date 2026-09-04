@@ -76,6 +76,15 @@ public sealed class DbAccountStore(BanterDatabase database) : IAccountStore, IAc
             new { Username = Normalize(username), IsAdmin = isAdmin }).ConfigureAwait(false);
     }
 
+    public async Task<BanterAccount?> FindAsync(string username, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<AccountRow>(
+            "SELECT username AS Username, is_agent AS IsAgent, is_admin AS IsAdmin FROM accounts WHERE username = @Username",
+            new { Username = Normalize(username) }).ConfigureAwait(false);
+        return row is null ? null : new BanterAccount(row.Username, row.IsAgent, row.IsAdmin);
+    }
+
     /// <summary>Human accounts only, ordered by name. Legacy agent password accounts (from before
     /// the identity system) are excluded on purpose — surfacing them on the users page would
     /// invite managing agents in two places.</summary>

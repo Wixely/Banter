@@ -58,6 +58,7 @@ public sealed partial class BanterChatSession : IDisposable
         _client.MessageDeleted += OnDeleted;
         _client.ServerError += OnServerError;
         _client.Disconnected += OnDisconnected;
+        _client.Evicted += OnEvicted;
         _client.Reconnecting += OnReconnecting;
         _client.Reconnected += OnReconnected;
     }
@@ -700,6 +701,12 @@ public sealed partial class BanterChatSession : IDisposable
     private void OnDisconnected() =>
         _vm.Post(() => _vm.SetStatus("Disconnected", connected: false));
 
+    // The server said goodbye on purpose and said why - the credential this client signed in with
+    // was removed, reset or re-roled. The reason is the status, because "Disconnected" would send
+    // someone checking their network instead of their standing.
+    private void OnEvicted(string reason) =>
+        _vm.Post(() => _vm.SetStatus(reason, connected: false));
+
     private void OnReconnecting(int attempt) =>
         _vm.Post(() => _vm.SetStatus($"Reconnecting ({attempt})", connected: false));
 
@@ -729,6 +736,7 @@ public sealed partial class BanterChatSession : IDisposable
         _client.MessageDeleted -= OnDeleted;
         _client.ServerError -= OnServerError;
         _client.Disconnected -= OnDisconnected;
+        _client.Evicted -= OnEvicted;
         _client.Reconnecting -= OnReconnecting;
         _client.Reconnected -= OnReconnected;
     }

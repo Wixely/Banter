@@ -62,6 +62,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 .ConfigureAwait(false);
 
         _client.MessageReceived += OnMessage;
+        _client.Evicted += OnEvicted;
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
         _client.MemberJoined += OnMemberJoined;
@@ -160,6 +161,18 @@ public abstract partial class BanterAgent : IAsyncDisposable
         Client.SendMessageAsync(room, text, cancellationToken).AsTask();
 
     /// <summary>Blocks until cancelled or <see cref="DisposeAsync"/>.</summary>
+    /// <summary>Why the server ended this agent's session, or null. Set before
+    /// <see cref="RunAsync"/> returns, so a host can tell an eviction from its own Ctrl+C.</summary>
+    public string? EvictedReason { get; private set; }
+
+    /// <summary>An eviction is a shutdown, not an outage: the identity this agent runs as was
+    /// revoked or re-keyed, and no amount of retrying changes that. Stop, and say why.</summary>
+    private void OnEvicted(string reason)
+    {
+        EvictedReason = reason;
+        _stopping.Cancel();
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopping.Token);
@@ -635,6 +648,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         if (_client is not null)
         {
             _client.MessageReceived -= OnMessage;
+            _client.Evicted -= OnEvicted;
             _client.DelegatorChanged -= OnDelegatorChanged;
             _client.RoomModeChanged -= OnRoomModeChanged;
             _client.MemberJoined -= OnMemberJoined;

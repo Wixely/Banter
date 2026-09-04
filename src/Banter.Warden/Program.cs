@@ -228,6 +228,14 @@ Console.CancelKeyPress += (_, e) =>
 };
 
 await agent.RunAsync(stopping.Token);
+if (agent.EvictedReason is { } evictedBecause)
+{
+    // Not an outage and not a crash: the server ended this identity on purpose. Exit non-zero so
+    // a supervisor restarts nothing - a restart would just be refused at the door.
+    Console.Error.WriteLine($"evicted: {evictedBecause}");
+    return 1;
+}
+
 return 0;
 
 async Task<int> RunFleetAsync(string path)

@@ -46,12 +46,16 @@ internal sealed class ClientSession(
 
     private string _challengeFor = "";
 
+    /// <summary>The send pump for this session's life, so eviction can wait for the farewell to
+    /// actually leave before it closes the socket underneath it.</summary>
+    private Task _sendPump = Task.CompletedTask;
+
     public void Send<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull =>
         _outbox.Writer.TryWrite(codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo)));
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        var sendPump = Task.Run(SendPumpAsync, CancellationToken.None);
+        var sendPump = _sendPump = Task.Run(SendPumpAsync, CancellationToken.None);
         try
         {
             await ReceiveLoopAsync(cancellationToken).ConfigureAwait(false);
@@ -323,6 +327,11 @@ internal sealed class ClientSession(
 
                 Send(new AgentEnrolmentCodePayload(reissue.Nick, code, (now + IdentityWindow).ToUnixTimeSeconds()),
                     replyTo: envelope.MsgId);
+
+                // A reissue is what a lost laptop gets. The key it holds is already dead; the
+                // session it is holding open should not outlive it.
+                await engine.EvictAsync(reissue.Nick,
+                    "This agent's key was retired by an admin. Enrol with the new code.").ConfigureAwait(false);
                 break;
             }
 
@@ -356,6 +365,7 @@ internal sealed class ClientSession(
                 }
 
                 Send(new OkPayload(), replyTo: envelope.MsgId);
+                await engine.EvictAsync(delete.Nick, "This agent was removed by an admin.").ConfigureAwait(false);
                 break;
             }
 
@@ -431,6 +441,12 @@ internal sealed class ClientSession(
             }
 
             Send(new OkPayload(), replyTo: envelope.MsgId);
+
+            // Changing a password is what someone does when they doubt the old one, so every OTHER
+            // session signed in under it ends now. This one is spared: it just proved itself.
+            await engine.EvictAsync(Nick,
+                "Your password was changed on another device. Sign in with the new one.",
+                except: this).ConfigureAwait(false);
             return true;
         }
 
@@ -477,18 +493,24 @@ internal sealed class ClientSession(
                 var password = NewTempPassword();
                 await accountAdmin.SetPasswordAsync(reset.Username, password, cancellationToken).ConfigureAwait(false);
                 Send(new UserTempPasswordPayload(reset.Username, password), replyTo: envelope.MsgId);
+
+                // A reset is reached for when the old credential is lost or in the wrong hands.
+                // A session still riding it is exactly the thing the reset exists to end.
+                await engine.EvictAsync(reset.Username,
+                    "Your password was reset by an admin. Sign in with the new one.").ConfigureAwait(false);
                 break;
             }
 
             case UserUpdatePayload update:
             {
-                if (!await accountAdmin.ExistsAsync(update.Username, cancellationToken).ConfigureAwait(false))
+                var account = await accountAdmin.FindAsync(update.Username, cancellationToken).ConfigureAwait(false);
+                if (account is null || account.IsAgent)
                 {
                     Send(new ErrorPayload("NO_SUCH_USER", $"There is no user called '{update.Username}'."), replyTo: envelope.MsgId);
                     break;
                 }
 
-                if (update.IsAdmin is { } isAdmin)
+                if (update.IsAdmin is { } isAdmin && isAdmin != account.IsAdmin)
                 {
                     // The lockout guard: the change that would leave zero admins is refused, and
                     // it is refused HERE rather than by counting after the fact, because there is
@@ -502,6 +524,14 @@ internal sealed class ClientSession(
                     }
 
                     await accountAdmin.SetAdminAsync(update.Username, isAdmin, cancellationToken).ConfigureAwait(false);
+
+                    // A session keeps the role it signed in with — IsAdmin lives on the session,
+                    // and a demoted admin who stayed signed in would keep every admin verb. The
+                    // reply goes first so a self-demotion still hears its answer.
+                    Send(new OkPayload(), replyTo: envelope.MsgId);
+                    await engine.EvictAsync(update.Username,
+                        $"Your role is now {(isAdmin ? "admin" : "member")}. Sign in again to continue.").ConfigureAwait(false);
+                    break;
                 }
 
                 Send(new OkPayload(), replyTo: envelope.MsgId);
@@ -526,6 +556,7 @@ internal sealed class ClientSession(
 
                 await accountAdmin.DeleteAsync(delete.Username, cancellationToken).ConfigureAwait(false);
                 Send(new OkPayload(), replyTo: envelope.MsgId);
+                await engine.EvictAsync(delete.Username, "Your account was removed by an admin.").ConfigureAwait(false);
                 break;
             }
 
@@ -672,6 +703,21 @@ internal sealed class ClientSession(
         {
             throw new Files.FileStoreException("NO_ACCESS", "You are not in any room this file is shared with.");
         }
+    }
+
+    /// <summary>
+    /// Ends this session from the server side: a BYE carrying the reason, the outbox drained so
+    /// the farewell genuinely leaves, then the connection closed. Everything else — leaving rooms,
+    /// finishing orphaned streams, unregistering — happens in <see cref="RunAsync"/>'s finally,
+    /// the same path an ordinary disconnect takes. Eviction is a disconnect with a reason, not a
+    /// second way for a session to die.
+    /// </summary>
+    public async Task EvictAsync(string reason)
+    {
+        Send(new ByePayload(reason));
+        _outbox.Writer.TryComplete();
+        await _sendPump.ConfigureAwait(false);
+        await connection.DisposeAsync().ConfigureAwait(false);
     }
 
     private async Task SendPumpAsync()

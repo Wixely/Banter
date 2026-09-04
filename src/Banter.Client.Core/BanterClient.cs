@@ -107,6 +107,17 @@ public sealed partial class BanterClient : IAsyncDisposable
     /// they are being rate-limited; without it the refusal would be invisible.</summary>
     public event Action<ErrorPayload>? ServerError;
     public event Action? Disconnected;
+
+    /// <summary>
+    /// The server ended this session on purpose and said why — an admin removed the account,
+    /// reset the password, changed the role, or retired the key. Fired instead of
+    /// <see cref="Disconnected"/>, and the client does not redial: the credential it would
+    /// redial with is the thing that just stopped existing.
+    /// </summary>
+    public event Action<string>? Evicted;
+
+    /// <summary>The reason from the server's farewell, or null while the session lives.</summary>
+    public string? Farewell { get; private set; }
     /// <summary>Raised before each redial attempt (1-based attempt number).</summary>
     public event Action<int>? Reconnecting;
     /// <summary>Raised after a successful redial once tracked rooms have been rejoined.</summary>
@@ -578,6 +589,14 @@ public sealed partial class BanterClient : IAsyncDisposable
             await ReceiveUntilClosedAsync(_connection!, cancellationToken).ConfigureAwait(false);
             _connection = null;
             FailPending();
+            if (Farewell is { } farewell)
+            {
+                // A deliberate goodbye, not a dropped wire. No redial: the credential this
+                // client holds is the thing the server just retired.
+                Evicted?.Invoke(farewell);
+                return;
+            }
+
             if (_disposed || cancellationToken.IsCancellationRequested)
             {
                 return;
@@ -680,6 +699,10 @@ public sealed partial class BanterClient : IAsyncDisposable
 
                 switch (payload)
                 {
+                    case ByePayload bye:
+                        Farewell = bye.Reason ?? "The server ended this session.";
+                        return;
+
                     case MsgPayload msg:
                         MessageReceived?.Invoke(msg);
                         break;

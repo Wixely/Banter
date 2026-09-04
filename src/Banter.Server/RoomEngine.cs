@@ -173,6 +173,24 @@ internal sealed class RoomEngine(
             Broadcast(target, announcement);
         });
 
+    /// <summary>
+    /// Ends every live session signed in as <paramref name="nick"/>, each told <paramref name="reason"/>
+    /// on its way out. On the command loop because that is where the nick table is honest;
+    /// fire-and-forget per session because each eviction ends with that session's own teardown
+    /// posting back onto this very loop.
+    /// </summary>
+    /// <param name="except">A session to spare — the one that asked, when the subject is themselves.</param>
+    public ValueTask EvictAsync(string nick, string reason, ClientSession? except = null) =>
+        _commands.Writer.WriteAsync(() =>
+        {
+            foreach (var session in SessionsFor(nick).Where(s => !ReferenceEquals(s, except)).ToList())
+            {
+                _ = session.EvictAsync(reason);
+            }
+
+            return ValueTask.CompletedTask;
+        });
+
     public ValueTask DisconnectAsync(ClientSession session) =>
         _commands.Writer.WriteAsync(async () =>
         {

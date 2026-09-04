@@ -170,6 +170,81 @@ public sealed class UserAccountTests(ITestOutputHelper output) : IAsyncLifetime
         await AssertsRefusedAsync("BAD_NICK", () => admin.CreateUserAsync("x"));
     }
 
+    [Fact]
+    public async Task DeletingAUserEndsTheirLiveSessionAndTellsThemWhy()
+    {
+        await using var admin = await ConnectAsync("root", "pw");
+        await using var nell = await ConnectAsync("nell", "pw");
+
+        var evicted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var redials = 0;
+        nell.Evicted += reason => evicted.TrySetResult(reason);
+        nell.Reconnecting += _ => redials++;
+
+        await admin.DeleteUserAsync("nell").WaitAsync(Patience);
+
+        // The farewell arrives with the reason, and the client does NOT redial: the credential it
+        // would redial with is the thing that just stopped existing.
+        var why = await evicted.Task.WaitAsync(Patience);
+        output.WriteLine($"evicted: {why}");
+        Assert.Contains("removed", why, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, redials);
+    }
+
+    [Fact]
+    public async Task AResetEndsTheSessionRidingTheOldPassword()
+    {
+        await using var admin = await ConnectAsync("root", "pw");
+        await using var nell = await ConnectAsync("nell", "pw");
+
+        var evicted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        nell.Evicted += reason => evicted.TrySetResult(reason);
+
+        // A reset is reached for when the old credential is lost or in the wrong hands. A session
+        // still signed in under it is exactly what the reset exists to end.
+        var reset = await admin.ResetUserPasswordAsync("nell").WaitAsync(Patience);
+        Assert.Contains("reset", await evicted.Task.WaitAsync(Patience), StringComparison.OrdinalIgnoreCase);
+
+        await using var back = await ConnectAsync("nell", reset.Password);
+        Assert.Equal("nell", back.Nick);
+    }
+
+    [Fact]
+    public async Task ARoleChangeEndsTheSessionSoThePowersOnItStayHonest()
+    {
+        await using var admin = await ConnectAsync("root", "pw");
+        await using var nell = await ConnectAsync("nell", "pw");
+
+        var evicted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        nell.Evicted += reason => evicted.TrySetResult(reason);
+
+        // IsAdmin lives on the session, granted at sign-in — a promoted or demoted user keeps the
+        // OLD role until they reconnect, which for a demotion means keeping every admin verb.
+        // Ending the session is what makes the change true immediately.
+        await admin.SetUserAdminAsync("nell", true).WaitAsync(Patience);
+        Assert.Contains("admin", await evicted.Task.WaitAsync(Patience), StringComparison.OrdinalIgnoreCase);
+
+        await using var promoted = await ConnectAsync("nell", "pw");
+        Assert.True(promoted.IsAdmin);
+    }
+
+    [Fact]
+    public async Task ChangingYourPasswordSignsOutYourOtherDevicesButNotYou()
+    {
+        await using var desk = await ConnectAsync("nell", "pw");
+        await using var laptop = await ConnectAsync("nell", "pw");
+
+        var evicted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        laptop.Evicted += reason => evicted.TrySetResult(reason);
+
+        // Changing a password is what someone does when they doubt the old one, so every other
+        // session ends — but the session that just proved the old password keeps its seat.
+        await desk.ChangeMyPasswordAsync("pw", "a-new-password").WaitAsync(Patience);
+
+        Assert.Contains("changed", await evicted.Task.WaitAsync(Patience), StringComparison.OrdinalIgnoreCase);
+        await desk.PingAsync().WaitAsync(Patience);
+    }
+
     private static async Task AssertsRefusedAsync(string code, Func<Task> act)
     {
         var refusal = await Assert.ThrowsAsync<BanterErrorException>(act);

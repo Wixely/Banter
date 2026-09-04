@@ -96,6 +96,29 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
     }
 
     [Fact]
+    public async Task AReissueEndsTheSessionTheOldMachineIsHoldingOpen()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var agent = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", privateKey)
+            .WaitAsync(Patience);
+
+        var evicted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        agent.Evicted += reason => evicted.TrySetResult(reason);
+
+        // A reissue is what a lost laptop gets. Revoking the key already stops the NEXT login;
+        // this is the session the laptop is holding open right now, told why on its way out.
+        await admin.ReissueAgentAsync("scribe").WaitAsync(Patience);
+
+        var why = await evicted.Task.WaitAsync(Patience);
+        output.WriteLine($"evicted: {why}");
+        Assert.Contains("retired", why, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ACodeWorksOnceAndOnlyOnce()
     {
         await using var admin = await AdminAsync();
