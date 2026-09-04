@@ -161,7 +161,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
 | ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
 | **Phase 6 — hardening** |
-| Ops/admin tooling, account management | – | ⬜ | ⬜ | ⬜ | – | – | – |
+| Account management: users page, temp passwords, `/passwd` | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | – |
 | Voice notes as attachments | – | ⬜ | – | ⬜ | ⬜ | ⬜ | – |
 
 **Reading the gaps.** Almost every ⬜ in the client columns is the same two missing things: the

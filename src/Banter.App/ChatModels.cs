@@ -169,6 +169,21 @@ public sealed partial class AdminAgentRow
     public string RowClass { get; set; } = "admin-agent";
 }
 
+/// <summary>One user account on the users page.</summary>
+[CupriBindable]
+public sealed partial class AdminUserRow
+{
+    public string Username { get; set; } = "";
+    public string Initials { get; set; } = "";
+
+    /// <summary>"admin" or "member" — the one attribute a user has.</summary>
+    public string Detail { get; set; } = "";
+
+    public bool IsAdmin { get; set; }
+
+    public string RowClass { get; set; } = "admin-agent";
+}
+
 /// <summary>One agent offered while an "@" is being typed.</summary>
 [CupriBindable]
 public sealed partial class MentionRow
@@ -292,6 +307,18 @@ public sealed partial class ChatModel
     public string NewAgentSkills { get; set; } = "";
     public string NewAgentLocality { get; set; } = "local";
     public string NewAgentClearance { get; set; } = "sensitive";
+
+    // The users tab. It shares the panel, the status line and the one-secret banner with the
+    // agents tab; only the list and the form are its own.
+    public string AdminTabAgentsClass { get; set; } = "admin-tab selected";
+    public string AdminTabUsersClass { get; set; } = "admin-tab";
+    public string AdminAgentsViewClass { get; set; } = "adminpanel-body";
+    public string AdminUsersViewClass { get; set; } = "adminpanel-body hidden";
+    public List<AdminUserRow> AdminUsers { get; set; } = [];
+    public string AdminUserSelected { get; set; } = "";
+    public string AdminUserToggleLabel { get; set; } = "Make admin";
+    public string NewUserName { get; set; } = "";
+    public string NewUserRole { get; set; } = "member";
     public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
 

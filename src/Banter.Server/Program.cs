@@ -97,7 +97,10 @@ await using var server = new BanterServer(
     // machine that will run it redeems that code for a key it generates itself, and removal takes
     // effect on the next thing the agent tries. The server is the authority, so none of this needs
     // a credential in the wild that has to be waited out.
-    identities: new AgentIdentityStore(database));
+    identities: new AgentIdentityStore(database),
+    // The users page's authority: humans created and reset by an admin at run time, so the seeds
+    // above are the last accounts that ever come from anywhere but here.
+    accountAdmin: accounts);
 await server.StartAsync(endpoint);
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");

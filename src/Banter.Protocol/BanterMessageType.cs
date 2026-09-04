@@ -134,6 +134,36 @@ public enum BanterMessageType : ushort
     /// <summary>Server → agent: the identity it just enrolled as.</summary>
     AgentIdentityInfo = 101,
 
+    // User accounts (102–109). The humans' half of the admin story, shaped like the agents'
+    // half above: create/update/delete/list are admin-only, the one secret involved is issued
+    // by the server and shown once, and a reset retires the old credential by definition.
+    // The difference is what the credential is — humans keep passwords, because a human signs
+    // in from wherever they are and a key file on one machine is exactly wrong for that.
+
+    /// <summary>Admin → server: create a user account.</summary>
+    UserCreate = 102,
+
+    /// <summary>Admin → server: change an account (today: grant or revoke admin).</summary>
+    UserUpdate = 103,
+
+    /// <summary>Admin → server: remove an account. Signing in again stops working at once.</summary>
+    UserDelete = 104,
+
+    /// <summary>Admin → server: list the user accounts.</summary>
+    UserList = 105,
+
+    /// <summary>Server → admin: the user accounts.</summary>
+    Users = 106,
+
+    /// <summary>Admin → server: issue a fresh temporary password; the old one stops working.</summary>
+    UserPasswordReset = 107,
+
+    /// <summary>Server → admin only: the temporary password, in reply to a create or reset.</summary>
+    UserTempPassword = 108,
+
+    /// <summary>Any signed-in human → server: change their own password (old proves it is them).</summary>
+    PasswordChange = 109,
+
 
     // Generic (250–255)
     Error = 250,

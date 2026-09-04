@@ -181,7 +181,8 @@ await using var server = new BanterServer(
     tasks: new TaskStore(database),
     // The same identity model as the TCP server: this is the mesh's front door, not a different
     // idea of who an agent is.
-    identities: new AgentIdentityStore(database));
+    identities: new AgentIdentityStore(database),
+    accountAdmin: accounts);
 
 await server.StartAsync(listener.LocalEndpoint);
 

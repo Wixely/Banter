@@ -251,13 +251,85 @@ async Task<bool> HandleAsync(string line)
             return true;
         }
 
+        // User accounts: the humans' mirror of /agent. Admin-only on the server except /passwd,
+        // which is anyone changing their own.
+        case "/user" when argument is not null:
+        {
+            var words = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            switch (words)
+            {
+                case ["list"]:
+                {
+                    var users = await client.ListUsersAsync();
+                    foreach (var u in users)
+                    {
+                        Print($"  {u.Username,-20} {(u.IsAdmin ? "admin" : "member")}");
+                    }
+
+                    break;
+                }
+
+                case ["add", var name, .. var rest]:
+                {
+                    var asAdmin = rest is ["admin"];
+                    var created = await client.CreateUserAsync(name!, asAdmin);
+                    Print($"* created '{created.Username}'{(asAdmin ? " as an admin" : "")}. Hand them this, once:");
+                    Print("");
+                    Print($"    {created.Password}");
+                    Print("");
+                    Print("  They should change it with /passwd the first time they sign in.");
+                    break;
+                }
+
+                case ["reset", var name]:
+                {
+                    var reset = await client.ResetUserPasswordAsync(name!);
+                    Print($"* '{reset.Username}' has a new temporary password; the old one is dead:");
+                    Print("");
+                    Print($"    {reset.Password}");
+                    Print("");
+                    break;
+                }
+
+                case ["admin", var name]:
+                    await client.SetUserAdminAsync(name!, true);
+                    Print($"* '{name}' is now an admin");
+                    break;
+
+                case ["member", var name]:
+                    await client.SetUserAdminAsync(name!, false);
+                    Print($"* '{name}' is now an ordinary member");
+                    break;
+
+                case ["remove", var name]:
+                    await client.DeleteUserAsync(name!);
+                    Print($"* removed '{name}'. Their password stops working immediately.");
+                    break;
+
+                default:
+                    Print("! /user list | add <name> [admin] | reset <name> | admin <name> | member <name> | remove <name>");
+                    break;
+            }
+
+            return true;
+        }
+
+        case "/passwd" when argument?.Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var oldPass, var newPass]:
+            await client.ChangeMyPasswordAsync(oldPass, newPass);
+            Print("* password changed");
+            return true;
+
+        case "/passwd":
+            Print("! /passwd <current> <new>");
+            return true;
+
         case "/ping":
             Print($"* pong in {(await client.PingAsync()).TotalMilliseconds:F0} ms");
             return true;
         case "/quit":
             return false;
         case "/help":
-            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /files [#room] | /upload <path> | /download <id> [path] | /agent ... | /ping | /quit -- anything else is said in the current room");
+            Print("commands: /join #room | /part [#room] | /topic <text> | /msg <nick> <text> | /rooms | /members [#room] | /files [#room] | /upload <path> | /download <id> [path] | /agent ... | /user ... | /passwd <current> <new> | /ping | /quit -- anything else is said in the current room");
             return true;
         default:
             Print("! unknown or incomplete command -- /help");

@@ -19,11 +19,28 @@ public sealed partial class ChatViewModel
     public void ShowAdminPanel(bool show)
     {
         Model.AdminClass = show ? "adminpanel" : "adminpanel hidden";
-        if (!show)
+        if (show)
+        {
+            // Always opens on agents — the tab you were on last time is not a preference worth
+            // keeping, and a stale one would show a list that has not been loaded yet.
+            ShowAdminTab(users: false);
+        }
+        else
         {
             // A code left on screen after the page closes is a secret nobody is watching.
             ClearAdminCode();
         }
+    }
+
+    /// <summary>Switches between the agents tab and the users tab. Either way the one-secret
+    /// banner is cleared: a code shown for one tab is noise — or worse — on the other.</summary>
+    public void ShowAdminTab(bool users)
+    {
+        Model.AdminTabAgentsClass = users ? "admin-tab" : "admin-tab selected";
+        Model.AdminTabUsersClass = users ? "admin-tab selected" : "admin-tab";
+        Model.AdminAgentsViewClass = users ? "adminpanel-body hidden" : "adminpanel-body";
+        Model.AdminUsersViewClass = users ? "adminpanel-body" : "adminpanel-body hidden";
+        ClearAdminCode();
     }
 
     public bool AdminPanelOpen => !Model.AdminClass.Contains("hidden", StringComparison.Ordinal);
@@ -149,4 +166,82 @@ public sealed partial class ChatViewModel
 
     private static string[] Split(string value) =>
         [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    // ---- The users tab ----
+
+    /// <summary>The accounts, as the server lists them.</summary>
+    public void SetUsers(IEnumerable<UserAccountPayload> users)
+    {
+        Model.AdminUsers = [.. users.Select(u => new AdminUserRow
+        {
+            Username = u.Username,
+            Initials = InitialsOf(u.Username),
+            Detail = u.IsAdmin ? "admin" : "member",
+            IsAdmin = u.IsAdmin,
+            RowClass = string.Equals(u.Username, Model.AdminUserSelected, StringComparison.OrdinalIgnoreCase)
+                ? "admin-agent selected"
+                : "admin-agent",
+        })];
+
+        Model.AdminStatus = $"{Model.AdminUsers.Count} user{(Model.AdminUsers.Count == 1 ? "" : "s")}";
+        RefreshUserToggleLabel();
+    }
+
+    /// <summary>Selects a user, so the edit controls act on them.</summary>
+    public void SelectAdminUser(string username)
+    {
+        Model.AdminUserSelected = username;
+        foreach (var row in Model.AdminUsers)
+        {
+            row.RowClass = string.Equals(row.Username, username, StringComparison.OrdinalIgnoreCase)
+                ? "admin-agent selected"
+                : "admin-agent";
+        }
+
+        RefreshUserToggleLabel();
+    }
+
+    /// <summary>The selected user's row, or null — selection can outlive a refresh that removed them.</summary>
+    public AdminUserRow? SelectedUser =>
+        Model.AdminUsers.FirstOrDefault(r =>
+            string.Equals(r.Username, Model.AdminUserSelected, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The one toggle button reads as the action it would take, not the state it sees.</summary>
+    private void RefreshUserToggleLabel() =>
+        Model.AdminUserToggleLabel = SelectedUser is { IsAdmin: true } ? "Make member" : "Make admin";
+
+    /// <summary>
+    /// Shows a freshly minted temporary password, in the same banner the enrolment code uses:
+    /// displayed once, never stored, gone when the page closes or the tab changes.
+    /// </summary>
+    public void ShowTempPassword(string username, string password)
+    {
+        Model.AdminCode = password;
+        Model.AdminCodeClass = "admin-code";
+        Model.AdminCodeFor = $"Hand this to {username}, once. They should change it when they first sign in.";
+    }
+
+    /// <summary>Cycles member → admin. Two values, so a toggle beats a dropdown.</summary>
+    public void CycleNewUserRole() =>
+        Model.NewUserRole = Model.NewUserRole == "member" ? "admin" : "member";
+
+    /// <summary>The add form's contents, or null when there is no name to send.</summary>
+    public (string Username, bool IsAdmin)? ReadNewUser()
+    {
+        var username = Model.NewUserName.Trim();
+        if (username.Length == 0)
+        {
+            Model.AdminStatus = "Give the user a name first.";
+            return null;
+        }
+
+        return (username, Model.NewUserRole == "admin");
+    }
+
+    /// <summary>Empties the add form, after it has been used.</summary>
+    public void ClearNewUser()
+    {
+        Model.NewUserName = "";
+        Model.NewUserRole = "member";
+    }
 }

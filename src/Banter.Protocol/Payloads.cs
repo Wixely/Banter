@@ -626,6 +626,69 @@ public sealed record AgentEnrolPayload(
     [property: Key(0)] string Code,
     [property: Key(1)] byte[] PublicKey);
 
+/// <summary>
+/// One user account, as the users page sees it. No credential material of any kind: the server
+/// stores only a hash, and even the admin never learns a password that is in use.
+/// </summary>
+[MessagePackObject]
+public sealed record UserAccountPayload(
+    [property: Key(0)] string Username,
+    [property: Key(1)] bool IsAdmin);
+
+/// <summary>Admin → server: create a user. The server invents the temporary password.</summary>
+[MessagePackObject]
+public sealed record UserCreatePayload(
+    [property: Key(0)] string Username,
+    [property: Key(1)] bool IsAdmin);
+
+/// <summary>
+/// Server → admin: the temporary password, in reply to a create or a reset.
+///
+/// <para>The only message that ever carries a user's password, and it is only ever sent to the
+/// admin who asked, for a credential the server just invented. It is meant to be spoken or pasted
+/// to the person once and then changed by them; a lost one is reset, not looked up.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record UserTempPasswordPayload(
+    [property: Key(0)] string Username,
+    [property: Key(1)] string Password);
+
+/// <summary>Admin → server: change an account. Null fields are left as they are.</summary>
+[MessagePackObject]
+public sealed record UserUpdatePayload(
+    [property: Key(0)] string Username,
+    [property: Key(1)] bool? IsAdmin = null);
+
+/// <summary>
+/// Admin → server: remove an account. The credential dies immediately; a session already signed
+/// in lives until it disconnects, the same bargain the agents page strikes on delete.
+/// </summary>
+[MessagePackObject]
+public sealed record UserDeletePayload([property: Key(0)] string Username);
+
+/// <summary>Admin → server: list the user accounts.</summary>
+[MessagePackObject]
+public sealed record UserListPayload;
+
+/// <summary>Server → admin: the user accounts.</summary>
+[MessagePackObject]
+public sealed record UsersPayload(
+    [property: Key(0)] IReadOnlyList<UserAccountPayload> Users);
+
+/// <summary>Admin → server: a fresh temporary password. The old password stops working.</summary>
+[MessagePackObject]
+public sealed record UserPasswordResetPayload([property: Key(0)] string Username);
+
+/// <summary>
+/// Signed-in human → server: change their own password. The old one is required even though the
+/// session is already authenticated — an unattended signed-in machine must not be enough to
+/// lock the real owner out.
+/// </summary>
+[MessagePackObject]
+public sealed record PasswordChangePayload(
+    [property: Key(0)] string OldPassword,
+    [property: Key(1)] string NewPassword);
+
 /// <summary>Agent → server: I am this nick and I hold its key — send me something to sign.</summary>
 [MessagePackObject]
 public sealed record AuthChallengePayload([property: Key(0)] string Username);

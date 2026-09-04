@@ -65,6 +65,89 @@ public sealed partial class BanterChatSession
         }
     }
 
+    // ---- The users tab ----
+
+    public async Task LoadUsersAsync()
+    {
+        try
+        {
+            var users = await _client.ListUsersAsync().ConfigureAwait(false);
+            _vm.Post(() => _vm.SetUsers(users));
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
+    public async Task CreateUserAccountAsync(string username, bool isAdmin)
+    {
+        try
+        {
+            var created = await _client.CreateUserAsync(username, isAdmin).ConfigureAwait(false);
+
+            // The password is shown before the list is refreshed, for the same reason the
+            // enrolment code is: the refresh is housekeeping, and this is the only moment the
+            // password exists anywhere an operator can read it.
+            _vm.Post(() =>
+            {
+                _vm.ShowTempPassword(created.Username, created.Password);
+                _vm.ClearNewUser();
+            });
+
+            await LoadUsersAsync().ConfigureAwait(false);
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
+    public async Task ResetUserPasswordAsync(string username)
+    {
+        try
+        {
+            var reset = await _client.ResetUserPasswordAsync(username).ConfigureAwait(false);
+            _vm.Post(() => _vm.ShowTempPassword(reset.Username, reset.Password));
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
+    public async Task SetUserAdminAsync(string username, bool isAdmin)
+    {
+        try
+        {
+            await _client.SetUserAdminAsync(username, isAdmin).ConfigureAwait(false);
+            await LoadUsersAsync().ConfigureAwait(false);
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
+    public async Task RemoveUserAccountAsync(string username)
+    {
+        try
+        {
+            await _client.DeleteUserAsync(username).ConfigureAwait(false);
+            _vm.Post(() =>
+            {
+                _vm.SelectAdminUser("");
+                _vm.ClearAdminCode();
+            });
+
+            await LoadUsersAsync().ConfigureAwait(false);
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
     public async Task RemoveAgentIdentityAsync(string nick)
     {
         try

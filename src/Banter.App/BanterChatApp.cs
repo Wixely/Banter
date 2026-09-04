@@ -70,6 +70,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Removes an identity. Its key stops working at once.</summary>
     public Func<string, Task> AgentRemoveAsync { get; init; } = _ => Task.CompletedTask;
 
+    public Func<Task> UsersListAsync { get; init; } = () => Task.CompletedTask;
+
+    /// <summary>(username, isAdmin) — the reply's temporary password is the host's to show.</summary>
+    public Func<string, bool, Task> UserCreateAsync { get; init; } = (_, _) => Task.CompletedTask;
+
+    public Func<string, Task> UserResetAsync { get; init; } = _ => Task.CompletedTask;
+
+    public Func<string, bool, Task> UserSetAdminAsync { get; init; } = (_, _) => Task.CompletedTask;
+
+    public Func<string, Task> UserRemoveAsync { get; init; } = _ => Task.CompletedTask;
+
     /// <summary>
     /// The system clipboard. Defaults to a no-op so the app runs headlessly; the desktop head
     /// supplies a real one.
@@ -269,7 +280,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           <div class="{{AdminClass}}">
             <div class="adminpanel-inner">
               <div class="toolpanel-head">
-                <span class="toolpanel-title">Agents</span>
+                <span class="{{AdminTabAgentsClass}}" data-admin-tab="agents">Agents</span>
+                <span class="{{AdminTabUsersClass}}" data-admin-tab="users">Users</span>
                 <span class="toolpanel-status">{{AdminStatus}}</span>
                 <cupri-button class="admin-close">Close</cupri-button>
               </div>
@@ -280,7 +292,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <cupri-button class="admin-copy">Copy</cupri-button>
                 </div>
               </div>
-              <div class="adminpanel-body">
+              <div class="{{AdminAgentsViewClass}}">
                 <div class="admin-list">
                   <div class="{{RowClass}}" data-repeat="AdminAgents" data-admin-agent="{{Nick}}">
                     <div class="admin-agent-row">
@@ -312,6 +324,35 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <cupri-button class="admin-reissue">New code for a new machine</cupri-button>
                   <cupri-button class="admin-remove">Remove this agent</cupri-button>
                   <div class="admin-hint">Removing takes effect at once — its key stops working on the next thing it tries.</div>
+                </div>
+              </div>
+              <div class="{{AdminUsersViewClass}}">
+                <div class="admin-list">
+                  <div class="{{RowClass}}" data-repeat="AdminUsers" data-admin-user="{{Username}}">
+                    <div class="admin-agent-row">
+                      <span class="admin-pfp">{{Initials}}</span>
+                      <span class="admin-agent-main">
+                        <span class="admin-nick">{{Username}}</span>
+                        <span class="admin-detail">{{Detail}}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="admin-side">
+                  <div class="admin-section">Add a user</div>
+                  <div class="connect-label">Name</div>
+                  <cupri-textfield class="admin-field" value="{{NewUserName}}" placeholder="carol"></cupri-textfield>
+                  <div class="admin-toggles">
+                    <cupri-button class="admin-user-role">{{NewUserRole}}</cupri-button>
+                  </div>
+                  <div class="admin-hint">An admin manages users and agents here, and is added to every room an agent opens.</div>
+                  <cupri-button class="admin-user-add">Create and get a password</cupri-button>
+
+                  <div class="admin-section">Selected: {{AdminUserSelected}}</div>
+                  <cupri-button class="admin-user-reset">New temporary password</cupri-button>
+                  <cupri-button class="admin-user-toggle">{{AdminUserToggleLabel}}</cupri-button>
+                  <cupri-button class="admin-user-remove">Remove this user</cupri-button>
+                  <div class="admin-hint">Their password stops working at once. You cannot remove yourself.</div>
                 </div>
               </div>
             </div>
@@ -637,6 +678,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .adminpanel-inner { display: flex; flex-direction: column; flex: 1; margin: 36px 56px;
                             background: #151920; border-radius: 14px; padding: 16px; }
         .adminpanel-body { display: flex; flex-direction: row; flex: 1; }
+        .adminpanel-body.hidden { display: none; }
+
+        .admin-tab { font-size: 15px; font-weight: bold; color: #5b6472; margin-right: 14px;
+                     cursor: pointer; }
+        .admin-tab:hover { color: #cfd6e2; }
+        .admin-tab.selected { color: #ffffff; }
 
         .admin-list { flex: 1; min-width: 0; padding-right: 14px; overflow: scroll; }
         .admin-agent { padding: 8px; border-radius: 9px; margin-bottom: 6px; background: #111419;
@@ -662,18 +709,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .admin-field { background: #0d1014; color: #f3f5f7; border: 1px solid #252b35;
                        border-radius: 10px; padding: 7px 10px; }
         .admin-toggles { display: flex; flex-direction: row; margin-top: 10px; }
-        .admin-locality, .admin-clearance { flex: 1; min-width: 0; padding: 6px 10px; font-size: 12px;
+        .admin-locality, .admin-clearance, .admin-user-role { flex: 1; min-width: 0; padding: 6px 10px; font-size: 12px;
                                             background: #1b2029; color: #f3f5f7;
                                             border: 1px solid #333a46; border-radius: 10px;
                                             text-align: center; margin-right: 8px; }
         .admin-hint { font-size: 10px; color: #5f6877; margin: 8px 0; }
-        .admin-add { margin-top: 4px; padding: 7px 14px; font-size: 13px; background: #ef4444;
+        .admin-add, .admin-user-add { margin-top: 4px; padding: 7px 14px; font-size: 13px; background: #ef4444;
                      color: #ffffff; border: 1px solid #ef4444; border-radius: 10px;
                      font-weight: bold; text-align: center; }
-        .admin-reissue { margin-top: 4px; padding: 6px 14px; font-size: 12px; background: #1b2029;
+        .admin-reissue, .admin-user-reset, .admin-user-toggle { margin-top: 4px; padding: 6px 14px; font-size: 12px; background: #1b2029;
                          color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
                          text-align: center; }
-        .admin-remove { margin-top: 6px; padding: 6px 14px; font-size: 12px; background: #2a1618;
+        .admin-remove, .admin-user-remove { margin-top: 6px; padding: 6px 14px; font-size: 12px; background: #2a1618;
                         color: #fca5a5; border: 1px solid #4c1d1d; border-radius: 10px;
                         text-align: center; }
         .admin-close { min-width: 72px; padding: 6px 14px; font-size: 13px; background: #1b2029;
@@ -868,6 +915,72 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             if (ViewModel.Model.AdminSelected.Length > 0)
             {
                 _ = AgentRemoveAsync(ViewModel.Model.AdminSelected);
+            }
+        });
+
+        // ---- The users tab ----
+
+        doc.OnAction("data-admin-tab", e =>
+        {
+            var users = e.Value == "users";
+            ViewModel.ShowAdminTab(users);
+            _ = users ? UsersListAsync() : AgentsListAsync();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-admin-user", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.SelectAdminUser(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnClick(".admin-user-role", _unused =>
+        {
+            ViewModel.CycleNewUserRole();
+            doc.Refresh();
+        });
+
+        doc.OnClick(".admin-user-add", _unused =>
+        {
+            if (ViewModel.ReadNewUser() is not { } form)
+            {
+                doc.Refresh();
+                return;
+            }
+
+            _ = UserCreateAsync(form.Username, form.IsAdmin);
+        });
+
+        doc.OnClick(".admin-user-reset", _unused =>
+        {
+            if (ViewModel.Model.AdminUserSelected.Length > 0)
+            {
+                _ = UserResetAsync(ViewModel.Model.AdminUserSelected);
+            }
+        });
+
+        // The toggle asks for the OPPOSITE of what the row currently is: its label already reads
+        // as the action, so this is the click doing what the button said it would.
+        doc.OnClick(".admin-user-toggle", _unused =>
+        {
+            if (ViewModel.SelectedUser is { } row)
+            {
+                _ = UserSetAdminAsync(row.Username, !row.IsAdmin);
+            }
+        });
+
+        doc.OnClick(".admin-user-remove", _unused =>
+        {
+            if (ViewModel.Model.AdminUserSelected.Length > 0)
+            {
+                _ = UserRemoveAsync(ViewModel.Model.AdminUserSelected);
             }
         });
 

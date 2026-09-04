@@ -16,7 +16,8 @@ internal sealed class ClientSession(
     IAccountStore accounts,
     RoomEngine engine,
     Files.FileStore files,
-    IAgentIdentityStore? identities = null)
+    IAgentIdentityStore? identities = null,
+    IAccountAdminStore? accountAdmin = null)
 {
     private readonly Channel<byte[]> _outbox = Channel.CreateUnbounded<byte[]>(
         new UnboundedChannelOptions { SingleReader = true });
@@ -149,6 +150,11 @@ internal sealed class ClientSession(
                     }
 
                     if (await TryHandleIdentityAsync(envelope, payload, cancellationToken).ConfigureAwait(false))
+                    {
+                        break;
+                    }
+
+                    if (await TryHandleUsersAsync(envelope, payload, cancellationToken).ConfigureAwait(false))
                     {
                         break;
                     }
@@ -382,6 +388,166 @@ internal sealed class ClientSession(
 
     private static DataSensitivity ParseClearance(string value) =>
         Enum.TryParse<DataSensitivity>(value, ignoreCase: true, out var parsed) ? parsed : DataSensitivity.Sensitive;
+
+    /// <summary>
+    /// The users page's verbs, shaped like <see cref="TryHandleIdentityAsync"/> above: admin-gated
+    /// as a block, and refused whole when the server was wired without the store. The one
+    /// exception is <see cref="PasswordChangePayload"/>, which is any signed-in human acting on
+    /// their own account and is handled before the admin gate.
+    /// </summary>
+    private async Task<bool> TryHandleUsersAsync(BanterEnvelope envelope, object payload, CancellationToken cancellationToken)
+    {
+        if (payload is not (UserCreatePayload or UserUpdatePayload or UserDeletePayload
+            or UserListPayload or UserPasswordResetPayload or PasswordChangePayload))
+        {
+            return false;
+        }
+
+        if (accountAdmin is null)
+        {
+            Send(new ErrorPayload("NO_ACCOUNT_STORE", "This server does not manage accounts."), replyTo: envelope.MsgId);
+            return true;
+        }
+
+        if (payload is PasswordChangePayload change)
+        {
+            if (IsAgent)
+            {
+                // An agent has no password to change; whatever sent this is confused.
+                Send(new ErrorPayload("NOT_A_USER", "Agents authenticate with keys, not passwords."), replyTo: envelope.MsgId);
+                return true;
+            }
+
+            if (change.NewPassword.Length < 8)
+            {
+                Send(new ErrorPayload("WEAK_PASSWORD", "Use at least 8 characters."), replyTo: envelope.MsgId);
+                return true;
+            }
+
+            if (!await accountAdmin.ChangePasswordAsync(Nick, change.OldPassword, change.NewPassword, cancellationToken).ConfigureAwait(false))
+            {
+                Send(new ErrorPayload("WRONG_PASSWORD", "The current password is not right."), replyTo: envelope.MsgId);
+                return true;
+            }
+
+            Send(new OkPayload(), replyTo: envelope.MsgId);
+            return true;
+        }
+
+        if (!IsAdmin)
+        {
+            Send(new ErrorPayload("NOT_ADMIN", "Only an admin may manage user accounts."), replyTo: envelope.MsgId);
+            return true;
+        }
+
+        switch (payload)
+        {
+            case UserCreatePayload create:
+            {
+                var nick = create.Username.Trim();
+                if (nick.Length is < 2 or > 32 || nick.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '#' or '@'))
+                {
+                    Send(new ErrorPayload("BAD_NICK", "2-32 characters, no spaces, no '#' or '@'."), replyTo: envelope.MsgId);
+                    break;
+                }
+
+                // Taken means taken by anyone - an account OR an agent identity. Two things
+                // answering to one nick in a room is the confusion both pages exist to prevent.
+                if (await accountAdmin.ExistsAsync(nick, cancellationToken).ConfigureAwait(false)
+                    || (identities is not null && await identities.FindAsync(nick, cancellationToken).ConfigureAwait(false) is not null))
+                {
+                    Send(new ErrorPayload("NICK_TAKEN", $"'{nick}' is already an account or an agent."), replyTo: envelope.MsgId);
+                    break;
+                }
+
+                var password = NewTempPassword();
+                await accountAdmin.CreateUserAsync(nick, password, isAgent: false, create.IsAdmin, cancellationToken).ConfigureAwait(false);
+                Send(new UserTempPasswordPayload(nick, password), replyTo: envelope.MsgId);
+                break;
+            }
+
+            case UserPasswordResetPayload reset:
+            {
+                if (!await accountAdmin.ExistsAsync(reset.Username, cancellationToken).ConfigureAwait(false))
+                {
+                    Send(new ErrorPayload("NO_SUCH_USER", $"There is no user called '{reset.Username}'."), replyTo: envelope.MsgId);
+                    break;
+                }
+
+                var password = NewTempPassword();
+                await accountAdmin.SetPasswordAsync(reset.Username, password, cancellationToken).ConfigureAwait(false);
+                Send(new UserTempPasswordPayload(reset.Username, password), replyTo: envelope.MsgId);
+                break;
+            }
+
+            case UserUpdatePayload update:
+            {
+                if (!await accountAdmin.ExistsAsync(update.Username, cancellationToken).ConfigureAwait(false))
+                {
+                    Send(new ErrorPayload("NO_SUCH_USER", $"There is no user called '{update.Username}'."), replyTo: envelope.MsgId);
+                    break;
+                }
+
+                if (update.IsAdmin is { } isAdmin)
+                {
+                    // The lockout guard: the change that would leave zero admins is refused, and
+                    // it is refused HERE rather than by counting after the fact, because there is
+                    // no admin left to fix it after the fact.
+                    if (!isAdmin
+                        && string.Equals(update.Username, Nick, StringComparison.OrdinalIgnoreCase)
+                        && await accountAdmin.CountAdminsAsync(cancellationToken).ConfigureAwait(false) <= 1)
+                    {
+                        Send(new ErrorPayload("LAST_ADMIN", "You are the only admin. Make someone else one first."), replyTo: envelope.MsgId);
+                        break;
+                    }
+
+                    await accountAdmin.SetAdminAsync(update.Username, isAdmin, cancellationToken).ConfigureAwait(false);
+                }
+
+                Send(new OkPayload(), replyTo: envelope.MsgId);
+                break;
+            }
+
+            case UserDeletePayload delete:
+            {
+                if (string.Equals(delete.Username, Nick, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Deleting yourself is the lockout guard's blind spot (the count says another
+                    // admin remains right up until it does not) and never what an operator means.
+                    Send(new ErrorPayload("NOT_YOURSELF", "Sign in as another admin to remove this account."), replyTo: envelope.MsgId);
+                    break;
+                }
+
+                if (!await accountAdmin.ExistsAsync(delete.Username, cancellationToken).ConfigureAwait(false))
+                {
+                    Send(new ErrorPayload("NO_SUCH_USER", $"There is no user called '{delete.Username}'."), replyTo: envelope.MsgId);
+                    break;
+                }
+
+                await accountAdmin.DeleteAsync(delete.Username, cancellationToken).ConfigureAwait(false);
+                Send(new OkPayload(), replyTo: envelope.MsgId);
+                break;
+            }
+
+            case UserListPayload:
+            {
+                var users = await accountAdmin.ListUsersAsync(cancellationToken).ConfigureAwait(false);
+                Send(new UsersPayload([.. users.Select(u => new UserAccountPayload(u.Username, u.IsAdmin))]), replyTo: envelope.MsgId);
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Temporary passwords the server invents: strong enough that guessing one is not a plan
+    /// (96 bits), short enough to read out over a shoulder, and prefixed so that anyone who sees
+    /// one later in a paste knows exactly what it was and that it should be gone by now.
+    /// </summary>
+    private static string NewTempPassword() =>
+        "banter-temp-" + System.Buffers.Text.Base64Url.EncodeToString(
+            System.Security.Cryptography.RandomNumberGenerator.GetBytes(12));
 
     private async Task HandleAuthAsync(BanterEnvelope envelope, AuthPayload auth, CancellationToken cancellationToken)
     {
