@@ -60,9 +60,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public Func<Task> AgentsListAsync { get; init; } = () => Task.CompletedTask;
 
-    /// <summary>Creates an identity. The head reports the enrolment code back through the model.</summary>
-    public Func<string, IReadOnlyList<string>, IReadOnlyList<string>, AgentLocality, DataSensitivity, Task>
-        AgentCreateAsync { get; init; } = (_, _, _, _, _) => Task.CompletedTask;
+    /// <summary>Creating an agent; the reply's one-time code is the host's to show.</summary>
+    public Func<AgentForm, Task> AgentCreateAsync { get; init; } = _ => Task.CompletedTask;
+
+    /// <summary>Saving an existing agent. Same form as the create, because a create is a save of
+    /// something that did not exist yet.</summary>
+    public Func<AgentForm, Task> AgentSaveAsync { get; init; } = _ => Task.CompletedTask;
 
     /// <summary>A fresh code for a new machine, retiring the key the old one holds.</summary>
     public Func<string, Task> AgentReissueAsync { get; init; } = _ => Task.CompletedTask;
@@ -70,8 +73,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Removes an identity. Its key stops working at once.</summary>
     public Func<string, Task> AgentRemoveAsync { get; init; } = _ => Task.CompletedTask;
 
-    /// <summary>(nick, costTier, wantsDelegator) — null values clear that override.</summary>
-    public Func<string, int?, bool?, Task> AgentOverridesAsync { get; init; } = (_, _, _) => Task.CompletedTask;
 
     public Func<Task> UsersListAsync { get; init; } = () => Task.CompletedTask;
 
@@ -159,7 +160,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public override double RefreshIntervalSeconds => 0.05;
 
-    public override string Html => """
+    public override string Html => $$$"""
         <div class="app">
           <div class="rail">
             <div class="logo">
@@ -317,106 +318,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               </div>
             </div>
           </div>
-          <div class="{{AgentsPanelClass}}">
-            <div class="adminpanel-inner">
-              <div class="toolpanel-head">
-                <span class="toolpanel-title">Agents</span>
-                <span class="toolpanel-status">{{AdminStatus}}</span>
-                <cupri-button class="admin-close">Close</cupri-button>
-              </div>
-              <div class="{{AdminCodeClass}}">
-                <div class="admin-code-note">{{AdminCodeFor}}</div>
-                <div class="admin-code-row">
-                  <span class="admin-code-value">{{AdminCode}}</span>
-                  <cupri-button class="admin-copy">Copy</cupri-button>
-                </div>
-              </div>
-              <div class="adminpanel-body">
-                <div class="admin-list">
-                  <div class="{{RowClass}}" data-repeat="AdminAgents" data-admin-agent="{{Nick}}">
-                    <div class="admin-agent-row">
-                      <span class="admin-pfp">{{Initials}}</span>
-                      <span class="admin-agent-main">
-                        <span class="admin-nick">{{Nick}}</span>
-                        <span class="admin-detail">{{Detail}}</span>
-                        <span class="{{StateClass}}">{{State}}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div class="admin-side">
-                  <div class="admin-section">Add an agent</div>
-                  <div class="connect-label">Name</div>
-                  <cupri-textfield class="admin-field" value="{{NewAgentNick}}" placeholder="scribe"></cupri-textfield>
-                  <div class="connect-label">Rooms</div>
-                  <cupri-textfield class="admin-field" value="{{NewAgentRooms}}" placeholder="#main, #notes"></cupri-textfield>
-                  <div class="connect-label">Skills</div>
-                  <cupri-textfield class="admin-field" value="{{NewAgentSkills}}" placeholder="notes, minutes"></cupri-textfield>
-                  <div class="admin-toggles">
-                    <cupri-button class="admin-locality">{{NewAgentLocality}}</cupri-button>
-                    <cupri-button class="admin-clearance">{{NewAgentClearance}}</cupri-button>
-                  </div>
-                  <div class="admin-hint">A frontier agent runs on somebody else's model, so anything it is shown leaves.</div>
-                  <cupri-button class="admin-add">Create and get a code</cupri-button>
-
-                  <div class="admin-section">Selected: {{AdminSelected}}</div>
-                  <cupri-button class="admin-delegator">{{AdminDelegatorLabel}}</cupri-button>
-                  <div class="connect-label">Cost override (empty = agent decides)</div>
-                  <cupri-textfield class="admin-field" value="{{AdminCostOverride}}" placeholder="agent decides"></cupri-textfield>
-                  <cupri-button class="admin-apply">Apply overrides</cupri-button>
-                  <div class="admin-hint">Overrides outrank what the agent announces, and bind it live.</div>
-                  <cupri-button class="admin-reissue">New code for a new machine</cupri-button>
-                  <cupri-button class="admin-remove">Remove this agent</cupri-button>
-                  <div class="admin-hint">Removing takes effect at once — its key stops working on the next thing it tries.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="{{UsersPanelClass}}">
-            <div class="adminpanel-inner">
-              <div class="toolpanel-head">
-                <span class="toolpanel-title">Users</span>
-                <span class="toolpanel-status">{{AdminStatus}}</span>
-                <cupri-button class="users-close">Close</cupri-button>
-              </div>
-              <div class="{{AdminCodeClass}}">
-                <div class="admin-code-note">{{AdminCodeFor}}</div>
-                <div class="admin-code-row">
-                  <span class="admin-code-value">{{AdminCode}}</span>
-                  <cupri-button class="admin-copy">Copy</cupri-button>
-                </div>
-              </div>
-              <div class="adminpanel-body">
-                <div class="admin-list">
-                  <div class="{{RowClass}}" data-repeat="AdminUsers" data-admin-user="{{Username}}">
-                    <div class="admin-agent-row">
-                      <span class="admin-pfp">{{Initials}}</span>
-                      <span class="admin-agent-main">
-                        <span class="admin-nick">{{Username}}</span>
-                        <span class="admin-detail">{{Detail}}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div class="admin-side">
-                  <div class="admin-section">Add a user</div>
-                  <div class="connect-label">Name</div>
-                  <cupri-textfield class="admin-field" value="{{NewUserName}}" placeholder="carol"></cupri-textfield>
-                  <div class="admin-toggles">
-                    <cupri-button class="admin-user-role">{{NewUserRole}}</cupri-button>
-                  </div>
-                  <div class="admin-hint">An admin manages users and agents here, and is added to every room an agent opens.</div>
-                  <cupri-button class="admin-user-add">Create and get a password</cupri-button>
-
-                  <div class="admin-section">Selected: {{AdminUserSelected}}</div>
-                  <cupri-button class="admin-user-reset">New temporary password</cupri-button>
-                  <cupri-button class="admin-user-toggle">{{AdminUserToggleLabel}}</cupri-button>
-                  <cupri-button class="admin-user-remove">Remove this user</cupri-button>
-                  <div class="admin-hint">Their password stops working at once. You cannot remove yourself.</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          {{{AgentsPage}}}
+          {{{UsersPage}}}
           <div class="{{ConnectClass}}">
             <div class="connect-card">
               <div class="connect-title">Banter</div>
@@ -432,6 +335,236 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           </div>
         </div>
         """;
+
+
+    /// <summary>
+    /// One management page: a list with a "new" button on the left, a form for whatever is
+    /// selected on the right, one footer.
+    ///
+    /// <para>Agents and users are the same page with different bindings, so this is a template
+    /// called twice rather than two blocks of markup kept in step by hand. The two had already
+    /// drifted once — the users half grew a role toggle the agents half never got — and markup
+    /// that must match is markup that will stop matching.</para>
+    ///
+    /// <para>Bindings arrive already wrapped in their braces (<c>"{{Foo}}"</c>) so this method
+    /// never has to spell a brace it does not mean.</para>
+    /// </summary>
+    private static string ManagementPage(
+        string panelClass,
+        string closeAction,
+        string listTitle,
+        string listSubtitle,
+        string newLabel,
+        string newAction,
+        string status,
+        string rowsBinding,
+        string rowAction,
+        string rowKey,
+        string rowBody,
+        string emptyClass,
+        string emptyText,
+        string detailClass,
+        string detailTitle,
+        string detailSubtitle,
+        string removeClass,
+        string removeLabel,
+        string fields,
+        string dirtyClass,
+        string cancelClass,
+        string saveClass,
+        string saveLabel) => $$$"""
+              <div class="{{{panelClass}}}">
+                <!-- The backdrop is a sibling BEFORE the card, so the card paints over it and
+                     takes the hit. A click that reaches the backdrop is therefore a click that
+                     missed the card, which is exactly what "outside" means. -->
+                <div class="mgmt-backdrop" {{{closeAction}}}="1"></div>
+                <div class="mgmt-card">
+                  <div class="mgmt-list">
+                    <div class="mgmt-list-head">
+                      <div class="mgmt-list-heading">
+                        <div class="mgmt-title">{{{listTitle}}}</div>
+                        <div class="mgmt-subtitle">{{{listSubtitle}}}</div>
+                      </div>
+                      <cupri-button class="mgmt-new" {{{newAction}}}="1">+ {{{newLabel}}}</cupri-button>
+                    </div>
+                    <div class="mgmt-status">{{{status}}}</div>
+                    <div class="mgmt-rows">
+                      <div class="{{RowClass}}" data-repeat="{{{rowsBinding}}}" {{{rowAction}}}="{{{rowKey}}}">
+              {{{rowBody}}}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mgmt-pane">
+                    <div class="{{{emptyClass}}}">{{{emptyText}}}</div>
+                    <div class="{{{detailClass}}}">
+                      <div class="mgmt-detail-head">
+                        <div class="mgmt-list-heading">
+                          <div class="mgmt-title">{{{detailTitle}}}</div>
+                          <div class="mgmt-subtitle">{{{detailSubtitle}}}</div>
+                        </div>
+                        <cupri-button class="{{{removeClass}}}">{{{removeLabel}}}</cupri-button>
+                      </div>
+                      <div class="{{AdminCodeClass}}">
+                        <div class="mgmt-secret-note">{{AdminCodeFor}}</div>
+                        <div class="mgmt-secret-row">
+                          <span class="mgmt-secret-value">{{AdminCode}}</span>
+                          <cupri-button class="mgmt-copy">Copy</cupri-button>
+                        </div>
+                      </div>
+                      <div class="mgmt-fields">
+              {{{fields}}}
+                      </div>
+                      <div class="mgmt-footer">
+                        <div class="{{{dirtyClass}}}">You have unsaved changes</div>
+                        <cupri-button class="{{{cancelClass}}}">Cancel</cupri-button>
+                        <cupri-button class="{{{saveClass}}}">{{{saveLabel}}}</cupri-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              """;
+
+    /// <summary>A labelled row: what it is on the left, the control and its explanation right.</summary>
+    private static string Field(string label, string control, string hint, string fieldClass = "mgmt-field") => $$$"""
+    <div class="{{{fieldClass}}}">
+      <div class="mgmt-label">{{{label}}}</div>
+      <div class="mgmt-control">
+    {{{control}}}
+        <div class="mgmt-hint">{{{hint}}}</div>
+      </div>
+    </div>
+    """;
+
+    private static string TextControl(string binding, string placeholder) =>
+        $$$"""<cupri-textfield class="mgmt-input" value="{{{binding}}}" placeholder="{{{placeholder}}}"></cupri-textfield>""";
+
+    /// <summary>Read-only values are painted, not put in a field: a box you can click into and
+    /// not change is a promise the screen cannot keep.</summary>
+    private static string ReadOnlyControl(string binding) =>
+        $$$"""<div class="mgmt-readonly">{{{binding}}}</div>""";
+
+    /// <summary>
+    /// A name field: editable while creating, painted while editing. Both are emitted and the
+    /// field's own class decides which shows — the alternative is a box you can type into that
+    /// silently refuses to rename anything.
+    /// </summary>
+    private static string NameControl(string editable, string fixedValue, string placeholder) =>
+        TextControl(editable, placeholder) + Environment.NewLine +
+        $$$"""<div class="mgmt-fixed">{{{fixedValue}}}</div>""";
+
+    /// <summary>A radio-card group. Cards rather than a dropdown because the choice needs its
+    /// consequence next to it — "frontier" is a word, "anything it is shown leaves" is a decision.</summary>
+    private static string ChoiceControl(string binding, string action) => $$$"""
+    <div class="mgmt-choices">
+      <div class="{{RowClass}}" data-repeat="{{{binding}}}" {{{action}}}="{{Value}}">
+        <div class="{{DotClass}}"></div>
+        <div class="mgmt-choice-text">
+          <div class="mgmt-choice-label">{{Label}}</div>
+          <div class="mgmt-choice-hint">{{Hint}}</div>
+        </div>
+      </div>
+    </div>
+    """;
+
+    private static string InlineAction(string cls, string label) =>
+        $$$"""<cupri-button class="{{{cls}}}">{{{label}}}</cupri-button>""";
+
+    private static readonly string AgentRowBody = """
+    <div class="mgmt-row-inner">
+      <span class="mgmt-pfp">{{Initials}}</span>
+      <span class="mgmt-row-main">
+        <span class="mgmt-row-name">{{Nick}}</span>
+        <span class="mgmt-row-detail">{{Detail}}</span>
+        <span class="{{StateClass}}">{{State}}</span>
+      </span>
+    </div>
+    """;
+
+    private static readonly string UserRowBody = """
+    <div class="mgmt-row-inner">
+      <span class="mgmt-pfp">{{Initials}}</span>
+      <span class="mgmt-row-main">
+        <span class="mgmt-row-name">{{Username}}</span>
+        <span class="mgmt-row-detail">{{Detail}}</span>
+      </span>
+    </div>
+    """;
+
+    private static string AgentsPage => ManagementPage(
+        panelClass: "{{AgentsPanelClass}}",
+        closeAction: "data-agents-close",
+        listTitle: "Agents",
+        listSubtitle: "Who may run in your rooms.",
+        newLabel: "New agent",
+        newAction: "data-agent-new",
+        status: "{{AgentsStatus}}",
+        rowsBinding: "AdminAgents",
+        rowAction: "data-admin-agent",
+        rowKey: "{{Nick}}",
+        rowBody: AgentRowBody,
+        emptyClass: "{{AgentEmptyClass}}",
+        emptyText: "Choose an agent to edit it, or create a new one.",
+        detailClass: "{{AgentDetailClass}}",
+        detailTitle: "{{AgentDetailTitle}}",
+        detailSubtitle: "{{AgentDetailSubtitle}}",
+        removeClass: "{{AgentRemoveClass}}",
+        removeLabel: "Remove agent",
+        fields: string.Concat(
+            Field("Name", NameControl("{{AgentFormNick}}", "{{AgentFormNickReadonly}}", "scribe"),
+                "What it answers to in a room. Nothing else may share it, and it cannot be changed later.",
+                "{{AgentNickFieldClass}}"),
+            Field("Rooms", TextControl("{{AgentFormRooms}}", "#main, #notes"),
+                "Comma separated."),
+            Field("Skills", TextControl("{{AgentFormSkills}}", "notes, minutes"),
+                "What the delegator matches on when handing out work."),
+            Field("Runs on", ChoiceControl("AgentLocalityChoices", "data-agent-locality"),
+                "The axis that decides whether anything said in the room may leave it."),
+            Field("Clearance", ChoiceControl("AgentClearanceChoices", "data-agent-clearance"),
+                "The most sensitive material this agent may be shown."),
+            Field("Delegation", ChoiceControl("AgentDelegatorChoices", "data-agent-delegator"),
+                "A pinned agent wins the election outright, so this is an operator's call."),
+            Field("Cost", TextControl("{{AgentFormCost}}", "agent decides"),
+                "Lower is cheaper, and only ever a tie-break. Empty lets the agent say."),
+            Field("Key", ReadOnlyControl("{{AgentFingerprint}}") + "\n" +
+                InlineAction("{{AgentReissueClass}}", "New code for a new machine"),
+                "Which machine holds this identity. Reissuing retires the old one.",
+                "{{AgentKeyFieldClass}}")),
+        dirtyClass: "{{AgentDirtyClass}}",
+        cancelClass: "mgmt-cancel-agent",
+        saveClass: "mgmt-save-agent",
+        saveLabel: "{{AgentSaveLabel}}");
+
+    private static string UsersPage => ManagementPage(
+        panelClass: "{{UsersPanelClass}}",
+        closeAction: "data-users-close",
+        listTitle: "Users",
+        listSubtitle: "Who may sign in.",
+        newLabel: "New user",
+        newAction: "data-user-new",
+        status: "{{UsersStatus}}",
+        rowsBinding: "AdminUsers",
+        rowAction: "data-admin-user",
+        rowKey: "{{Username}}",
+        rowBody: UserRowBody,
+        emptyClass: "{{UserEmptyClass}}",
+        emptyText: "Choose a user to edit them, or create a new one.",
+        detailClass: "{{UserDetailClass}}",
+        detailTitle: "{{UserDetailTitle}}",
+        detailSubtitle: "{{UserDetailSubtitle}}",
+        removeClass: "{{UserRemoveClass}}",
+        removeLabel: "Remove user",
+        fields: string.Concat(
+            Field("Name", NameControl("{{UserFormName}}", "{{UserFormNameReadonly}}", "carol"),
+                "They sign in with this. It cannot be changed later.", "{{UserNickFieldClass}}"),
+            Field("Role", ChoiceControl("UserRoleChoices", "data-user-role"),
+                "An admin manages this page, and is added to every room an agent opens."),
+            Field("Password", InlineAction("{{UserResetClass}}", "New temporary password"),
+                "Nobody can read the current one, including you. A reset replaces it.")),
+        dirtyClass: "{{UserDirtyClass}}",
+        cancelClass: "mgmt-cancel-user",
+        saveClass: "mgmt-save-user",
+        saveLabel: "{{UserSaveLabel}}");
 
     public override string Css => """
         /* The cupri-* components read these rather than inheriting `color`, so setting them here
@@ -794,69 +927,134 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* The agents page. Same overlay shape as the tool panel, for the same reason: managing who
            may speak in a room is a deliberate, occasional act that wants the width. */
 
-        .adminpanel { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-                      display: flex; background: #0b0d10; }
-        .adminpanel.hidden { display: none; }
-        .adminpanel-inner { display: flex; flex-direction: column; flex: 1; margin: 36px 56px;
-                            background: #151920; border-radius: 14px; padding: 16px; }
-        .adminpanel-body { display: flex; flex-direction: row; flex: 1; }
-        .adminpanel-body.hidden { display: none; }
+        /* ── Management pages ──────────────────────────────────────────────────────────────
+           One vocabulary for both the agents page and the users page. They are the same
+           master-detail shape and are emitted by one template (ManagementPage), so a rule here
+           lands on both by construction rather than by somebody remembering to copy it. */
+        .mgmt { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                display: flex; justify-content: center; align-items: center; }
+        .mgmt.hidden { display: none; }
+        /* Dim rather than opaque: the room is still there, you have just stepped in front of it.
+           It also has to be a real painted box, because it is what catches an outside click. */
+        .mgmt-backdrop { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                         background: #05070ad0; }
+        .mgmt-card { position: absolute; left: 40px; top: 32px; width: 1160px; height: 736px;
+                     display: flex; flex-direction: row; background: #0f1319;
+                     border: 1px solid #222932; border-radius: 16px; }
 
+        .mgmt-list { width: 320px; display: flex; flex-direction: column;
+                     border-right: 1px solid #1c222b; padding: 18px 14px; }
+        .mgmt-list-head { display: flex; flex-direction: row; align-items: center; }
+        .mgmt-list-heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        .mgmt-title { font-size: 17px; font-weight: bold; color: #f3f5f7; }
+        .mgmt-subtitle { font-size: 11px; color: #6b7482; margin-top: 2px; }
+        .mgmt-new { padding: 8px 14px; font-size: 12px; font-weight: bold; background: #2563eb;
+                    color: #ffffff; border: 1px solid #2563eb; border-radius: 10px;
+                    text-align: center; }
+        .mgmt-status { font-size: 10px; color: #5f6877; padding: 12px 2px 6px 2px; }
+        .mgmt-rows { flex: 1; min-width: 0; overflow: scroll; }
 
-        .admin-list { flex: 1; min-width: 0; padding-right: 14px; overflow: scroll; }
-        .admin-agent { padding: 8px; border-radius: 9px; margin-bottom: 6px; background: #111419;
-                       cursor: pointer; }
-        .admin-agent:hover { background: #171b22; }
-        .admin-agent.selected { background: #202530; }
-        .admin-agent-row { display: flex; flex-direction: row; align-items: center; }
-        .admin-pfp { width: 30px; height: 30px; border-radius: 10px; display: flex;
-                     align-items: center; justify-content: center; font-size: 10px;
-                     font-weight: bold; background: #262d38; border: 1px solid #384150;
-                     color: #cbd5e1; }
-        .admin-agent-main { display: flex; flex-direction: column; flex: 1; min-width: 0;
-                            padding-left: 10px; }
-        .admin-nick { font-size: 13px; font-weight: bold; }
-        .admin-detail { font-size: 10px; color: #8d97a6; margin-top: 1px; }
-        /* The fingerprint when there is one; what is missing when there is not. An identity with no
-           key cannot connect, and that is the thing an operator most needs to see. */
-        .admin-state { font-size: 10px; color: #34d399; margin-top: 2px; }
-        .admin-state.pending { color: #fbbf24; }
+        .mgmt-row { padding: 8px; border-radius: 10px; margin-bottom: 6px; background: #131820;
+                    border: 1px solid #131820; cursor: pointer; }
+        .mgmt-row:hover { background: #182029; }
+        /* The selected row is the subject of everything on the right, so it is marked on its
+           edge as well as its fill — a fill alone is easy to lose against a hover. */
+        .mgmt-row.selected { background: #1b2430; border: 1px solid #2f6fd0; }
+        .mgmt-row-inner { display: flex; flex-direction: row; align-items: center; }
+        .mgmt-pfp { width: 32px; height: 32px; border-radius: 11px; display: flex;
+                    align-items: center; justify-content: center; font-size: 10px;
+                    font-weight: bold; background: #262d38; border: 1px solid #384150;
+                    color: #cbd5e1; }
+        .mgmt-row-main { display: flex; flex-direction: column; flex: 1; min-width: 0;
+                         padding-left: 10px; }
+        .mgmt-row-name { font-size: 13px; font-weight: bold; color: #f3f5f7; }
+        .mgmt-row-detail { font-size: 10px; color: #8d97a6; margin-top: 1px; }
+        /* The fingerprint when there is one; what is missing when there is not. An identity with
+           no key cannot connect, and that is the thing an operator most needs to see. */
+        .mgmt-state { font-size: 10px; color: #34d399; margin-top: 2px; }
+        .mgmt-state.pending { color: #fbbf24; }
 
-        .admin-side { width: 300px; display: flex; flex-direction: column; }
-        .admin-section { font-size: 10px; font-weight: bold; color: #717c8d; padding: 10px 0 2px 0; }
-        .admin-field { background: #0d1014; color: #f3f5f7; border: 1px solid #252b35;
-                       border-radius: 10px; padding: 7px 10px; }
-        .admin-toggles { display: flex; flex-direction: row; margin-top: 10px; }
-        .admin-locality, .admin-clearance, .admin-user-role { flex: 1; min-width: 0; padding: 6px 10px; font-size: 12px;
-                                            background: #1b2029; color: #f3f5f7;
-                                            border: 1px solid #333a46; border-radius: 10px;
-                                            text-align: center; margin-right: 8px; }
-        .admin-hint { font-size: 10px; color: #5f6877; margin: 8px 0; }
-        .admin-add, .admin-user-add { margin-top: 4px; padding: 7px 14px; font-size: 13px; background: #ef4444;
-                     color: #ffffff; border: 1px solid #ef4444; border-radius: 10px;
-                     font-weight: bold; text-align: center; }
-        .admin-reissue, .admin-user-reset, .admin-user-toggle, .admin-delegator, .admin-apply { margin-top: 4px; padding: 6px 14px; font-size: 12px; background: #1b2029;
-                         color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
-                         text-align: center; }
-        .admin-remove, .admin-user-remove { margin-top: 6px; padding: 6px 14px; font-size: 12px; background: #2a1618;
-                        color: #fca5a5; border: 1px solid #4c1d1d; border-radius: 10px;
-                        text-align: center; }
-        .admin-close { min-width: 72px; padding: 6px 14px; font-size: 13px; background: #1b2029;
+        .mgmt-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 18px; }
+        .mgmt-empty { flex: 1; display: flex; align-items: center; justify-content: center;
+                      font-size: 12px; color: #4d5563; }
+        .mgmt-empty.hidden { display: none; }
+        .mgmt-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .mgmt-detail.hidden { display: none; }
+        .mgmt-detail-head { display: flex; flex-direction: row; align-items: center;
+                            padding-bottom: 14px; border-bottom: 1px solid #1c222b; }
+        .mgmt-remove { padding: 7px 14px; font-size: 12px; background: #2a1618; color: #fca5a5;
+                       border: 1px solid #4c1d1d; border-radius: 10px; text-align: center; }
+        .mgmt-remove.hidden { display: none; }
+
+        .mgmt-fields { flex: 1; min-width: 0; overflow: scroll; padding-top: 14px; }
+        .mgmt-field { display: flex; flex-direction: row; margin-bottom: 16px; }
+        .mgmt-field.hidden { display: none; }
+        .mgmt-label { width: 116px; font-size: 12px; font-weight: bold; color: #aab3c0;
+                      padding-top: 7px; }
+        .mgmt-control { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .mgmt-input { background: #0b0e13; color: #f3f5f7; border: 1px solid #252b35;
+                      border-radius: 10px; padding: 8px 11px; font-size: 13px; }
+        .mgmt-input:focus { border-color: #2f6fd0; }
+        /* A name that cannot change is shown, not offered: a box you can click into and not
+           change is a promise the screen cannot keep. */
+        .mgmt-field.readonly .mgmt-input { display: none; }
+        .mgmt-fixed { display: none; }
+        .mgmt-field.readonly .mgmt-fixed { display: flex; align-items: center; background: #0b0e13;
+                                           border: 1px solid #1b212a; border-radius: 10px;
+                                           padding: 8px 11px; font-size: 13px; color: #8d97a6; }
+        .mgmt-readonly { background: #0b0e13; border: 1px solid #1b212a; border-radius: 10px;
+                         padding: 8px 11px; font-size: 13px; color: #8d97a6; }
+        .mgmt-hint { font-size: 10px; color: #5f6877; margin-top: 5px; }
+
+        .mgmt-choices { display: flex; flex-direction: row; }
+        .mgmt-choice { flex: 1; min-width: 0; display: flex; flex-direction: row;
+                       background: #0b0e13; border: 1px solid #252b35; border-radius: 10px;
+                       padding: 9px 10px; margin-right: 8px; cursor: pointer; }
+        .mgmt-choice:hover { background: #121620; }
+        .mgmt-choice.selected { background: #131c29; border: 1px solid #2f6fd0; }
+        .mgmt-dot { width: 14px; height: 14px; border-radius: 7px; background: #0b0e13;
+                    border: 1px solid #3a4351; margin-top: 1px; }
+        /* The filled state is a smaller solid disc inside the ring, which is what a radio is —
+           a border colour alone reads as hover on a card that already changes colour. */
+        .mgmt-dot.on { background: #2f6fd0; border: 1px solid #2f6fd0; }
+        .mgmt-choice-text { display: flex; flex-direction: column; flex: 1; min-width: 0;
+                            padding-left: 9px; }
+        .mgmt-choice-label { font-size: 12px; font-weight: bold; color: #e6eaf0; }
+        .mgmt-choice-hint { font-size: 10px; color: #6b7482; margin-top: 2px; }
+
+        .mgmt-inline { margin-top: 8px; padding: 7px 14px; font-size: 12px; background: #1b2029;
                        color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
                        text-align: center; }
+        .mgmt-inline.hidden { display: none; }
 
-        /* The code is the one secret on this screen and it is shown exactly once, so it is given
-           the width of the page rather than tucked into the form that produced it. */
-        .admin-code { display: flex; flex-direction: column; background: #16301c;
-                      border: 1px solid #2f6b3f; border-radius: 12px; padding: 10px 12px;
-                      margin-bottom: 12px; }
-        .admin-code.hidden { display: none; }
-        .admin-code-note { font-size: 11px; color: #a7e3bb; }
-        .admin-code-row { display: flex; flex-direction: row; align-items: center; margin-top: 6px; }
-        .admin-code-value { flex: 1; min-width: 0; font-size: 13px; color: #ffffff; }
-        .admin-copy { min-width: 64px; padding: 5px 12px; font-size: 12px; background: #1b2029;
-                      color: #f3f5f7; border: 1px solid #333a46; border-radius: 9px;
-                      text-align: center; }
+        .mgmt-footer { display: flex; flex-direction: row; align-items: center;
+                       padding-top: 14px; border-top: 1px solid #1c222b; }
+        .mgmt-dirty { flex: 1; min-width: 0; font-size: 11px; color: #fbbf24; }
+        .mgmt-dirty.hidden { display: none; }
+        /* Still flexes when hidden, or Cancel and Save would slide to the left edge the moment
+           the form went clean. */
+        .mgmt-dirty.hidden + .mgmt-cancel-agent, .mgmt-dirty.hidden + .mgmt-cancel-user { margin-left: auto; }
+        .mgmt-cancel-agent, .mgmt-cancel-user { min-width: 90px; padding: 8px 16px; font-size: 12px;
+                                                background: #1b2029; color: #f3f5f7;
+                                                border: 1px solid #333a46; border-radius: 10px;
+                                                text-align: center; margin-left: 8px; }
+        .mgmt-save-agent, .mgmt-save-user { min-width: 120px; padding: 8px 16px; font-size: 12px;
+                                            font-weight: bold; background: #2563eb; color: #ffffff;
+                                            border: 1px solid #2563eb; border-radius: 10px;
+                                            text-align: center; margin-left: 8px; }
+
+        /* The secret is shown exactly once, so it gets the width of the pane rather than being
+           tucked into the form that produced it. */
+        .mgmt-secret { display: flex; flex-direction: column; background: #16301c;
+                       border: 1px solid #2f6b3f; border-radius: 12px; padding: 10px 12px;
+                       margin-top: 14px; }
+        .mgmt-secret.hidden { display: none; }
+        .mgmt-secret-note { font-size: 11px; color: #a7e3bb; }
+        .mgmt-secret-row { display: flex; flex-direction: row; align-items: center; margin-top: 6px; }
+        .mgmt-secret-value { flex: 1; min-width: 0; font-size: 13px; color: #ffffff; }
+        .mgmt-copy { min-width: 64px; padding: 5px 12px; font-size: 12px; background: #1b2029;
+                     color: #f3f5f7; border: 1px solid #333a46; border-radius: 9px;
+                     text-align: center; }
 
         /* Over everything, and its own colour: until this is dealt with there is no room to
            look at behind it. */
@@ -967,7 +1165,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             CancelEdit();
         });
 
-        // ---- The agents page ----
+        // ---- The management pages ----
+        //
+        // Agents and users are the same page twice, so these come in pairs. The pairs are kept
+        // adjacent on purpose: a handler added to one and forgotten on the other is the drift
+        // this rewrite exists to stop.
 
         doc.OnAction("data-agents-open", _unused =>
         {
@@ -975,12 +1177,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _ = AgentsListAsync();
             doc.Refresh();
             return true;
-        });
-
-        doc.OnClick(".admin-close", _unused =>
-        {
-            ViewModel.ShowAgentsPanel(false);
-            doc.Refresh();
         });
 
         doc.OnAction("data-users-open", _unused =>
@@ -991,10 +1187,34 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
-        doc.OnClick(".users-close", _unused =>
+        // Clicking away closes. The backdrop is painted under the card, so a click that lands on
+        // it is one that missed the card.
+        doc.OnAction("data-agents-close", _unused =>
+        {
+            ViewModel.ShowAgentsPanel(false);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-users-close", _unused =>
         {
             ViewModel.ShowUsersPanel(false);
             doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-agent-new", _unused =>
+        {
+            ViewModel.NewAgent();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-user-new", _unused =>
+        {
+            ViewModel.NewUser();
+            doc.Refresh();
+            return true;
         });
 
         doc.OnAction("data-admin-agent", e =>
@@ -1009,71 +1229,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
-        // Two values and three values respectively, so a tap that cycles beats a control the engine
-        // has no dropdown for.
-        doc.OnClick(".admin-locality", _unused =>
-        {
-            ViewModel.CycleNewAgentLocality();
-            doc.Refresh();
-        });
-
-        doc.OnClick(".admin-clearance", _unused =>
-        {
-            ViewModel.CycleNewAgentClearance();
-            doc.Refresh();
-        });
-
-        doc.OnClick(".admin-add", _unused =>
-        {
-            if (ViewModel.ReadNewAgent() is not { } form)
-            {
-                doc.Refresh();
-                return;
-            }
-
-            _ = AgentCreateAsync(form.Nick, form.Rooms, form.Skills, form.Locality, form.Clearance);
-        });
-
-        doc.OnClick(".admin-delegator", _unused =>
-        {
-            ViewModel.CycleAdminDelegator();
-            doc.Refresh();
-        });
-
-        doc.OnClick(".admin-apply", _unused =>
-        {
-            if (ViewModel.Model.AdminSelected.Length == 0)
-            {
-                return;
-            }
-
-            if (ViewModel.ReadAgentOverrides() is not { } overrides)
-            {
-                doc.Refresh();
-                return;
-            }
-
-            _ = AgentOverridesAsync(ViewModel.Model.AdminSelected, overrides.CostTier, overrides.WantsDelegator);
-        });
-
-        doc.OnClick(".admin-reissue", _unused =>
-        {
-            if (ViewModel.Model.AdminSelected.Length > 0)
-            {
-                _ = AgentReissueAsync(ViewModel.Model.AdminSelected);
-            }
-        });
-
-        doc.OnClick(".admin-remove", _unused =>
-        {
-            if (ViewModel.Model.AdminSelected.Length > 0)
-            {
-                _ = AgentRemoveAsync(ViewModel.Model.AdminSelected);
-            }
-        });
-
-        // ---- The users tab ----
-
         doc.OnAction("data-admin-user", e =>
         {
             if (string.IsNullOrEmpty(e.Value))
@@ -1086,52 +1241,103 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
-        doc.OnClick(".admin-user-role", _unused =>
+        doc.OnAction("data-agent-locality", e =>
         {
-            ViewModel.CycleNewUserRole();
+            ViewModel.ChooseAgentLocality(e.Value ?? "local");
             doc.Refresh();
+            return true;
         });
 
-        doc.OnClick(".admin-user-add", _unused =>
+        doc.OnAction("data-agent-clearance", e =>
         {
-            if (ViewModel.ReadNewUser() is not { } form)
+            ViewModel.ChooseAgentClearance(e.Value ?? "sensitive");
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-agent-delegator", e =>
+        {
+            ViewModel.ChooseAgentDelegator(e.Value ?? "auto");
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-user-role", e =>
+        {
+            ViewModel.ChooseUserRole(e.Value ?? "member");
+            doc.Refresh();
+            return true;
+        });
+
+        // Save means "create" or "update" depending on which state the pane is in, and the
+        // button already says which — reading the mode here is what keeps those two agreeing.
+        doc.OnClick(".mgmt-save-agent", _unused =>
+        {
+            if (ViewModel.ReadAgentForm() is not { } form)
             {
                 doc.Refresh();
                 return;
             }
 
-            _ = UserCreateAsync(form.Username, form.IsAdmin);
+            _ = ViewModel.AgentIsNew ? AgentCreateAsync(form) : AgentSaveAsync(form);
         });
 
-        doc.OnClick(".admin-user-reset", _unused =>
+        doc.OnClick(".mgmt-save-user", _unused =>
         {
-            if (ViewModel.Model.AdminUserSelected.Length > 0)
+            if (ViewModel.ReadUserForm() is not { } form)
             {
-                _ = UserResetAsync(ViewModel.Model.AdminUserSelected);
+                doc.Refresh();
+                return;
+            }
+
+            _ = ViewModel.UserIsNew
+                ? UserCreateAsync(form.Username, form.IsAdmin)
+                : UserSetAdminAsync(form.Username, form.IsAdmin);
+        });
+
+        doc.OnClick(".mgmt-cancel-agent", _unused =>
+        {
+            ViewModel.ClearAgentDetail();
+            ViewModel.ClearAdminCode();
+            doc.Refresh();
+        });
+
+        doc.OnClick(".mgmt-cancel-user", _unused =>
+        {
+            ViewModel.ClearUserDetail();
+            ViewModel.ClearAdminCode();
+            doc.Refresh();
+        });
+
+        doc.OnClick(".mgmt-remove", _unused =>
+        {
+            if (ViewModel.Model.AgentSelected.Length > 0)
+            {
+                _ = AgentRemoveAsync(ViewModel.Model.AgentSelected);
+            }
+            else if (ViewModel.Model.UserSelected.Length > 0)
+            {
+                _ = UserRemoveAsync(ViewModel.Model.UserSelected);
             }
         });
 
-        // The toggle asks for the OPPOSITE of what the row currently is: its label already reads
-        // as the action, so this is the click doing what the button said it would.
-        doc.OnClick(".admin-user-toggle", _unused =>
+        // Both inline actions share a class, and only one page is ever open, so which one this
+        // is follows from which pane has a subject.
+        doc.OnClick(".mgmt-inline", _unused =>
         {
-            if (ViewModel.SelectedUser is { } row)
+            if (ViewModel.Model.AgentSelected.Length > 0)
             {
-                _ = UserSetAdminAsync(row.Username, !row.IsAdmin);
+                _ = AgentReissueAsync(ViewModel.Model.AgentSelected);
+            }
+            else if (ViewModel.Model.UserSelected.Length > 0)
+            {
+                _ = UserResetAsync(ViewModel.Model.UserSelected);
             }
         });
 
-        doc.OnClick(".admin-user-remove", _unused =>
-        {
-            if (ViewModel.Model.AdminUserSelected.Length > 0)
-            {
-                _ = UserRemoveAsync(ViewModel.Model.AdminUserSelected);
-            }
-        });
-
-        // The code exists in readable form for as long as this page is open and no longer, so
+        // The secret exists in readable form for as long as this page is open and no longer, so
         // copying it is the whole point of showing it.
-        doc.OnClick(".admin-copy", _unused =>
+        doc.OnClick(".mgmt-copy", _unused =>
         {
             if (ViewModel.Model.AdminCode.Length > 0)
             {

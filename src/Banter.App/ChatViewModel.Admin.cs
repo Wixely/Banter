@@ -3,18 +3,33 @@ using Banter.Protocol;
 namespace Banter.App;
 
 /// <summary>
-/// The agents page: who the agents are, and the one-time code that lets a machine become one.
+/// The two management pages — agents and users — as one shape: a list on the left, a form for
+/// whatever is selected on the right, one footer.
 ///
-/// <para>Everything here is an operator act on a running server — creating, editing and removing
-/// take effect immediately, because the server is the authority and is asked every time. There is
-/// no config file to edit and nothing to restart.</para>
+/// <para>The form is always in one of three states, and says which: nothing chosen, creating, or
+/// editing a named thing. That is the whole reason this was rewritten — the page used to show an
+/// "add" form and an "act on the selection" column at the same time, so the answer to "what will
+/// this button do" depended on which half you had last touched.</para>
 ///
-/// <para><b>No private key ever passes through here.</b> The page mints an enrolment code; the
-/// agent's machine makes its own key when it redeems one. That is why the code is the only secret
-/// on this screen, and why it is worth showing once and loudly rather than storing.</para>
+/// <para><b>No private key ever passes through here.</b> The agents page mints a one-time code and
+/// the agent's machine makes its own key; the users page hands out a temporary password the server
+/// invented. Both are shown once, in the same banner, and neither is stored.</para>
 /// </summary>
 public sealed partial class ChatViewModel
 {
+    /// <summary>Which of the three states a detail pane is in.</summary>
+    private enum DetailMode
+    {
+        None,
+        New,
+        Edit,
+    }
+
+    private DetailMode _agentMode = DetailMode.None;
+    private DetailMode _userMode = DetailMode.None;
+
+    // ── Opening and closing ──────────────────────────────────────────────────────────────────
+
     /// <summary>
     /// Show or hide the agents page. Agents and users are separate pages rather than tabs in one:
     /// they are separate jobs — who may run in a room versus who may sign in — and each has its
@@ -23,25 +38,27 @@ public sealed partial class ChatViewModel
     /// </summary>
     public void ShowAgentsPanel(bool show)
     {
-        Model.AgentsPanelClass = show ? "adminpanel" : "adminpanel hidden";
+        Model.AgentsPanelClass = show ? "mgmt" : "mgmt hidden";
         if (show)
         {
-            Model.UsersPanelClass = "adminpanel hidden";
+            Model.UsersPanelClass = "mgmt hidden";
         }
 
-        // A secret left on screen after the page closes is one nobody is watching — and a code
-        // shown on the agents page is noise, or worse, on the users page.
+        // Leaving a page drops what was on it: a half-typed form is not worth restoring, and a
+        // secret left on screen is one nobody is watching.
+        ClearAgentDetail();
         ClearAdminCode();
     }
 
     public void ShowUsersPanel(bool show)
     {
-        Model.UsersPanelClass = show ? "adminpanel" : "adminpanel hidden";
+        Model.UsersPanelClass = show ? "mgmt" : "mgmt hidden";
         if (show)
         {
-            Model.AgentsPanelClass = "adminpanel hidden";
+            Model.AgentsPanelClass = "mgmt hidden";
         }
 
+        ClearUserDetail();
         ClearAdminCode();
     }
 
@@ -56,7 +73,44 @@ public sealed partial class ChatViewModel
         Model.UsersButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
     }
 
-    /// <summary>The raw listing, kept beside the rows so selection can read the overrides.</summary>
+    // ── The one-shot secret banner ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Shows a freshly minted enrolment code. It is displayed once and never stored: the server
+    /// keeps only a hash, so this is the only moment it exists anywhere an operator can read it.
+    /// </summary>
+    public void ShowEnrolmentCode(string nick, string code)
+    {
+        Model.AdminCode = code;
+        Model.AdminCodeClass = "mgmt-secret";
+        Model.AdminCodeFor = $"Paste this into the machine that will run {nick}, within the hour. It works once.";
+    }
+
+    /// <summary>The same banner for a temporary password — same rules, same one chance to read it.</summary>
+    public void ShowTempPassword(string username, string password)
+    {
+        Model.AdminCode = password;
+        Model.AdminCodeClass = "mgmt-secret";
+        Model.AdminCodeFor = $"Hand this to {username}, once. They should change it when they first sign in.";
+    }
+
+    public void ClearAdminCode()
+    {
+        Model.AdminCode = "";
+        Model.AdminCodeClass = "mgmt-secret hidden";
+        Model.AdminCodeFor = "";
+    }
+
+    public void AdminFailed(string message)
+    {
+        Model.AgentsStatus = message;
+        Model.UsersStatus = message;
+        ClearAdminCode();
+    }
+
+    // ── Agents: the list ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>The raw listing, kept beside the rows so the form can be filled from it.</summary>
     private IReadOnlyList<AgentIdentityPayload> _identityListing = [];
 
     /// <summary>The identities, as the server lists them.</summary>
@@ -76,237 +130,410 @@ public sealed partial class ChatViewModel
             State = i.Enrolled ? i.KeyFingerprint
                 : i.EnrolmentPending ? "waiting for a machine to enrol"
                 : "no key and no code — reissue to give it one",
-            StateClass = i.Enrolled ? "admin-state" : "admin-state pending",
-            RowClass = string.Equals(i.Nick, Model.AdminSelected, StringComparison.OrdinalIgnoreCase)
-                ? "admin-agent selected"
-                : "admin-agent",
+            StateClass = i.Enrolled ? "mgmt-state" : "mgmt-state pending",
+            RowClass = RowClassFor(i.Nick, Model.AgentSelected),
         })];
 
-        Model.AdminStatus = Model.AdminAgents.Count == 0
-            ? "No agents yet. Add one below."
-            : $"{Model.AdminAgents.Count} agent{(Model.AdminAgents.Count == 1 ? "" : "s")}";
-    }
-
-    /// <summary>Selects an identity, so the edit controls act on it.</summary>
-    public void SelectAdminAgent(string nick)
-    {
-        Model.AdminSelected = nick;
-        foreach (var row in Model.AdminAgents)
+        Model.AgentsStatus = Model.AdminAgents.Count switch
         {
-            row.RowClass = string.Equals(row.Nick, nick, StringComparison.OrdinalIgnoreCase)
-                ? "admin-agent selected"
-                : "admin-agent";
-        }
-
-        // The override controls show the selected identity's standing state, so "Apply" writes
-        // exactly what the panel says rather than a diff against something invisible.
-        var identity = _identityListing.FirstOrDefault(i =>
-            string.Equals(i.Nick, nick, StringComparison.OrdinalIgnoreCase));
-        Model.AdminCostOverride = identity?.CostTier?.ToString() ?? "";
-        Model.AdminDelegatorLabel = DelegatorLabel(identity?.WantsDelegator);
-    }
-
-    private static string DelegatorLabel(bool? wants) => wants switch
-    {
-        true => "Delegator: pinned",
-        false => "Delegator: never",
-        null => "Delegator: agent decides",
-    };
-
-    /// <summary>Cycles agent decides → pinned → never. Three states, so a cycle beats a dropdown.</summary>
-    public void CycleAdminDelegator() =>
-        Model.AdminDelegatorLabel = Model.AdminDelegatorLabel switch
-        {
-            "Delegator: agent decides" => DelegatorLabel(true),
-            "Delegator: pinned" => DelegatorLabel(false),
-            _ => DelegatorLabel(null),
+            0 => "No agents yet",
+            1 => "1 agent",
+            var n => $"{n} agents",
         };
 
-    /// <summary>
-    /// The override controls as absolute state to write, or null when they cannot be read — a
-    /// cost that is not a number is refused here, before it becomes a request.
-    /// </summary>
-    public (int? CostTier, bool? WantsDelegator)? ReadAgentOverrides()
+        // A refresh must not strand the form on something that no longer exists.
+        if (_agentMode == DetailMode.Edit
+            && !_identityListing.Any(i => string.Equals(i.Nick, Model.AgentSelected, StringComparison.OrdinalIgnoreCase)))
+        {
+            ClearAgentDetail();
+        }
+    }
+
+    // ── Agents: the detail pane ──────────────────────────────────────────────────────────────
+
+    /// <summary>Begins creating an agent: an empty form that says it is creating one.</summary>
+    public void NewAgent()
     {
-        var costText = Model.AdminCostOverride.Trim();
+        _agentMode = DetailMode.New;
+        Model.AgentSelected = "";
+        foreach (var row in Model.AdminAgents)
+        {
+            row.RowClass = "mgmt-row";
+        }
+
+        Model.AgentFormNick = "";
+        Model.AgentFormRooms = Model.ActiveRoom.Length > 0 ? Model.ActiveRoom : "#main";
+        Model.AgentFormSkills = "chat";
+        Model.AgentFormCost = "";
+        Model.AgentLocalityChoices = LocalityChoices("local");
+        Model.AgentClearanceChoices = ClearanceChoices("sensitive");
+        Model.AgentDelegatorChoices = DelegatorChoices("auto");
+
+        Model.AgentDetailTitle = "New agent";
+        Model.AgentDetailSubtitle = "Create an identity, then enrol the machine that will run it.";
+        Model.AgentSaveLabel = "Create agent";
+        Model.AgentDetailClass = "mgmt-detail";
+        Model.AgentEmptyClass = "mgmt-empty hidden";
+        Model.AgentRemoveClass = "mgmt-remove hidden";
+        Model.AgentReissueClass = "mgmt-inline hidden";
+        Model.AgentKeyFieldClass = "mgmt-field hidden";
+        Model.AgentNickFieldClass = "mgmt-field";
+        Model.AgentFormNickReadonly = "";
+        ClearAdminCode();
+        MarkAgentDirty();
+    }
+
+    /// <summary>Selects an identity and fills the form from it.</summary>
+    public void SelectAdminAgent(string nick)
+    {
+        var identity = _identityListing.FirstOrDefault(i =>
+            string.Equals(i.Nick, nick, StringComparison.OrdinalIgnoreCase));
+        if (identity is null)
+        {
+            ClearAgentDetail();
+            return;
+        }
+
+        _agentMode = DetailMode.Edit;
+        Model.AgentSelected = identity.Nick;
+        foreach (var row in Model.AdminAgents)
+        {
+            row.RowClass = RowClassFor(row.Nick, identity.Nick);
+        }
+
+        Model.AgentFormNick = identity.Nick;
+        Model.AgentFormNickReadonly = identity.Nick;
+        Model.AgentFormRooms = string.Join(", ", identity.Rooms);
+        Model.AgentFormSkills = string.Join(", ", identity.Skills);
+        Model.AgentFormCost = identity.CostTier?.ToString() ?? "";
+        Model.AgentLocalityChoices = LocalityChoices(identity.Locality);
+        Model.AgentClearanceChoices = ClearanceChoices(identity.Clearance);
+        Model.AgentDelegatorChoices = DelegatorChoices(
+            identity.WantsDelegator switch { true => "always", false => "never", null => "auto" });
+        Model.AgentFingerprint = identity.Enrolled ? identity.KeyFingerprint : "not enrolled yet";
+
+        Model.AgentDetailTitle = identity.Nick;
+        Model.AgentDetailSubtitle = "Update the settings for this agent.";
+        Model.AgentSaveLabel = "Save changes";
+        Model.AgentDetailClass = "mgmt-detail";
+        Model.AgentEmptyClass = "mgmt-empty hidden";
+        Model.AgentRemoveClass = "mgmt-remove";
+        Model.AgentReissueClass = "mgmt-inline";
+        Model.AgentKeyFieldClass = "mgmt-field";
+        // The nick is the identity. Changing it would be creating a different agent, so the field
+        // shows it and refuses it rather than pretending a rename is on offer.
+        Model.AgentNickFieldClass = "mgmt-field readonly";
+        ClearAdminCode();
+        _agentBaseline = ReadAgentFormRaw();
+        MarkAgentClean();
+    }
+
+    /// <summary>Back to "nothing chosen" — the state the page opens in.</summary>
+    public void ClearAgentDetail()
+    {
+        _agentMode = DetailMode.None;
+        Model.AgentSelected = "";
+        foreach (var row in Model.AdminAgents)
+        {
+            row.RowClass = "mgmt-row";
+        }
+
+        Model.AgentDetailClass = "mgmt-detail hidden";
+        Model.AgentEmptyClass = "mgmt-empty";
+        Model.AgentDirtyClass = "mgmt-dirty hidden";
+    }
+
+    public bool AgentIsNew => _agentMode == DetailMode.New;
+
+    public bool AgentDetailOpen => _agentMode != DetailMode.None;
+
+    public void ChooseAgentLocality(string value) =>
+        Apply(() => Model.AgentLocalityChoices = LocalityChoices(value));
+
+    public void ChooseAgentClearance(string value) =>
+        Apply(() => Model.AgentClearanceChoices = ClearanceChoices(value));
+
+    public void ChooseAgentDelegator(string value) =>
+        Apply(() => Model.AgentDelegatorChoices = DelegatorChoices(value));
+
+    private void Apply(Action change)
+    {
+        change();
+        RefreshAgentDirty();
+    }
+
+    /// <summary>Re-checks the form against what was loaded, so the footer only claims unsaved
+    /// changes when something actually differs.</summary>
+    public void RefreshAgentDirty()
+    {
+        if (_agentMode == DetailMode.New)
+        {
+            MarkAgentDirty();
+            return;
+        }
+
+        if (_agentMode == DetailMode.None || ReadAgentFormRaw() == _agentBaseline)
+        {
+            MarkAgentClean();
+        }
+        else
+        {
+            MarkAgentDirty();
+        }
+    }
+
+    private string _agentBaseline = "";
+
+    private string ReadAgentFormRaw() => string.Join('', [
+        Model.AgentFormRooms.Trim(),
+        Model.AgentFormSkills.Trim(),
+        Model.AgentFormCost.Trim(),
+        Chosen(Model.AgentLocalityChoices),
+        Chosen(Model.AgentClearanceChoices),
+        Chosen(Model.AgentDelegatorChoices),
+    ]);
+
+    private void MarkAgentDirty() => Model.AgentDirtyClass = "mgmt-dirty";
+
+    private void MarkAgentClean() => Model.AgentDirtyClass = "mgmt-dirty hidden";
+
+    /// <summary>
+    /// The form as something to send, or null when it cannot be read. Everything is validated
+    /// here — before it becomes a request — so a refusal reads as the field it came from.
+    /// </summary>
+    public AgentForm? ReadAgentForm()
+    {
+        var nick = (_agentMode == DetailMode.New ? Model.AgentFormNick : Model.AgentSelected).Trim();
+        if (nick.Length == 0)
+        {
+            Model.AgentsStatus = "Give the agent a name first.";
+            return null;
+        }
+
         int? cost = null;
+        var costText = Model.AgentFormCost.Trim();
         if (costText.Length > 0)
         {
             if (!int.TryParse(costText, out var parsed) || parsed < 0)
             {
-                Model.AdminStatus = "Cost must be a number, or empty for the agent to decide.";
+                Model.AgentsStatus = "Cost must be a whole number, or empty to let the agent decide.";
                 return null;
             }
 
             cost = parsed;
         }
 
-        bool? wants = Model.AdminDelegatorLabel switch
-        {
-            "Delegator: pinned" => true,
-            "Delegator: never" => false,
-            _ => null,
-        };
+        var rooms = Split(Model.AgentFormRooms);
+        var skills = Split(Model.AgentFormSkills);
 
-        return (cost, wants);
-    }
-
-    /// <summary>
-    /// Shows a freshly minted code. It is displayed once and never stored: the server keeps only a
-    /// hash, so this is the only moment it exists anywhere an operator can read it.
-    /// </summary>
-    public void ShowEnrolmentCode(string nick, string code)
-    {
-        Model.AdminCode = code;
-        Model.AdminCodeClass = "admin-code";
-        Model.AdminCodeFor = $"Paste this into the machine that will run {nick}, within the hour. It works once.";
-    }
-
-    public void ClearAdminCode()
-    {
-        Model.AdminCode = "";
-        Model.AdminCodeClass = "admin-code hidden";
-        Model.AdminCodeFor = "";
-    }
-
-    public void AdminFailed(string message)
-    {
-        Model.AdminStatus = message;
-        ClearAdminCode();
-    }
-
-    /// <summary>Empties the add form, after it has been used.</summary>
-    public void ClearNewAgent()
-    {
-        Model.NewAgentNick = "";
-        Model.NewAgentRooms = "";
-        Model.NewAgentSkills = "";
-    }
-
-    /// <summary>
-    /// Cycles local → frontier. Two values, so a toggle beats a dropdown — and it is the field that
-    /// decides whether anything said in the room may leave, so it is worth being blunt about.
-    /// </summary>
-    public void CycleNewAgentLocality() =>
-        Model.NewAgentLocality = Model.NewAgentLocality == "local" ? "frontier" : "local";
-
-    /// <summary>Cycles public → internal → sensitive.</summary>
-    public void CycleNewAgentClearance() =>
-        Model.NewAgentClearance = Model.NewAgentClearance switch
-        {
-            "public" => "internal",
-            "internal" => "sensitive",
-            _ => "public",
-        };
-
-    /// <summary>
-    /// The add form's contents, or null when it is not filled in enough to send. Rooms and skills
-    /// fall back to something sensible rather than refusing: an agent with no room is in nothing,
-    /// which is never what somebody meant.
-    /// </summary>
-    public (string Nick, string[] Rooms, string[] Skills, AgentLocality Locality, DataSensitivity Clearance)? ReadNewAgent()
-    {
-        var nick = Model.NewAgentNick.Trim();
-        if (nick.Length == 0)
-        {
-            Model.AdminStatus = "Give the agent a name first.";
-            return null;
-        }
-
-        var rooms = Split(Model.NewAgentRooms);
-        var skills = Split(Model.NewAgentSkills);
-
-        return (
+        return new AgentForm(
             nick,
             rooms.Length > 0 ? rooms : [Model.ActiveRoom.Length > 0 ? Model.ActiveRoom : "#main"],
             skills.Length > 0 ? skills : ["chat"],
-            Model.NewAgentLocality == "frontier" ? AgentLocality.Frontier : AgentLocality.Local,
-            Model.NewAgentClearance switch
+            Chosen(Model.AgentLocalityChoices) == "frontier" ? AgentLocality.Frontier : AgentLocality.Local,
+            Chosen(Model.AgentClearanceChoices) switch
             {
                 "public" => DataSensitivity.Public,
                 "internal" => DataSensitivity.Internal,
                 _ => DataSensitivity.Sensitive,
-            });
+            },
+            cost,
+            Chosen(Model.AgentDelegatorChoices) switch { "always" => true, "never" => false, _ => null });
     }
 
-    private static string[] Split(string value) =>
-        [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+    // ── Users: the list ──────────────────────────────────────────────────────────────────────
 
-    // ---- The users tab ----
+    private IReadOnlyList<UserAccountPayload> _userListing = [];
 
     /// <summary>The accounts, as the server lists them.</summary>
     public void SetUsers(IEnumerable<UserAccountPayload> users)
     {
-        Model.AdminUsers = [.. users.Select(u => new AdminUserRow
+        _userListing = [.. users];
+        Model.AdminUsers = [.. _userListing.Select(u => new AdminUserRow
         {
             Username = u.Username,
             Initials = InitialsOf(u.Username),
             Detail = u.IsAdmin ? "admin" : "member",
             IsAdmin = u.IsAdmin,
-            RowClass = string.Equals(u.Username, Model.AdminUserSelected, StringComparison.OrdinalIgnoreCase)
-                ? "admin-agent selected"
-                : "admin-agent",
+            RowClass = RowClassFor(u.Username, Model.UserSelected),
         })];
 
-        Model.AdminStatus = $"{Model.AdminUsers.Count} user{(Model.AdminUsers.Count == 1 ? "" : "s")}";
-        RefreshUserToggleLabel();
+        Model.UsersStatus = Model.AdminUsers.Count switch
+        {
+            0 => "No users yet",
+            1 => "1 user",
+            var n => $"{n} users",
+        };
+
+        if (_userMode == DetailMode.Edit
+            && !_userListing.Any(u => string.Equals(u.Username, Model.UserSelected, StringComparison.OrdinalIgnoreCase)))
+        {
+            ClearUserDetail();
+        }
     }
 
-    /// <summary>Selects a user, so the edit controls act on them.</summary>
-    public void SelectAdminUser(string username)
+    // ── Users: the detail pane ───────────────────────────────────────────────────────────────
+
+    public void NewUser()
     {
-        Model.AdminUserSelected = username;
+        _userMode = DetailMode.New;
+        Model.UserSelected = "";
         foreach (var row in Model.AdminUsers)
         {
-            row.RowClass = string.Equals(row.Username, username, StringComparison.OrdinalIgnoreCase)
-                ? "admin-agent selected"
-                : "admin-agent";
+            row.RowClass = "mgmt-row";
         }
 
-        RefreshUserToggleLabel();
+        Model.UserFormName = "";
+        Model.UserRoleChoices = RoleChoices("member");
+
+        Model.UserDetailTitle = "New user";
+        Model.UserDetailSubtitle = "Create an account and hand over its first password.";
+        Model.UserSaveLabel = "Create user";
+        Model.UserDetailClass = "mgmt-detail";
+        Model.UserEmptyClass = "mgmt-empty hidden";
+        Model.UserRemoveClass = "mgmt-remove hidden";
+        Model.UserResetClass = "mgmt-inline hidden";
+        Model.UserNickFieldClass = "mgmt-field";
+        Model.UserFormNameReadonly = "";
+        ClearAdminCode();
+        MarkUserDirty();
     }
 
-    /// <summary>The selected user's row, or null — selection can outlive a refresh that removed them.</summary>
-    public AdminUserRow? SelectedUser =>
-        Model.AdminUsers.FirstOrDefault(r =>
-            string.Equals(r.Username, Model.AdminUserSelected, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>The one toggle button reads as the action it would take, not the state it sees.</summary>
-    private void RefreshUserToggleLabel() =>
-        Model.AdminUserToggleLabel = SelectedUser is { IsAdmin: true } ? "Make member" : "Make admin";
-
-    /// <summary>
-    /// Shows a freshly minted temporary password, in the same banner the enrolment code uses:
-    /// displayed once, never stored, gone when the page closes or the tab changes.
-    /// </summary>
-    public void ShowTempPassword(string username, string password)
+    public void SelectAdminUser(string username)
     {
-        Model.AdminCode = password;
-        Model.AdminCodeClass = "admin-code";
-        Model.AdminCodeFor = $"Hand this to {username}, once. They should change it when they first sign in.";
-    }
-
-    /// <summary>Cycles member → admin. Two values, so a toggle beats a dropdown.</summary>
-    public void CycleNewUserRole() =>
-        Model.NewUserRole = Model.NewUserRole == "member" ? "admin" : "member";
-
-    /// <summary>The add form's contents, or null when there is no name to send.</summary>
-    public (string Username, bool IsAdmin)? ReadNewUser()
-    {
-        var username = Model.NewUserName.Trim();
-        if (username.Length == 0)
+        var account = _userListing.FirstOrDefault(u =>
+            string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
+        if (account is null)
         {
-            Model.AdminStatus = "Give the user a name first.";
+            ClearUserDetail();
+            return;
+        }
+
+        _userMode = DetailMode.Edit;
+        Model.UserSelected = account.Username;
+        foreach (var row in Model.AdminUsers)
+        {
+            row.RowClass = RowClassFor(row.Username, account.Username);
+        }
+
+        Model.UserFormName = account.Username;
+        Model.UserFormNameReadonly = account.Username;
+        Model.UserRoleChoices = RoleChoices(account.IsAdmin ? "admin" : "member");
+
+        Model.UserDetailTitle = account.Username;
+        Model.UserDetailSubtitle = "Update this account, or hand out a new password.";
+        Model.UserSaveLabel = "Save changes";
+        Model.UserDetailClass = "mgmt-detail";
+        Model.UserEmptyClass = "mgmt-empty hidden";
+        Model.UserRemoveClass = "mgmt-remove";
+        Model.UserResetClass = "mgmt-inline";
+        Model.UserNickFieldClass = "mgmt-field readonly";
+        ClearAdminCode();
+        _userBaseline = Chosen(Model.UserRoleChoices);
+        MarkUserClean();
+    }
+
+    public void ClearUserDetail()
+    {
+        _userMode = DetailMode.None;
+        Model.UserSelected = "";
+        foreach (var row in Model.AdminUsers)
+        {
+            row.RowClass = "mgmt-row";
+        }
+
+        Model.UserDetailClass = "mgmt-detail hidden";
+        Model.UserEmptyClass = "mgmt-empty";
+        Model.UserDirtyClass = "mgmt-dirty hidden";
+    }
+
+    public bool UserIsNew => _userMode == DetailMode.New;
+
+    public bool UserDetailOpen => _userMode != DetailMode.None;
+
+    public void ChooseUserRole(string value)
+    {
+        Model.UserRoleChoices = RoleChoices(value);
+        RefreshUserDirty();
+    }
+
+    public void RefreshUserDirty()
+    {
+        if (_userMode == DetailMode.New)
+        {
+            MarkUserDirty();
+        }
+        else if (_userMode == DetailMode.None || Chosen(Model.UserRoleChoices) == _userBaseline)
+        {
+            MarkUserClean();
+        }
+        else
+        {
+            MarkUserDirty();
+        }
+    }
+
+    private string _userBaseline = "";
+
+    private void MarkUserDirty() => Model.UserDirtyClass = "mgmt-dirty";
+
+    private void MarkUserClean() => Model.UserDirtyClass = "mgmt-dirty hidden";
+
+    /// <summary>The user form as something to send, or null when it cannot be read.</summary>
+    public (string Username, bool IsAdmin)? ReadUserForm()
+    {
+        var name = (_userMode == DetailMode.New ? Model.UserFormName : Model.UserSelected).Trim();
+        if (name.Length == 0)
+        {
+            Model.UsersStatus = "Give the user a name first.";
             return null;
         }
 
-        return (username, Model.NewUserRole == "admin");
+        return (name, Chosen(Model.UserRoleChoices) == "admin");
     }
 
-    /// <summary>Empties the add form, after it has been used.</summary>
-    public void ClearNewUser()
-    {
-        Model.NewUserName = "";
-        Model.NewUserRole = "member";
-    }
+    // ── Choice groups ────────────────────────────────────────────────────────────────────────
+
+    private static List<ChoiceRow> Choices(string selected, params (string Value, string Label, string Hint)[] options) =>
+        [.. options.Select(o => new ChoiceRow
+        {
+            Value = o.Value,
+            Label = o.Label,
+            Hint = o.Hint,
+            RowClass = o.Value == selected ? "mgmt-choice selected" : "mgmt-choice",
+            DotClass = o.Value == selected ? "mgmt-dot on" : "mgmt-dot",
+        })];
+
+    private static List<ChoiceRow> LocalityChoices(AgentLocality locality) =>
+        LocalityChoices(locality.ToString().ToLowerInvariant());
+
+    private static List<ChoiceRow> LocalityChoices(string selected) => Choices(selected,
+        ("local", "Local", "Runs on a model you host. Nothing it is shown leaves."),
+        ("frontier", "Frontier", "Runs on somebody else's model. Anything it is shown leaves."));
+
+    private static List<ChoiceRow> ClearanceChoices(DataSensitivity clearance) =>
+        ClearanceChoices(clearance.ToString().ToLowerInvariant());
+
+    private static List<ChoiceRow> ClearanceChoices(string selected) => Choices(selected,
+        ("public", "Public", "Only material that could be posted anywhere."),
+        ("internal", "Internal", "Ordinary work, not for outside eyes."),
+        ("sensitive", "Sensitive", "Everything, including what must stay in the room."));
+
+    private static List<ChoiceRow> DelegatorChoices(string selected) => Choices(selected,
+        ("auto", "Agent decides", "Whatever the agent asks for when it announces."),
+        ("always", "Always", "Pinned as delegator wherever it is eligible."),
+        ("never", "Never", "Never the configured delegator, whatever it asks."));
+
+    private static List<ChoiceRow> RoleChoices(string selected) => Choices(selected,
+        ("member", "Member", "Joins rooms and talks. Cannot manage anyone."),
+        ("admin", "Admin", "Manages users and agents, and sees every room an agent opens."));
+
+    private static string Chosen(List<ChoiceRow> choices) =>
+        choices.FirstOrDefault(c => c.RowClass.Contains("selected", StringComparison.Ordinal))?.Value ?? "";
+
+    private static string RowClassFor(string name, string selected) =>
+        string.Equals(name, selected, StringComparison.OrdinalIgnoreCase) ? "mgmt-row selected" : "mgmt-row";
+
+    private static string[] Split(string value) =>
+        [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 }

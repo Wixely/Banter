@@ -23,27 +23,49 @@ public sealed partial class BanterChatSession
         }
     }
 
-    public async Task CreateAgentIdentityAsync(
-        string nick,
-        IReadOnlyList<string> rooms,
-        IReadOnlyList<string> skills,
-        AgentLocality locality,
-        DataSensitivity clearance)
+    public async Task CreateAgentIdentityAsync(AgentForm form)
     {
         try
         {
-            var created = await _client.CreateAgentAsync(nick, rooms, skills, locality, clearance).ConfigureAwait(false);
+            var created = await _client.CreateAgentAsync(
+                form.Nick, form.Rooms, form.Skills, form.Locality, form.Clearance,
+                form.CostTier, form.WantsDelegator).ConfigureAwait(false);
 
             // The code is shown before the list is refreshed: the refresh is housekeeping, and the
             // code is the one thing here that exists for a moment and then never again.
-            _vm.Post(() =>
-            {
-                _vm.ShowEnrolmentCode(created.Nick, created.Code);
-                _vm.ClearNewAgent();
-                _vm.SelectAdminAgent(created.Nick);
-            });
+            _vm.Post(() => _vm.ShowEnrolmentCode(created.Nick, created.Code));
+            await LoadAgentIdentitiesAsync().ConfigureAwait(false);
+
+            // Land on the thing just made, so the code and its subject are on screen together.
+            _vm.Post(() => _vm.SelectAdminAgent(created.Nick));
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Saves an existing agent. Cost and the delegator wish are absolute state here, not a diff:
+    /// the form shows what they are, so an empty cost box means "clear the override" rather than
+    /// "leave whatever was there".
+    /// </summary>
+    public async Task SaveAgentIdentityAsync(AgentForm form)
+    {
+        try
+        {
+            await _client.UpdateAgentAsync(
+                form.Nick,
+                rooms: form.Rooms,
+                skills: form.Skills,
+                locality: form.Locality,
+                clearance: form.Clearance,
+                costTier: form.CostTier, clearCostTier: form.CostTier is null,
+                wantsDelegator: form.WantsDelegator, clearWantsDelegator: form.WantsDelegator is null)
+                .ConfigureAwait(false);
 
             await LoadAgentIdentitiesAsync().ConfigureAwait(false);
+            _vm.Post(() => _vm.SelectAdminAgent(form.Nick));
         }
         catch (BanterErrorException ex)
         {
@@ -57,27 +79,6 @@ public sealed partial class BanterChatSession
         {
             var reissued = await _client.ReissueAgentAsync(nick).ConfigureAwait(false);
             _vm.Post(() => _vm.ShowEnrolmentCode(reissued.Nick, reissued.Code));
-            await LoadAgentIdentitiesAsync().ConfigureAwait(false);
-        }
-        catch (BanterErrorException ex)
-        {
-            _vm.Post(() => _vm.AdminFailed(ex.Message));
-        }
-    }
-
-    /// <summary>
-    /// Writes the override panel's absolute state: a value sets the override, null clears it back
-    /// to the agent's own announcement. The server re-clamps the live agent either way.
-    /// </summary>
-    public async Task SetAgentOverridesAsync(string nick, int? costTier, bool? wantsDelegator)
-    {
-        try
-        {
-            await _client.UpdateAgentAsync(
-                nick,
-                costTier: costTier, clearCostTier: costTier is null,
-                wantsDelegator: wantsDelegator, clearWantsDelegator: wantsDelegator is null)
-                .ConfigureAwait(false);
             await LoadAgentIdentitiesAsync().ConfigureAwait(false);
         }
         catch (BanterErrorException ex)
@@ -110,13 +111,9 @@ public sealed partial class BanterChatSession
             // The password is shown before the list is refreshed, for the same reason the
             // enrolment code is: the refresh is housekeeping, and this is the only moment the
             // password exists anywhere an operator can read it.
-            _vm.Post(() =>
-            {
-                _vm.ShowTempPassword(created.Username, created.Password);
-                _vm.ClearNewUser();
-            });
-
+            _vm.Post(() => _vm.ShowTempPassword(created.Username, created.Password));
             await LoadUsersAsync().ConfigureAwait(false);
+            _vm.Post(() => _vm.SelectAdminUser(created.Username));
         }
         catch (BanterErrorException ex)
         {
@@ -143,6 +140,7 @@ public sealed partial class BanterChatSession
         {
             await _client.SetUserAdminAsync(username, isAdmin).ConfigureAwait(false);
             await LoadUsersAsync().ConfigureAwait(false);
+            _vm.Post(() => _vm.SelectAdminUser(username));
         }
         catch (BanterErrorException ex)
         {
@@ -157,7 +155,7 @@ public sealed partial class BanterChatSession
             await _client.DeleteUserAsync(username).ConfigureAwait(false);
             _vm.Post(() =>
             {
-                _vm.SelectAdminUser("");
+                _vm.ClearUserDetail();
                 _vm.ClearAdminCode();
             });
 
@@ -176,7 +174,7 @@ public sealed partial class BanterChatSession
             await _client.DeleteAgentAsync(nick).ConfigureAwait(false);
             _vm.Post(() =>
             {
-                _vm.SelectAdminAgent("");
+                _vm.ClearAgentDetail();
                 _vm.ClearAdminCode();
             });
 

@@ -1,3 +1,4 @@
+using Banter.Protocol;
 using CupriFace.Binding;
 
 namespace Banter.App;
@@ -151,6 +152,17 @@ public sealed partial class ToolAgentRow
     public string RowClass { get; set; } = "tool-agent";
 }
 
+/// <summary>An agent form as something to send — the create and the save paths take the same
+/// shape, because a create IS a save of something that did not exist yet.</summary>
+public sealed record AgentForm(
+    string Nick,
+    string[] Rooms,
+    string[] Skills,
+    AgentLocality Locality,
+    DataSensitivity Clearance,
+    int? CostTier,
+    bool? WantsDelegator);
+
 /// <summary>One agent identity on the agents page.</summary>
 [CupriBindable]
 public sealed partial class AdminAgentRow
@@ -166,7 +178,7 @@ public sealed partial class AdminAgentRow
 
     public string StateClass { get; set; } = "admin-state";
 
-    public string RowClass { get; set; } = "admin-agent";
+    public string RowClass { get; set; } = "mgmt-row";
 }
 
 /// <summary>One user account on the users page.</summary>
@@ -181,7 +193,7 @@ public sealed partial class AdminUserRow
 
     public bool IsAdmin { get; set; }
 
-    public string RowClass { get; set; } = "admin-agent";
+    public string RowClass { get; set; } = "mgmt-row";
 }
 
 /// <summary>One human in the room's roster. The section heading is what says they are not an
@@ -196,6 +208,24 @@ public sealed partial class RosterUserRow
     public string Badge { get; set; } = "";
 
     public string RowClass { get; set; } = "member";
+}
+
+/// <summary>
+/// One option in a radio-card group — the shape both management pages use for every choice, so
+/// locality, clearance, the delegator override and a user's role are all the same control.
+/// </summary>
+[CupriBindable]
+public sealed partial class ChoiceRow
+{
+    public string Value { get; set; } = "";
+    public string Label { get; set; } = "";
+
+    /// <summary>What choosing this actually means. The reason these are cards, not a dropdown:
+    /// "frontier" is a word, "anything it is shown leaves this machine" is a decision.</summary>
+    public string Hint { get; set; } = "";
+
+    public string RowClass { get; set; } = "mgmt-choice";
+    public string DotClass { get; set; } = "mgmt-dot";
 }
 
 /// <summary>One agent offered while an "@" is being typed.</summary>
@@ -299,49 +329,64 @@ public sealed partial class ChatModel
     // ---- The agents page (admin only) ----
 
     /// <summary>Drives the rail button: <c>admin-open</c>, or hidden for anyone who is not an admin.</summary>
+    // ── Management pages ────────────────────────────────────────────────────────────────────
+    // Agents and users are the same master-detail page: a list with a "new" button on the left,
+    // a form for whatever is selected on the right, one footer. They share every CSS class and
+    // one markup template (BanterChatApp.ManagementPage), so these are the two sets of bindings
+    // that template is instantiated with — the only place the two pages are allowed to differ.
     public string AgentsButtonClass { get; set; } = "rail-button hidden";
     public string UsersButtonClass { get; set; } = "rail-button hidden";
-
-    /// <summary>Drives the page: <c>adminpanel</c> or <c>adminpanel hidden</c>.</summary>
-    public string AgentsPanelClass { get; set; } = "adminpanel hidden";
-    public string UsersPanelClass { get; set; } = "adminpanel hidden";
+    public string AgentsPanelClass { get; set; } = "mgmt hidden";
+    public string UsersPanelClass { get; set; } = "mgmt hidden";
 
     public List<AdminAgentRow> AdminAgents { get; set; } = [];
+    public List<AdminUserRow> AdminUsers { get; set; } = [];
 
-    /// <summary>Which identity the edit controls act on.</summary>
-    public string AdminSelected { get; set; } = "";
+    public string AgentsStatus { get; set; } = "";
+    public string UsersStatus { get; set; } = "";
 
-    public string AdminStatus { get; set; } = "";
-
-    /// <summary>
-    /// A freshly minted enrolment code. Shown once — the server keeps only a hash, so this is the
-    /// only moment it exists anywhere a person can read it.
-    /// </summary>
+    /// <summary>The one-shot secret banner — an enrolment code or a temporary password. Shared
+    /// because only one page is ever open, and because both secrets behave identically.</summary>
     public string AdminCode { get; set; } = "";
-
-    public string AdminCodeClass { get; set; } = "admin-code hidden";
-
+    public string AdminCodeClass { get; set; } = "mgmt-secret hidden";
     public string AdminCodeFor { get; set; } = "";
 
-    // The add form.
-    public string NewAgentNick { get; set; } = "";
-    public string NewAgentRooms { get; set; } = "";
-    public string NewAgentSkills { get; set; } = "";
-    public string NewAgentLocality { get; set; } = "local";
-    public string NewAgentClearance { get; set; } = "sensitive";
+    // Agents detail pane.
+    public string AgentSelected { get; set; } = "";
+    public string AgentDetailClass { get; set; } = "mgmt-detail hidden";
+    public string AgentEmptyClass { get; set; } = "mgmt-empty";
+    public string AgentDetailTitle { get; set; } = "";
+    public string AgentDetailSubtitle { get; set; } = "";
+    public string AgentRemoveClass { get; set; } = "mgmt-remove hidden";
+    public string AgentDirtyClass { get; set; } = "mgmt-dirty hidden";
+    public string AgentSaveLabel { get; set; } = "Save changes";
+    public string AgentNickFieldClass { get; set; } = "mgmt-field";
+    public string AgentKeyFieldClass { get; set; } = "mgmt-field hidden";
+    public string AgentReissueClass { get; set; } = "mgmt-inline hidden";
+    public string AgentFormNick { get; set; } = "";
+    public string AgentFormNickReadonly { get; set; } = "";
+    public string AgentFormRooms { get; set; } = "";
+    public string AgentFormSkills { get; set; } = "";
+    public string AgentFormCost { get; set; } = "";
+    public string AgentFingerprint { get; set; } = "";
+    public List<ChoiceRow> AgentLocalityChoices { get; set; } = [];
+    public List<ChoiceRow> AgentClearanceChoices { get; set; } = [];
+    public List<ChoiceRow> AgentDelegatorChoices { get; set; } = [];
 
-    // The users tab. It shares the panel, the status line and the one-secret banner with the
-    // agents tab; only the list and the form are its own.
-    public List<AdminUserRow> AdminUsers { get; set; } = [];
-    public string AdminUserSelected { get; set; } = "";
-    public string AdminUserToggleLabel { get; set; } = "Make admin";
-    public string NewUserName { get; set; } = "";
-    public string NewUserRole { get; set; } = "member";
-
-    // Override controls for the selected agent. Empty cost and "agent decides" ARE states, not
-    // absences: applying them clears the override.
-    public string AdminCostOverride { get; set; } = "";
-    public string AdminDelegatorLabel { get; set; } = "Delegator: agent decides";
+    // Users detail pane.
+    public string UserSelected { get; set; } = "";
+    public string UserDetailClass { get; set; } = "mgmt-detail hidden";
+    public string UserEmptyClass { get; set; } = "mgmt-empty";
+    public string UserDetailTitle { get; set; } = "";
+    public string UserDetailSubtitle { get; set; } = "";
+    public string UserRemoveClass { get; set; } = "mgmt-remove hidden";
+    public string UserDirtyClass { get; set; } = "mgmt-dirty hidden";
+    public string UserSaveLabel { get; set; } = "Save changes";
+    public string UserNickFieldClass { get; set; } = "mgmt-field";
+    public string UserResetClass { get; set; } = "mgmt-inline hidden";
+    public string UserFormName { get; set; } = "";
+    public string UserFormNameReadonly { get; set; } = "";
+    public List<ChoiceRow> UserRoleChoices { get; set; } = [];
     public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
 
