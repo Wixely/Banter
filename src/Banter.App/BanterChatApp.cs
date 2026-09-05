@@ -162,9 +162,37 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public override string Html => """
         <div class="app">
           <div class="rail">
-            <div class="logo">B</div>
-            <div class="{{ToolsButtonClass}}" data-tools-open="1">T</div>
-            <div class="{{AdminButtonClass}}" data-admin-open="1">A</div>
+            <div class="logo">
+              <div class="icon-chat">
+                <div class="chat-body"></div>
+                <div class="chat-tail"></div>
+              </div>
+            </div>
+            <div class="{{ToolsButtonClass}}" data-tools-open="1">
+              <div class="icon-tools">
+                <div class="tools-track tools-track-top"></div>
+                <div class="tools-track tools-track-bottom"></div>
+                <div class="tools-knob tools-knob-top"></div>
+                <div class="tools-knob tools-knob-bottom"></div>
+              </div>
+            </div>
+            <div class="{{AgentsButtonClass}}" data-agents-open="1">
+              <div class="icon-agents">
+                <div class="net-edge net-edge-up"></div>
+                <div class="net-edge net-edge-left"></div>
+                <div class="net-edge net-edge-right"></div>
+                <div class="net-node net-hub"></div>
+                <div class="net-node net-top"></div>
+                <div class="net-node net-bottom-left"></div>
+                <div class="net-node net-bottom-right"></div>
+              </div>
+            </div>
+            <div class="{{UsersButtonClass}}" data-users-open="1">
+              <div class="icon-users">
+                <div class="user-head"></div>
+                <div class="user-body"></div>
+              </div>
+            </div>
           </div>
           <div class="sidebar">
             <div class="workspace">
@@ -289,11 +317,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               </div>
             </div>
           </div>
-          <div class="{{AdminClass}}">
+          <div class="{{AgentsPanelClass}}">
             <div class="adminpanel-inner">
               <div class="toolpanel-head">
-                <span class="{{AdminTabAgentsClass}}" data-admin-tab="agents">Agents</span>
-                <span class="{{AdminTabUsersClass}}" data-admin-tab="users">Users</span>
+                <span class="toolpanel-title">Agents</span>
                 <span class="toolpanel-status">{{AdminStatus}}</span>
                 <cupri-button class="admin-close">Close</cupri-button>
               </div>
@@ -304,7 +331,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <cupri-button class="admin-copy">Copy</cupri-button>
                 </div>
               </div>
-              <div class="{{AdminAgentsViewClass}}">
+              <div class="adminpanel-body">
                 <div class="admin-list">
                   <div class="{{RowClass}}" data-repeat="AdminAgents" data-admin-agent="{{Nick}}">
                     <div class="admin-agent-row">
@@ -343,7 +370,23 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <div class="admin-hint">Removing takes effect at once — its key stops working on the next thing it tries.</div>
                 </div>
               </div>
-              <div class="{{AdminUsersViewClass}}">
+            </div>
+          </div>
+          <div class="{{UsersPanelClass}}">
+            <div class="adminpanel-inner">
+              <div class="toolpanel-head">
+                <span class="toolpanel-title">Users</span>
+                <span class="toolpanel-status">{{AdminStatus}}</span>
+                <cupri-button class="users-close">Close</cupri-button>
+              </div>
+              <div class="{{AdminCodeClass}}">
+                <div class="admin-code-note">{{AdminCodeFor}}</div>
+                <div class="admin-code-row">
+                  <span class="admin-code-value">{{AdminCode}}</span>
+                  <cupri-button class="admin-copy">Copy</cupri-button>
+                </div>
+              </div>
+              <div class="adminpanel-body">
                 <div class="admin-list">
                   <div class="{{RowClass}}" data-repeat="AdminUsers" data-admin-user="{{Username}}">
                     <div class="admin-agent-row">
@@ -405,9 +448,64 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .rail { display: flex; flex-direction: column; align-items: center; width: 72px;
                 padding: 14px 10px; background: #0c0f14; border-right: 1px solid #20262f; }
         .logo { width: 44px; height: 44px; border-radius: 14px; display: flex;
-                align-items: center; justify-content: center; font-weight: bold; font-size: 18px;
-                background: linear-gradient(145deg, #ef4444, #991b1b); color: #ffffff;
+                align-items: center; justify-content: center;
+                background: linear-gradient(145deg, #ef4444, #991b1b);
                 box-shadow: 0 8px 24px #ef444433; }
+
+        /* ── Rail icons ───────────────────────────────────────────────────────────────────────
+           Drawn from boxes rather than set as glyphs. A glyph would come from whatever font the
+           host machine happens to resolve — Skia falls back to system fonts, and no face is
+           embedded — so the same rail would render differently on desktop, Android and the web,
+           or show tofu. Boxes go through the same layout and paint on every head.
+
+           The engine gives us circles (single-value border-radius; the four-value shorthand is
+           NOT parsed, so every corner here is uniform), absolute positioning, and rotation about
+           the centre. That is enough for all four of these. */
+
+        .icon-chat { position: relative; width: 24px; height: 22px; }
+        /* Body first, tail second: the tail is a rotated square tucked under the body's lower
+           edge, and the body's own fill is what hides the half of it that would stick up. */
+        .chat-body { position: absolute; left: 0px; top: 1px; width: 24px; height: 16px;
+                     border-radius: 7px; background: #ffffff; }
+        .chat-tail { position: absolute; left: 5px; top: 12px; width: 8px; height: 8px;
+                     border-radius: 2px; background: #ffffff; transform: rotate(45deg); }
+
+        .icon-users { position: relative; width: 22px; height: 22px; }
+        .user-head { position: absolute; left: 7px; top: 2px; width: 10px; height: 10px;
+                     border-radius: 5px; background: #bec5cf; }
+        /* Shoulders: a wide bar with a radius half its height, so its top edge is a dome. */
+        .user-body { position: absolute; left: 2px; top: 14px; width: 20px; height: 9px;
+                     border-radius: 5px; background: #bec5cf; }
+
+        /* A node graph: a hub wired to three satellites. Edges are drawn before nodes so the
+           discs cover where the bars run under them. */
+        .icon-agents { position: relative; width: 24px; height: 22px; }
+        .net-node { position: absolute; border-radius: 4px; background: #bec5cf; }
+        .net-hub { left: 9px; top: 8px; width: 7px; height: 7px; }
+        .net-top { left: 9px; top: 0px; width: 7px; height: 7px; }
+        .net-bottom-left { left: 1px; top: 15px; width: 7px; height: 7px; }
+        .net-bottom-right { left: 17px; top: 15px; width: 7px; height: 7px; }
+        /* Each edge is a bar centred on the midpoint between two node centres, its length the
+           distance between them and its angle atan(dy/dx). Hub (12.5, 11.5) to the lower-left
+           node (4.5, 18.5) runs down-LEFT, which is rotate(-41deg) — rotating a bar the other
+           way draws the opposite diagonal and the icon becomes a cross. */
+        .net-edge { position: absolute; background: #bec5cf; }
+        .net-edge-up { left: 11px; top: 4px; width: 2px; height: 7px; }
+        .net-edge-left { left: 3px; top: 14px; width: 11px; height: 2px; transform: rotate(-41deg); }
+        .net-edge-right { left: 11px; top: 14px; width: 11px; height: 2px; transform: rotate(41deg); }
+
+        /* Two tracks with a knob apiece. The panel behind this button is per-agent tool GRANTS —
+           a row of switches — so sliders say what it does; a spanner drawn from boxes came out
+           as a lollipop, and the shape has to survive being 22 pixels wide. */
+        .icon-tools { position: relative; width: 22px; height: 22px; }
+        .tools-track { position: absolute; left: 1px; width: 20px; height: 2px;
+                       border-radius: 1px; background: #737d8c; }
+        .tools-track-top { top: 5px; }
+        .tools-track-bottom { top: 15px; }
+        .tools-knob { position: absolute; width: 8px; height: 8px; border-radius: 4px;
+                      background: #bec5cf; }
+        .tools-knob-top { left: 12px; top: 2px; }
+        .tools-knob-bottom { left: 2px; top: 12px; }
         /* Who you are is said once, in the sidebar footer beside your name. The rail carries
            what the app is and what it can open, and nothing that only repeats what is next to it. */
         .me { width: 34px; height: 34px; border-radius: 17px; display: flex;
@@ -647,11 +745,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .agent-meta { color: #8d97a6; font-size: 9px; margin-top: 1px; }
         .agent.frontier .agent-meta { color: #e0a56a; }
 
-        .tools-open { width: 42px; height: 42px; border-radius: 14px; display: flex;
-                      align-items: center; justify-content: center; font-size: 12px;
-                      font-weight: bold; background: #1b2029; color: #bec5cf; cursor: pointer; }
-        .tools-open:hover { background: #242a34; color: #ffffff; }
-        .tools-open.hidden { display: none; }
+        /* One rule for every rail button, so a fourth one cannot drift from the other three. */
+        .rail-button { width: 42px; height: 42px; border-radius: 14px; display: flex;
+                       align-items: center; justify-content: center; background: #1b2029;
+                       margin-top: 10px; cursor: pointer; }
+        .rail-button:hover { background: #242a34; }
+        .rail-button.hidden { display: none; }
 
         /* An overlay rather than another column: granting tools is a deliberate, occasional act,
            and it wants the width to show what each tool actually is. */
@@ -694,12 +793,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         /* The agents page. Same overlay shape as the tool panel, for the same reason: managing who
            may speak in a room is a deliberate, occasional act that wants the width. */
-        .admin-open { width: 42px; height: 42px; border-radius: 14px; display: flex;
-                      align-items: center; justify-content: center; font-size: 12px;
-                      font-weight: bold; background: #1b2029; color: #bec5cf; cursor: pointer;
-                      margin-top: 10px; }
-        .admin-open:hover { background: #242a34; color: #ffffff; }
-        .admin-open.hidden { display: none; }
 
         .adminpanel { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                       display: flex; background: #0b0d10; }
@@ -709,10 +802,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .adminpanel-body { display: flex; flex-direction: row; flex: 1; }
         .adminpanel-body.hidden { display: none; }
 
-        .admin-tab { font-size: 15px; font-weight: bold; color: #5b6472; margin-right: 14px;
-                     cursor: pointer; }
-        .admin-tab:hover { color: #cfd6e2; }
-        .admin-tab.selected { color: #ffffff; }
 
         .admin-list { flex: 1; min-width: 0; padding-right: 14px; overflow: scroll; }
         .admin-agent { padding: 8px; border-radius: 9px; margin-bottom: 6px; background: #111419;
@@ -880,9 +969,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         // ---- The agents page ----
 
-        doc.OnAction("data-admin-open", _unused =>
+        doc.OnAction("data-agents-open", _unused =>
         {
-            ViewModel.ShowAdminPanel(true);
+            ViewModel.ShowAgentsPanel(true);
             _ = AgentsListAsync();
             doc.Refresh();
             return true;
@@ -890,7 +979,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         doc.OnClick(".admin-close", _unused =>
         {
-            ViewModel.ShowAdminPanel(false);
+            ViewModel.ShowAgentsPanel(false);
+            doc.Refresh();
+        });
+
+        doc.OnAction("data-users-open", _unused =>
+        {
+            ViewModel.ShowUsersPanel(true);
+            _ = UsersListAsync();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnClick(".users-close", _unused =>
+        {
+            ViewModel.ShowUsersPanel(false);
             doc.Refresh();
         });
 
@@ -970,15 +1073,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         });
 
         // ---- The users tab ----
-
-        doc.OnAction("data-admin-tab", e =>
-        {
-            var users = e.Value == "users";
-            ViewModel.ShowAdminTab(users);
-            _ = users ? UsersListAsync() : AgentsListAsync();
-            doc.Refresh();
-            return true;
-        });
 
         doc.OnAction("data-admin-user", e =>
         {

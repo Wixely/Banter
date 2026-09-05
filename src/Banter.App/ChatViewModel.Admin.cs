@@ -15,39 +15,46 @@ namespace Banter.App;
 /// </summary>
 public sealed partial class ChatViewModel
 {
-    /// <summary>Show or hide the page. Only an admin ever sees the button that opens it.</summary>
-    public void ShowAdminPanel(bool show)
+    /// <summary>
+    /// Show or hide the agents page. Agents and users are separate pages rather than tabs in one:
+    /// they are separate jobs — who may run in a room versus who may sign in — and each has its
+    /// own way into the rail. Opening either closes the other, because the rail is a place you
+    /// are, not a set of things you have open.
+    /// </summary>
+    public void ShowAgentsPanel(bool show)
     {
-        Model.AdminClass = show ? "adminpanel" : "adminpanel hidden";
+        Model.AgentsPanelClass = show ? "adminpanel" : "adminpanel hidden";
         if (show)
         {
-            // Always opens on agents — the tab you were on last time is not a preference worth
-            // keeping, and a stale one would show a list that has not been loaded yet.
-            ShowAdminTab(users: false);
+            Model.UsersPanelClass = "adminpanel hidden";
         }
-        else
-        {
-            // A code left on screen after the page closes is a secret nobody is watching.
-            ClearAdminCode();
-        }
-    }
 
-    /// <summary>Switches between the agents tab and the users tab. Either way the one-secret
-    /// banner is cleared: a code shown for one tab is noise — or worse — on the other.</summary>
-    public void ShowAdminTab(bool users)
-    {
-        Model.AdminTabAgentsClass = users ? "admin-tab" : "admin-tab selected";
-        Model.AdminTabUsersClass = users ? "admin-tab selected" : "admin-tab";
-        Model.AdminAgentsViewClass = users ? "adminpanel-body hidden" : "adminpanel-body";
-        Model.AdminUsersViewClass = users ? "adminpanel-body" : "adminpanel-body hidden";
+        // A secret left on screen after the page closes is one nobody is watching — and a code
+        // shown on the agents page is noise, or worse, on the users page.
         ClearAdminCode();
     }
 
-    public bool AdminPanelOpen => !Model.AdminClass.Contains("hidden", StringComparison.Ordinal);
+    public void ShowUsersPanel(bool show)
+    {
+        Model.UsersPanelClass = show ? "adminpanel" : "adminpanel hidden";
+        if (show)
+        {
+            Model.AgentsPanelClass = "adminpanel hidden";
+        }
 
-    /// <summary>The button appears only for an admin — for anyone else the verbs would be refused.</summary>
-    public void SetIsAdmin(bool isAdmin) =>
-        Model.AdminButtonClass = isAdmin ? "admin-open" : "admin-open hidden";
+        ClearAdminCode();
+    }
+
+    public bool AgentsPanelOpen => !Model.AgentsPanelClass.Contains("hidden", StringComparison.Ordinal);
+
+    public bool UsersPanelOpen => !Model.UsersPanelClass.Contains("hidden", StringComparison.Ordinal);
+
+    /// <summary>Both buttons appear only for an admin — for anyone else the verbs would be refused.</summary>
+    public void SetIsAdmin(bool isAdmin)
+    {
+        Model.AgentsButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
+        Model.UsersButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
+    }
 
     /// <summary>The raw listing, kept beside the rows so selection can read the overrides.</summary>
     private IReadOnlyList<AgentIdentityPayload> _identityListing = [];

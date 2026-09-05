@@ -299,10 +299,12 @@ public sealed partial class ChatModel
     // ---- The agents page (admin only) ----
 
     /// <summary>Drives the rail button: <c>admin-open</c>, or hidden for anyone who is not an admin.</summary>
-    public string AdminButtonClass { get; set; } = "admin-open hidden";
+    public string AgentsButtonClass { get; set; } = "rail-button hidden";
+    public string UsersButtonClass { get; set; } = "rail-button hidden";
 
     /// <summary>Drives the page: <c>adminpanel</c> or <c>adminpanel hidden</c>.</summary>
-    public string AdminClass { get; set; } = "adminpanel hidden";
+    public string AgentsPanelClass { get; set; } = "adminpanel hidden";
+    public string UsersPanelClass { get; set; } = "adminpanel hidden";
 
     public List<AdminAgentRow> AdminAgents { get; set; } = [];
 
@@ -330,10 +332,6 @@ public sealed partial class ChatModel
 
     // The users tab. It shares the panel, the status line and the one-secret banner with the
     // agents tab; only the list and the form are its own.
-    public string AdminTabAgentsClass { get; set; } = "admin-tab selected";
-    public string AdminTabUsersClass { get; set; } = "admin-tab";
-    public string AdminAgentsViewClass { get; set; } = "adminpanel-body";
-    public string AdminUsersViewClass { get; set; } = "adminpanel-body hidden";
     public List<AdminUserRow> AdminUsers { get; set; } = [];
     public string AdminUserSelected { get; set; } = "";
     public string AdminUserToggleLabel { get; set; } = "Make admin";
@@ -352,7 +350,7 @@ public sealed partial class ChatModel
 
     /// <summary>The entry point into the panel. Hidden for anyone the server refused a catalogue
     /// to, which is everyone except an admin — an inert button would only invite a refusal.</summary>
-    public string ToolsButtonClass { get; set; } = "tools-open hidden";
+    public string ToolsButtonClass { get; set; } = "rail-button hidden";
 
     /// <summary>Whose grants are being edited.</summary>
     public string ToolsAgent { get; set; } = "";

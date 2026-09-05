@@ -91,7 +91,7 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
             AgentOverridesAsync = (nick, cost, wants) => { applied.Add((nick, cost, wants)); return Task.CompletedTask; },
         };
 
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         vm.SetAgentIdentities([Identity("dagger"), Identity("scribe")]);
         vm.SelectAdminAgent("scribe");
         vm.Model.AdminCostOverride = "4";
@@ -109,8 +109,8 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
     public void TheRailButtonIsOnlyThereForAnAdmin()
     {
         // The server refuses everyone else, so offering the button would be offering a refusal.
-        Assert.Contains("hidden", Room(admin: false).Model.AdminButtonClass, StringComparison.Ordinal);
-        Assert.DoesNotContain("hidden", Room(admin: true).Model.AdminButtonClass, StringComparison.Ordinal);
+        Assert.Contains("hidden", Room(admin: false).Model.AgentsButtonClass, StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden", Room(admin: true).Model.AgentsButtonClass, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -123,10 +123,10 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
         using var doc = app.CreateDocument();
         doc.BuildDisplayList(Width, Height);
 
-        var (x, y) = PointOn(doc, "[data-admin-open]");
+        var (x, y) = PointOn(doc, "[data-agents-open]");
         doc.DispatchClick(x, y, 1);
 
-        Assert.True(vm.AdminPanelOpen);
+        Assert.True(vm.AgentsPanelOpen);
         Assert.Equal(1, listed);
     }
 
@@ -169,7 +169,7 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
             },
         };
 
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         vm.Model.NewAgentNick = "scribe";
         vm.Model.NewAgentRooms = "#notes, #main";
         vm.Model.NewAgentSkills = "notes, minutes";
@@ -199,7 +199,7 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
             AgentCreateAsync = (_, _, _, _, _) => { calls++; return Task.CompletedTask; },
         };
 
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         using var doc = app.CreateDocument();
         doc.BuildDisplayList(Width, Height);
         var (x, y) = PointOn(doc, ".admin-add");
@@ -213,11 +213,11 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
     public void ClosingThePageTakesTheCodeOffTheScreen()
     {
         var vm = Room();
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         vm.ShowEnrolmentCode("scribe", "banter-enrol-secret");
         Assert.DoesNotContain("hidden", vm.Model.AdminCodeClass, StringComparison.Ordinal);
 
-        vm.ShowAdminPanel(false);
+        vm.ShowAgentsPanel(false);
 
         // The code is the one secret on this screen and the server keeps only a hash of it, so
         // leaving it up after the page closes would be leaving a credential nobody is watching.
@@ -237,7 +237,7 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
             AgentReissueAsync = nick => { reissued = nick; return Task.CompletedTask; },
         };
 
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         vm.SetAgentIdentities([Identity("dagger"), Identity("scribe")]);
         vm.SelectAdminAgent("scribe");
 
@@ -268,7 +268,7 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
             AgentReissueAsync = _ => { calls++; return Task.CompletedTask; },
         };
 
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         vm.SetAgentIdentities([Identity("dagger")]);
 
         using var doc = app.CreateDocument();
@@ -291,7 +291,7 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
     {
         var vm = Room();
         var app = new BanterChatApp(vm);
-        vm.ShowAdminPanel(true);
+        vm.ShowAgentsPanel(true);
         vm.SetAgentIdentities([Identity("dagger"), Identity("scribe")]);
 
         using var doc = app.CreateDocument();

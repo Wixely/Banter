@@ -26,7 +26,7 @@ public sealed partial class ChatViewModel
     public void SetToolCatalogue(IEnumerable<(string Name, string Server, string Description)> tools)
     {
         _catalogue = [.. tools];
-        Model.ToolsButtonClass = _catalogue.Count > 0 ? "tools-open" : "tools-open hidden";
+        Model.ToolsButtonClass = _catalogue.Count > 0 ? "rail-button" : "rail-button hidden";
         RebuildToolPanel();
     }
 

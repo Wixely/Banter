@@ -30,65 +30,72 @@ public sealed class UsersPageTests(ITestOutputHelper output)
     private static ChatViewModel OpenOnUsers()
     {
         var vm = Room();
-        vm.ShowAdminPanel(true);
-        vm.ShowAdminTab(users: true);
+        vm.ShowUsersPanel(true);
         return vm;
     }
 
     [Fact]
-    public void SwitchingToTheUsersTabAsksTheServerForThem()
+    public void TheUsersRailButtonOpensItsOwnPageAndAsksTheServer()
     {
         var vm = Room();
         var users = 0;
-        var agents = 0;
-        var app = new BanterChatApp(vm)
-        {
-            AgentsListAsync = () => { agents++; return Task.CompletedTask; },
-            UsersListAsync = () => { users++; return Task.CompletedTask; },
-        };
+        var app = new BanterChatApp(vm) { UsersListAsync = () => { users++; return Task.CompletedTask; } };
 
         using var doc = app.CreateDocument();
         doc.BuildDisplayList(Width, Height);
-        doc.DispatchClick(PointOn(doc, "[data-admin-open]").X, PointOn(doc, "[data-admin-open]").Y, 1);
-        doc.Refresh();
-        doc.BuildDisplayList(Width, Height);
 
-        var (x, y) = PointOn(doc, "[data-admin-tab=\"users\"]");
+        var (x, y) = PointOn(doc, "[data-users-open]");
         doc.DispatchClick(x, y, 1);
 
         Assert.Equal(1, users);
-        Assert.Contains("hidden", vm.Model.AdminAgentsViewClass, StringComparison.Ordinal);
-        Assert.DoesNotContain("hidden", vm.Model.AdminUsersViewClass, StringComparison.Ordinal);
+        Assert.True(vm.UsersPanelOpen);
+        Assert.False(vm.AgentsPanelOpen);
     }
 
     [Fact]
-    public void ThePageAlwaysOpensOnAgentsWithTheBannerEmpty()
+    public void OpeningOnePageClosesTheOther()
     {
         var vm = Room();
-        vm.ShowAdminPanel(true);
-        vm.ShowAdminTab(users: true);
-        vm.ShowTempPassword("carol", "banter-temp-secret");
 
-        // Close and reopen: back on agents, and the password from last time is gone.
-        vm.ShowAdminPanel(false);
-        vm.ShowAdminPanel(true);
+        // Separate pages, not tabs: the rail is a place you are, so arriving at one leaves the
+        // other — two admin pages stacked on each other is a state nobody asked for.
+        vm.ShowAgentsPanel(true);
+        Assert.True(vm.AgentsPanelOpen);
 
-        Assert.DoesNotContain("hidden", vm.Model.AdminAgentsViewClass, StringComparison.Ordinal);
-        Assert.Contains("hidden", vm.Model.AdminUsersViewClass, StringComparison.Ordinal);
-        Assert.Equal("", vm.Model.AdminCode);
+        vm.ShowUsersPanel(true);
+        Assert.True(vm.UsersPanelOpen);
+        Assert.False(vm.AgentsPanelOpen);
+
+        vm.ShowAgentsPanel(true);
+        Assert.False(vm.UsersPanelOpen);
     }
 
     [Fact]
-    public void SwitchingTabsClearsTheOneSecretBanner()
+    public void LeavingAPageTakesItsSecretWithIt()
     {
         var vm = OpenOnUsers();
         vm.ShowTempPassword("carol", "banter-temp-secret");
         Assert.DoesNotContain("hidden", vm.Model.AdminCodeClass, StringComparison.Ordinal);
 
-        // A password left on screen under the agents tab is a secret nobody is looking at.
-        vm.ShowAdminTab(users: false);
+        // A password shown on the users page is noise — or worse — on the agents page, and one
+        // left behind after closing is a secret nobody is watching.
+        vm.ShowAgentsPanel(true);
         Assert.Equal("", vm.Model.AdminCode);
         Assert.Contains("hidden", vm.Model.AdminCodeClass, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BothRailButtonsAreAdminOnly()
+    {
+        var member = new ChatViewModel();
+        member.SetNick("nell");
+        member.SetIsAdmin(false);
+        Assert.Contains("hidden", member.Model.AgentsButtonClass, StringComparison.Ordinal);
+        Assert.Contains("hidden", member.Model.UsersButtonClass, StringComparison.Ordinal);
+
+        var admin = Room();
+        Assert.DoesNotContain("hidden", admin.Model.AgentsButtonClass, StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden", admin.Model.UsersButtonClass, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -128,8 +135,7 @@ public sealed class UsersPageTests(ITestOutputHelper output)
             UserRemoveAsync = name => { removed.Add(name); return Task.CompletedTask; },
         };
 
-        vm.ShowAdminPanel(true);
-        vm.ShowAdminTab(users: true);
+        vm.ShowUsersPanel(true);
         vm.SetUsers([new UserAccountPayload("root", true), new UserAccountPayload("nell", false)]);
 
         using var doc = app.CreateDocument();
