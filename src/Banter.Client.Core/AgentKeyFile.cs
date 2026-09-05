@@ -1,7 +1,8 @@
 namespace Banter.Client.Core;
 
 /// <summary>
-/// Reading and writing an agent's private key on the machine that owns it.
+/// Reading and writing an agent's private key where it lives. One file per identity — a machine
+/// running several agents holds several of these, one for each.
 ///
 /// <para><b>This is file permissions, not encryption.</b> The key is written so that other users on
 /// the box cannot read it, which is worth having — it defends against a shared machine and against

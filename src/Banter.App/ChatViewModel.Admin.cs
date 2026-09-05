@@ -83,7 +83,7 @@ public sealed partial class ChatViewModel
     {
         Model.AdminCode = code;
         Model.AdminCodeClass = "mgmt-secret";
-        Model.AdminCodeFor = $"Paste this into the machine that will run {nick}, within the hour. It works once.";
+        Model.AdminCodeFor = $"Redeem this where {nick} will run, within the hour. It works once.";
     }
 
     /// <summary>The same banner for a temporary password — same rules, same one chance to read it.</summary>
@@ -126,7 +126,7 @@ public sealed partial class ChatViewModel
                 + (i.WantsDelegator is { } wants ? (wants ? " · delegator pinned" : " · delegator never") : ""),
 
             // What an operator most needs to know at a glance is whether this identity is actually
-            // usable, and if so which machine holds it.
+            // usable, and if so which key is answering for it.
             State = i.Enrolled ? i.KeyFingerprint
                 : i.EnrolmentPending ? "waiting for a machine to enrol"
                 : "no key and no code — reissue to give it one",
@@ -170,7 +170,7 @@ public sealed partial class ChatViewModel
         Model.AgentDelegatorChoices = DelegatorChoices("auto");
 
         Model.AgentDetailTitle = "New agent";
-        Model.AgentDetailSubtitle = "Create an identity, then enrol the machine that will run it.";
+        Model.AgentDetailSubtitle = "Create an identity, then enrol it where the agent will run.";
         Model.AgentSaveLabel = "Create agent";
         Model.AgentDetailClass = "mgmt-detail";
         Model.AgentEmptyClass = "mgmt-empty hidden";

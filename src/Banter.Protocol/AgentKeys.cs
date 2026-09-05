@@ -28,7 +28,7 @@ public static class AgentKeys
         return bytes;
     }
 
-    /// <summary>A fresh keypair. Call this on the machine that will run the agent, and nowhere else.</summary>
+    /// <summary>A fresh keypair. Call this where the agent will run, and nowhere else.</summary>
     public static (byte[] PublicKey, byte[] PrivateKey) Generate()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);

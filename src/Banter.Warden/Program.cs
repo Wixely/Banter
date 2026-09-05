@@ -42,8 +42,9 @@ if (Arg("--enrol") is { Length: > 0 } enrolCode)
         Console.WriteLine($"  identifies {identity.KeyFingerprint}");
         Console.WriteLine($"  rooms      {string.Join(", ", identity.Rooms)}");
         Console.WriteLine();
-        Console.WriteLine("The code is spent. This key is what identifies the agent now, it never leaves this");
-        Console.WriteLine("machine, and an admin can revoke it at any time.");
+        Console.WriteLine("The code is spent. This key is what identifies the agent now, it never leaves");
+        Console.WriteLine("this machine, and an admin can revoke it at any time. Other agents can be");
+        Console.WriteLine("enrolled here too - each keeps its own key file.");
         return 0;
     }
     catch (Exception ex) when (ex is InvalidOperationException or IOException

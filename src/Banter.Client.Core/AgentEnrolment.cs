@@ -7,7 +7,7 @@ namespace Banter.Client.Core;
 /// The agent side of enrolment: redeem the one-time code an admin handed over, and keep the key
 /// this machine made while doing it.
 ///
-/// <para>The private key is generated here, on the machine that will run the agent, and is never
+/// <para>The private key is generated here, where the agent will run, and is never
 /// sent anywhere — only the public half goes to the server. That is what makes a captured code
 /// worth so little: it buys one registration, and afterwards the thing that proves identity exists
 /// only on this disk.</para>

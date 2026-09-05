@@ -13,8 +13,8 @@ namespace Banter.Client.Core;
 public sealed partial class BanterClient
 {
     /// <summary>
-    /// Creates an agent identity and returns the one-time code to paste into the machine that will
-    /// run it. The code is returned once and never stored in recoverable form — a lost code is
+    /// Creates an agent identity and returns the one-time code to redeem wherever the agent will
+    /// run. The code is returned once and never stored in recoverable form — a lost code is
     /// reissued with <see cref="ReissueAgentAsync"/>, not looked up.
     /// </summary>
     public Task<AgentEnrolmentCodePayload> CreateAgentAsync(
@@ -68,9 +68,9 @@ public sealed partial class BanterClient
         RequestAsync<OkPayload>(new AgentIdentityDeletePayload(nick), cancellationToken);
 
     /// <summary>
-    /// A fresh enrolment code for an agent whose machine is being replaced. This also retires the
-    /// key the old machine holds, which is the point: a reissue is what you reach for when a laptop
-    /// has been lost.
+    /// A fresh enrolment code, which also retires the key currently enrolled — that is the point.
+    /// A reissue is what you reach for when the key has been lost or has to be moved: an identity
+    /// holds exactly one key, so whatever was running on the old one stops.
     /// </summary>
     public Task<AgentEnrolmentCodePayload> ReissueAgentAsync(string nick, CancellationToken cancellationToken = default) =>
         RequestAsync<AgentEnrolmentCodePayload>(new AgentIdentityReissuePayload(nick), cancellationToken);

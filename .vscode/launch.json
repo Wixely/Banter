@@ -7,10 +7,11 @@
   // why they can live in a committed file.
   //
   // AGENTS have no passwords, here or anywhere - they authenticate with a key that never leaves
-  // this machine. First run only, per agent:
+  // the machine it was made on. One key per AGENT, not per machine: dagger and scout both enrol
+  // here and both run here, each with its own .banter-dev/<name>.key. Once per agent:
   //
-  //   1. "Server + admin (agents page)" -> the A button in the left rail -> add "dagger"
-  //      (and "scout" if you want the delegation demos). Copy the one-time code it shows.
+  //   1. "Server + admin (agents page)" -> the node-graph button in the left rail -> add
+  //      "dagger" (and "scout" for the delegation demos). Copy the one-time code it shows.
   //   2. Run "Enrol an agent (paste code from the agents page)" and paste the code. That
   //      writes .banter-dev/<name>.key, and the code is spent.
   //   3. Every agent configuration below now works, forever - the key is the identity.
@@ -49,7 +50,8 @@
       "stopAtEntry": false
     },
     {
-      // The agents page lives behind the "A" button in the left rail, and only an admin sees it.
+      // The agents and users pages live behind the node-graph and person buttons in the left
+      // rail, and only an admin sees either.
       // The server creates the admin account on first run with BANTER_ADMIN_PASSWORD, which the
       // plain "Server" configuration leaves unset — so it is "admin", and the server says so
       // loudly at startup.
@@ -333,8 +335,8 @@
       "stopAll": true
     },
     {
-      // Managing agents: sign in as the operator, open the "A" button in the left rail, and add
-      // one. Creating it hands back a one-time enrolment code — the agent's own machine turns
+      // Managing agents: sign in as the operator, open the node-graph button in the left rail,
+      // and add one. Creating it hands back a one-time enrolment code — the agent's own machine turns
       // that into a key, so nothing secret is copied out of this window except the code itself,
       // and that is spent the moment it is used.
       "name": "Server + admin (agents page)",

@@ -584,11 +584,11 @@ public sealed record AgentIdentityCreatePayload(
     [property: Key(6)] bool? WantsDelegator = null);
 
 /// <summary>
-/// Server → admin: the identity, and the one-time code to paste into the machine that will run it.
+/// Server → admin: the identity, and the one-time code to redeem wherever the agent will run.
 ///
 /// <para>This is the only message that ever carries the code, and it is only ever sent to the
-/// admin who asked. It is single-use and short-lived: it buys the machine the right to register a
-/// key once, and is spent the moment it does.</para>
+/// admin who asked. It is single-use and short-lived: it buys the right to register one key for
+/// this identity, and is spent the moment it does.</para>
 /// </summary>
 [MessagePackObject]
 public sealed record AgentEnrolmentCodePayload(

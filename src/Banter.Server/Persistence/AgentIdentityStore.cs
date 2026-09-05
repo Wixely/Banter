@@ -79,9 +79,9 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
     }
 
     /// <summary>
-    /// A fresh code for an identity whose machine is being replaced, and — deliberately — the
-    /// removal of the key it had. A reissue is what an operator reaches for when a laptop is lost,
-    /// so it must not leave the old machine able to carry on.
+    /// A fresh code for an identity that needs a new key, and — deliberately — the removal of the
+    /// one it had. An identity holds exactly one key at a time: a reissue is what an operator
+    /// reaches for when that key is lost or has to move, so it must not leave the old one working.
     /// </summary>
     public async Task<string?> ReissueAsync(string nick, DateTimeOffset now, CancellationToken cancellationToken = default)
     {

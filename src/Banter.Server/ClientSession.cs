@@ -337,8 +337,8 @@ internal sealed class ClientSession(
                 Send(new AgentEnrolmentCodePayload(reissue.Nick, code, (now + IdentityWindow).ToUnixTimeSeconds()),
                     replyTo: envelope.MsgId);
 
-                // A reissue is what a lost laptop gets. The key it holds is already dead; the
-                // session it is holding open should not outlive it.
+                // A reissue retires the key that was enrolled. That key is already dead by the
+                // time this runs; the session still holding it open should not outlive it.
                 await engine.EvictAsync(reissue.Nick,
                     "This agent's key was retired by an admin. Enrol with the new code.").ConfigureAwait(false);
                 break;

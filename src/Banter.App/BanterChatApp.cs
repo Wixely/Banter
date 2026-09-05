@@ -67,7 +67,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// something that did not exist yet.</summary>
     public Func<AgentForm, Task> AgentSaveAsync { get; init; } = _ => Task.CompletedTask;
 
-    /// <summary>A fresh code for a new machine, retiring the key the old one holds.</summary>
+    /// <summary>A fresh code, retiring the key currently enrolled for this agent.</summary>
     public Func<string, Task> AgentReissueAsync { get; init; } = _ => Task.CompletedTask;
 
     /// <summary>Removes an identity. Its key stops working at once.</summary>
@@ -585,8 +585,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             Field("Cost", TextControl("{{AgentFormCost}}", "agent decides"),
                 "Lower is cheaper, and only ever a tie-break. Empty lets the agent say."),
             Field("Key", ReadOnlyControl("{{AgentFingerprint}}") + "\n" +
-                InlineAction("{{AgentReissueClass}}", "New code for a new machine"),
-                "Which machine holds this identity. Reissuing retires the old one.",
+                InlineAction("{{AgentReissueClass}}", "Reissue key"),
+                "The key answering for this agent. One identity holds one key, so reissuing "
+                + "retires the old one and whatever is running on it stops.",
                 "{{AgentKeyFieldClass}}")),
         dirtyClass: "{{AgentDirtyClass}}",
         cancelClass: "mgmt-cancel-agent",

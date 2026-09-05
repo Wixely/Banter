@@ -270,6 +270,67 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
     }
 
     [Fact]
+    public async Task OneMachineRunsAsManyAgentsAsItLikes()
+    {
+        // The limit is one KEY per identity, not one agent per machine. Nothing about enrolment
+        // is per-host: a machine holds a key file for each agent it runs, and a fleet on one box
+        // is the ordinary case rather than a workaround.
+        await using var admin = await AdminAsync();
+
+        var scribeCode = await CreateAsync(admin, "scribe");
+        var scoutCode = await CreateAsync(admin, "scout", locality: "frontier");
+
+        var (scribeId, scribeKey) = await AgentEnrolment
+            .EnrolAsync(_transport, _server.Endpoint, scribeCode).WaitAsync(Patience);
+        var (scoutId, scoutKey) = await AgentEnrolment
+            .EnrolAsync(_transport, _server.Endpoint, scoutCode).WaitAsync(Patience);
+
+        // Two identities, two keys, both enrolled from here, both usable at once.
+        Assert.NotEqual(scribeId.KeyFingerprint, scoutId.KeyFingerprint);
+
+        await using var scribe = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", scribeKey).WaitAsync(Patience);
+        await using var scout = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scout", scoutKey).WaitAsync(Patience);
+
+        Assert.Equal("scribe", scribe.Nick);
+        Assert.Equal("scout", scout.Nick);
+
+        await scribe.JoinAsync("#main").WaitAsync(Patience);
+        await scout.JoinAsync("#main").WaitAsync(Patience);
+        await scribe.SendMessageAsync("#main", "both of us are here").AsTask().WaitAsync(Patience);
+
+        var members = await scout.GetMembersAsync("#main").WaitAsync(Patience);
+        Assert.Contains(members.Members, m => m.Nick == "scribe");
+        Assert.Contains(members.Members, m => m.Nick == "scout");
+    }
+
+    [Fact]
+    public async Task AnIdentityHoldsOneKeyAtATime()
+    {
+        // The constraint that IS real, and the reason a reissue is worded as retiring the old key
+        // rather than as moving to a new machine: enrolling the same identity again needs a fresh
+        // code, and taking one kills the key that was answering for it.
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, first) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        var reissued = await admin.ReissueAgentAsync("scribe").WaitAsync(Patience);
+        var (_, second) = await AgentEnrolment
+            .EnrolAsync(_transport, _server.Endpoint, reissued.Code).WaitAsync(Patience);
+
+        Assert.NotEqual(first, second);
+
+        // The second key works; the first does not, wherever it happens to be sitting.
+        await using var back = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", second).WaitAsync(Patience);
+        Assert.Equal("scribe", back.Nick);
+
+        await Assert.ThrowsAsync<BanterAuthException>(
+            () => BanterClient.ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", first).WaitAsync(Patience));
+    }
+
+    [Fact]
     public async Task ACodeWorksOnceAndOnlyOnce()
     {
         await using var admin = await AdminAsync();

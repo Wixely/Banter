@@ -180,7 +180,7 @@ async Task<bool> HandleAsync(string line)
 
                     foreach (var a in agents)
                     {
-                        // The fingerprint is what tells one machine from another, so it is worth
+                        // The fingerprint identifies the key that is answering, so it is worth
                         // showing beside the name rather than hiding behind a detail view.
                         var state = a.Enrolled ? $"key {a.KeyFingerprint}"
                             : a.EnrolmentPending ? "awaiting enrolment"
@@ -203,7 +203,7 @@ async Task<bool> HandleAsync(string line)
                         : DataSensitivity.Sensitive;
 
                     var created = await client.CreateAgentAsync(nick!, joinRooms, joinSkills, locality, clearance);
-                    Print($"* created '{created.Nick}'. Paste this into the machine that will run it, within the hour:");
+                    Print($"* created '{created.Nick}'. Redeem this where it will run, within the hour:");
                     Print("");
                     Print($"    {created.Code}");
                     Print("");
