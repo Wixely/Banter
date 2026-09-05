@@ -26,6 +26,40 @@ public sealed class SettingsPageTests(ITestOutputHelper output)
         return vm;
     }
 
+    [Theory]
+    // A laptop, a 1440p monitor, and a 4K one. The scale is the point of Hybrid: the same window
+    // full of chat should be readable on all three, which responsive layout alone does not give —
+    // it treats a bigger screen as room for more rather than as a reason to draw larger.
+    [InlineData(1280, 800, 1.0f)]
+    [InlineData(1920, 1080, 1.35f)]
+    [InlineData(2560, 1440, 1.8f)]
+    [InlineData(3840, 2160, 2.7f)]
+    public void HybridScalesToTheScreenRatherThanJustFillingIt(int w, int h, float expected)
+    {
+        var p = BanterChatApp.Presentation(w, h, zoom: 1f);
+        output.WriteLine($"{w}x{h} -> logical {p.LogicalWidth:F0}x{p.LogicalHeight:F0} scale {p.Scale:F2}");
+
+        Assert.Equal(expected, p.Scale, 2);
+
+        // And the surplus becomes layout rather than margin: the design still fits, with the
+        // extra going to a wider timeline. Nothing is letterboxed.
+        Assert.True(p.LogicalWidth >= BanterChatApp.DesignWidth - 0.5f, "the design width stopped fitting");
+        Assert.True(p.LogicalHeight >= BanterChatApp.DesignHeight - 0.5f, "the design height stopped fitting");
+    }
+
+    [Fact]
+    public void TheZoomPreferenceMultipliesTheHybridBase()
+    {
+        // 100% means "what this screen deserves", not "one pixel per pixel" — which on a 4K panel
+        // is not a setting anybody wants. So the preference scales the base rather than replacing it.
+        var baseline = BanterChatApp.Presentation(2560, 1440, zoom: 1f);
+        var zoomed = BanterChatApp.Presentation(2560, 1440, zoom: 1.5f);
+
+        Assert.Equal(baseline.Scale * 1.5f, zoomed.Scale, 3);
+        Assert.True(zoomed.LogicalWidth < baseline.LogicalWidth,
+            "zooming in should leave less logical room, not more");
+    }
+
     [Fact]
     public void TheSettingsButtonIsThereForEveryone()
     {

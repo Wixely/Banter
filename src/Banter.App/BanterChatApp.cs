@@ -335,7 +335,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           </div>
           {{{AgentsPage}}}
           {{{UsersPage}}}
-          <div class="{{SettingsPanelClass}}">
+          <div class="{{SettingsPanelClass}} settings-overlay">
             <div class="mgmt-backdrop" data-settings-close="1"></div>
             <div class="mgmt-card settings-card">
               <div class="mgmt-pane">
@@ -358,7 +358,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                           </div>
                         </div>
                       </div>
-                      <div class="mgmt-hint">Scales everything, and is remembered. Ctrl and the scroll wheel do the same thing.</div>
+                      <div class="mgmt-hint">On top of the scale this screen already gets: 100% is what the window size deserves, not one pixel per pixel. Remembered, and Ctrl with the scroll wheel does the same thing.</div>
                     </div>
                   </div>
                 </div>
@@ -1003,14 +1003,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            One vocabulary for both the agents page and the users page. They are the same
            master-detail shape and are emitted by one template (ManagementPage), so a rule here
            lands on both by construction rather than by somebody remembering to copy it. */
-        .mgmt { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-                display: flex; justify-content: center; align-items: center; }
+        /* Laid out rather than placed at coordinates. Hybrid presentation means the logical
+           viewport is whatever the window's aspect gives once the design size fits, so a card
+           pinned to left:40 top:32 was only ever centred on one window shape. */
+        .mgmt { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; }
         .mgmt.hidden { display: none; }
         /* Dim rather than opaque: the room is still there, you have just stepped in front of it.
            It also has to be a real painted box, because it is what catches an outside click. */
         .mgmt-backdrop { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                          background: #05070ad0; }
-        .mgmt-card { position: absolute; left: 40px; top: 32px; width: 1160px; height: 736px;
+        .mgmt-card { flex: 1; min-width: 0; margin: 32px 40px;
                      display: flex; flex-direction: row; background: #0f1319;
                      border: 1px solid #222932; border-radius: 16px; }
 
@@ -1119,17 +1121,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                                             text-align: center; margin-left: 8px; }
 
         /* Settings has no list, so its card is the width of the pane and no more. */
-        .settings-card { left: 300px; top: 140px; width: 640px; height: 320px; }
+        /* Centred by the overlay rather than by auto margins: CupriFace's flex resolves an auto
+           margin on the main axis only, so `margin: auto` alone left this pinned to the top. */
+        .settings-overlay { align-items: center; justify-content: center; }
+        .settings-card { flex: 0 0 640px; height: 340px; }
         .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
 
         /* ── Confirming something destructive ──────────────────────────────────────────────
            Above the page that raised it, and deliberately small: it asks one question about one
            named thing, and the page behind stays visible so the answer has its context. */
-        .confirm { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; }
+        .confirm { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex;
+                   align-items: center; justify-content: center; }
         .confirm.hidden { display: none; }
         .confirm-backdrop { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                             background: #05070ac0; }
-        .confirm-card { position: absolute; left: 400px; top: 280px; width: 440px;
+        .confirm-card { width: 440px; flex: 0 0 auto;
                         display: flex; flex-direction: column; background: #151920;
                         border: 1px solid #33202a; border-radius: 14px; padding: 18px; }
         .confirm-title { font-size: 15px; font-weight: bold; color: #f3f5f7; }
@@ -1699,8 +1705,39 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _doc?.Refresh();
         }
 
-        return base.Present(width, height);
+        return Presentation(width, height, _doc?.Zoom ?? 1f);
     }
+
+    /// <summary>
+    /// The size Banter lays itself out at, and the scale it is painted with.
+    ///
+    /// <para><b>Hybrid</b> (CupriFace 0.18.0) rather than responsive: it picks the largest scale at
+    /// which <see cref="DesignWidth"/> x <see cref="DesignHeight"/> still fits the window, then
+    /// reflows whatever is left over. Responsive layout alone treats a 27-inch monitor as
+    /// "room for more" and paints everything at the same physical size it had on a laptop, which
+    /// is why a chat window on a big screen ends up a wall of tiny text; fixed scaling would go the
+    /// other way and letterbox. Hybrid does both: on a 2560x1440 window the design fits 1.8 times
+    /// over, so everything is painted 1.8x and the surplus width becomes a wider timeline rather
+    /// than empty margin.</para>
+    ///
+    /// <para>The user's zoom multiplies that base rather than replacing it, so 100% means "what
+    /// this screen deserves" instead of "one CSS pixel per device pixel" — which on a 4K panel is
+    /// not a setting anybody wants.</para>
+    /// </summary>
+    public static PresentInfo Presentation(float width, float height, float zoom)
+    {
+        var hybrid = PresentInfo.Hybrid(width, height, DesignWidth, DesignHeight);
+        return PresentInfo.Zoom(width, height, hybrid.Scale * zoom);
+    }
+
+    /// <summary>
+    /// The window Banter is drawn for. Not a minimum and not a maximum — the size whose scale is
+    /// called 100%, chosen because it is the smallest window the four-column layout (rail,
+    /// sidebar, timeline, roster) still reads well in.
+    /// </summary>
+    public const float DesignWidth = 1280f;
+
+    public const float DesignHeight = 800f;
 
     /// <summary>
     /// Copy the current selection. Falls back to the newest message when nothing is selected,

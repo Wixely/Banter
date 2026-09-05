@@ -14,7 +14,7 @@
     <ProjectReference Include="../Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
-    <PackageReference Include="CupriFace.Shell" Version="0.15.0" />
+    <PackageReference Include="CupriFace.Shell" Version="0.18.0" />
     <!-- Decoding a cached preview into a clipboard DIB. Transitive via CupriFace, declared
          because this project uses it directly. -->
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
