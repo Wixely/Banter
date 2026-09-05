@@ -34,6 +34,78 @@ public sealed class AgentsPageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void SelectingAnAgentShowsItsStandingOverrides()
+    {
+        var vm = Room();
+        vm.SetAgentIdentities([
+            Identity("dagger"),
+            new AgentIdentityPayload("scout", ["#main"], ["web"], "frontier", "public",
+                true, "3f2a 91c0 be47 1d08", false, CostTier: 7, WantsDelegator: false),
+        ]);
+
+        // No overrides: the panel says so rather than showing zeros that look chosen.
+        vm.SelectAdminAgent("dagger");
+        Assert.Equal("", vm.Model.AdminCostOverride);
+        Assert.Equal("Delegator: agent decides", vm.Model.AdminDelegatorLabel);
+
+        // Overrides: shown as the absolute state Apply would write back, and worn on the row.
+        vm.SelectAdminAgent("scout");
+        Assert.Equal("7", vm.Model.AdminCostOverride);
+        Assert.Equal("Delegator: never", vm.Model.AdminDelegatorLabel);
+        Assert.Contains("cost 7", vm.Model.AdminAgents.Single(a => a.Nick == "scout").Detail, StringComparison.Ordinal);
+        Assert.Contains("delegator never", vm.Model.AdminAgents.Single(a => a.Nick == "scout").Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheOverridePanelReadsBackExactlyWhatItShows()
+    {
+        var vm = Room();
+        vm.SetAgentIdentities([Identity("dagger")]);
+        vm.SelectAdminAgent("dagger");
+
+        // agent decides → pinned → never → agent decides again.
+        vm.CycleAdminDelegator();
+        vm.Model.AdminCostOverride = "3";
+        Assert.Equal((3, true), vm.ReadAgentOverrides());
+
+        vm.CycleAdminDelegator();
+        vm.Model.AdminCostOverride = "";
+        Assert.Equal(((int?)null, (bool?)false), vm.ReadAgentOverrides());
+
+        vm.CycleAdminDelegator();
+        Assert.Equal(((int?)null, (bool?)null), vm.ReadAgentOverrides());
+
+        // A cost that is not a number never becomes a request.
+        vm.Model.AdminCostOverride = "cheap";
+        Assert.Null(vm.ReadAgentOverrides());
+        Assert.Contains("number", vm.Model.AdminStatus, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ApplySendsTheOverridesForTheSelectedAgent()
+    {
+        var vm = Room();
+        var applied = new List<(string Nick, int? Cost, bool? Wants)>();
+        var app = new BanterChatApp(vm)
+        {
+            AgentOverridesAsync = (nick, cost, wants) => { applied.Add((nick, cost, wants)); return Task.CompletedTask; },
+        };
+
+        vm.ShowAdminPanel(true);
+        vm.SetAgentIdentities([Identity("dagger"), Identity("scribe")]);
+        vm.SelectAdminAgent("scribe");
+        vm.Model.AdminCostOverride = "4";
+        vm.CycleAdminDelegator();                       // agent decides → pinned
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+        var (x, y) = PointOn(doc, ".admin-apply");
+        doc.DispatchClick(x, y, 1);
+
+        Assert.Equal(("scribe", 4, true), Assert.Single(applied));
+    }
+
+    [Fact]
     public void TheRailButtonIsOnlyThereForAnAdmin()
     {
         // The server refuses everyone else, so offering the button would be offering a refusal.

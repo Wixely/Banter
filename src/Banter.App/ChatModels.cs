@@ -339,6 +339,11 @@ public sealed partial class ChatModel
     public string AdminUserToggleLabel { get; set; } = "Make admin";
     public string NewUserName { get; set; } = "";
     public string NewUserRole { get; set; } = "member";
+
+    // Override controls for the selected agent. Empty cost and "agent decides" ARE states, not
+    // absences: applying them clears the override.
+    public string AdminCostOverride { get; set; } = "";
+    public string AdminDelegatorLabel { get; set; } = "Delegator: agent decides";
     public string BrowseClass { get; set; } = "browse hidden";
     public List<MessageRow> Messages { get; set; } = [];
 

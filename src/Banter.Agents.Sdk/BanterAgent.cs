@@ -62,6 +62,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 .ConfigureAwait(false);
 
         _client.MessageReceived += OnMessage;
+        _client.AttributesSet += OnAttributesSet;
         _client.Evicted += OnEvicted;
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
@@ -161,6 +162,21 @@ public abstract partial class BanterAgent : IAsyncDisposable
         Client.SendMessageAsync(room, text, cancellationToken).AsTask();
 
     /// <summary>Blocks until cancelled or <see cref="DisposeAsync"/>.</summary>
+    /// <summary>
+    /// What the server granted, as opposed to what <see cref="Options"/> asked for. Null until
+    /// the announce is answered; updated live when an admin changes the identity mid-session.
+    /// </summary>
+    public AgentAnnouncePayload? EffectiveAttributes { get; private set; }
+
+    /// <summary>Raised with the granted attributes — on start, and again on live admin changes.</summary>
+    public event Action<AgentAnnouncePayload>? AttributesSet;
+
+    private void OnAttributesSet(AgentAnnouncePayload effective)
+    {
+        EffectiveAttributes = effective;
+        AttributesSet?.Invoke(effective);
+    }
+
     /// <summary>Why the server ended this agent's session, or null. Set before
     /// <see cref="RunAsync"/> returns, so a host can tell an eviction from its own Ctrl+C.</summary>
     public string? EvictedReason { get; private set; }
@@ -648,6 +664,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         if (_client is not null)
         {
             _client.MessageReceived -= OnMessage;
+            _client.AttributesSet -= OnAttributesSet;
             _client.Evicted -= OnEvicted;
             _client.DelegatorChanged -= OnDelegatorChanged;
             _client.RoomModeChanged -= OnRoomModeChanged;

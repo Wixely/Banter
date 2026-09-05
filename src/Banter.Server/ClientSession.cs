@@ -34,6 +34,13 @@ internal sealed class ClientSession(
     /// ever written by the room engine on the single-writer loop.
     /// </summary>
     public AgentAnnouncePayload? Announcement { get; set; }
+
+    /// <summary>
+    /// The announcement as the agent sent it, before any identity clamp. Kept because clearing an
+    /// override must fall back to what the agent ASKED for — re-deriving that from the clamped
+    /// <see cref="Announcement"/> would fall back to the override being cleared.
+    /// </summary>
+    public AgentAnnouncePayload? RequestedAnnouncement { get; set; }
     /// <summary>The banter.core ordinal agreed with this peer during HELLO (CupriMark).</summary>
     public ushort NegotiatedCoreVersion { get; private set; } = 1;
     private bool Authenticated => Nick.Length > 0;
@@ -307,6 +314,8 @@ internal sealed class ClientSession(
                         Skills = create.Skills,
                         Locality = ParseLocality(create.Locality),
                         Clearance = ParseClearance(create.Clearance),
+                        CostTier = create.CostTier,
+                        WantsDelegator = create.WantsDelegator,
                     },
                     now,
                     cancellationToken).ConfigureAwait(false);
@@ -341,6 +350,8 @@ internal sealed class ClientSession(
                     update.Nick, update.Rooms, update.Skills,
                     update.Locality is null ? null : ParseLocality(update.Locality),
                     update.Clearance is null ? null : ParseClearance(update.Clearance),
+                    (update.SetCostTier, update.CostTier),
+                    (update.SetWantsDelegator, update.WantsDelegator),
                     cancellationToken).ConfigureAwait(false);
 
                 if (changed)
@@ -396,7 +407,9 @@ internal sealed class ClientSession(
         identity.Clearance.ToString().ToLowerInvariant(),
         identity.PublicKey is not null,
         identity.KeyFingerprint,
-        identity.EnrolmentPending);
+        identity.EnrolmentPending,
+        identity.CostTier,
+        identity.WantsDelegator);
 
     private static AgentLocality ParseLocality(string value) =>
         Enum.TryParse<AgentLocality>(value, ignoreCase: true, out var parsed) ? parsed : AgentLocality.Local;

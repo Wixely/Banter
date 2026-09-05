@@ -70,6 +70,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Removes an identity. Its key stops working at once.</summary>
     public Func<string, Task> AgentRemoveAsync { get; init; } = _ => Task.CompletedTask;
 
+    /// <summary>(nick, costTier, wantsDelegator) — null values clear that override.</summary>
+    public Func<string, int?, bool?, Task> AgentOverridesAsync { get; init; } = (_, _, _) => Task.CompletedTask;
+
     public Func<Task> UsersListAsync { get; init; } = () => Task.CompletedTask;
 
     /// <summary>(username, isAdmin) — the reply's temporary password is the host's to show.</summary>
@@ -330,6 +333,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <cupri-button class="admin-add">Create and get a code</cupri-button>
 
                   <div class="admin-section">Selected: {{AdminSelected}}</div>
+                  <cupri-button class="admin-delegator">{{AdminDelegatorLabel}}</cupri-button>
+                  <div class="connect-label">Cost override (empty = agent decides)</div>
+                  <cupri-textfield class="admin-field" value="{{AdminCostOverride}}" placeholder="agent decides"></cupri-textfield>
+                  <cupri-button class="admin-apply">Apply overrides</cupri-button>
+                  <div class="admin-hint">Overrides outrank what the agent announces, and bind it live.</div>
                   <cupri-button class="admin-reissue">New code for a new machine</cupri-button>
                   <cupri-button class="admin-remove">Remove this agent</cupri-button>
                   <div class="admin-hint">Removing takes effect at once — its key stops working on the next thing it tries.</div>
@@ -738,7 +746,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .admin-add, .admin-user-add { margin-top: 4px; padding: 7px 14px; font-size: 13px; background: #ef4444;
                      color: #ffffff; border: 1px solid #ef4444; border-radius: 10px;
                      font-weight: bold; text-align: center; }
-        .admin-reissue, .admin-user-reset, .admin-user-toggle { margin-top: 4px; padding: 6px 14px; font-size: 12px; background: #1b2029;
+        .admin-reissue, .admin-user-reset, .admin-user-toggle, .admin-delegator, .admin-apply { margin-top: 4px; padding: 6px 14px; font-size: 12px; background: #1b2029;
                          color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
                          text-align: center; }
         .admin-remove, .admin-user-remove { margin-top: 6px; padding: 6px 14px; font-size: 12px; background: #2a1618;
@@ -921,6 +929,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             _ = AgentCreateAsync(form.Nick, form.Rooms, form.Skills, form.Locality, form.Clearance);
+        });
+
+        doc.OnClick(".admin-delegator", _unused =>
+        {
+            ViewModel.CycleAdminDelegator();
+            doc.Refresh();
+        });
+
+        doc.OnClick(".admin-apply", _unused =>
+        {
+            if (ViewModel.Model.AdminSelected.Length == 0)
+            {
+                return;
+            }
+
+            if (ViewModel.ReadAgentOverrides() is not { } overrides)
+            {
+                doc.Refresh();
+                return;
+            }
+
+            _ = AgentOverridesAsync(ViewModel.Model.AdminSelected, overrides.CostTier, overrides.WantsDelegator);
         });
 
         doc.OnClick(".admin-reissue", _unused =>

@@ -242,9 +242,33 @@ async Task<bool> HandleAsync(string line)
                     Print($"* '{nick}' is cleared for {parsed.ToString().ToLowerInvariant()}");
                     break;
 
+                // Overrides: "auto" hands the choice back to the agent's own announcement.
+                case ["cost", var nick, "auto"]:
+                    await client.UpdateAgentAsync(nick!, clearCostTier: true);
+                    Print($"* '{nick}' decides its own cost tier again");
+                    break;
+
+                case ["cost", var nick, var tier] when int.TryParse(tier, out var cost):
+                    await client.UpdateAgentAsync(nick!, costTier: cost);
+                    Print($"* '{nick}' now costs {cost}, whatever it announces");
+                    break;
+
+                case ["delegator", var nick, "auto"]:
+                    await client.UpdateAgentAsync(nick!, clearWantsDelegator: true);
+                    Print($"* '{nick}' decides for itself whether it wants delegation");
+                    break;
+
+                case ["delegator", var nick, var wants] when wants is "always" or "never":
+                    await client.UpdateAgentAsync(nick!, wantsDelegator: wants is "always");
+                    Print(wants is "always"
+                        ? $"* '{nick}' is pinned as delegator wherever it is eligible"
+                        : $"* '{nick}' will never be the configured delegator");
+                    break;
+
                 default:
                     Print("! /agent list | add <nick> [rooms] [skills] [local|frontier] [public|internal|sensitive]");
                     Print("!        | rooms <nick> <a,b> | skills <nick> <a,b> | clearance <nick> <level>");
+                    Print("!        | cost <nick> <n|auto> | delegator <nick> <always|never|auto>");
                     Print("!        | reissue <nick> | remove <nick>");
                     break;
             }

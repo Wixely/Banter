@@ -118,6 +118,16 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     /// <summary>The reason from the server's farewell, or null while the session lives.</summary>
     public string? Farewell { get; private set; }
+
+    /// <summary>
+    /// The attributes the server actually granted this agent — pushed after every announce, and
+    /// again whenever an admin changes the identity while the session runs. Compare with what was
+    /// announced to see which admin overrides are in effect. Null until the first announce lands.
+    /// </summary>
+    public AgentAnnouncePayload? EffectiveAttributes { get; private set; }
+
+    /// <summary>Raised whenever <see cref="EffectiveAttributes"/> changes, including live.</summary>
+    public event Action<AgentAnnouncePayload>? AttributesSet;
     /// <summary>Raised before each redial attempt (1-based attempt number).</summary>
     public event Action<int>? Reconnecting;
     /// <summary>Raised after a successful redial once tracked rooms have been rejoined.</summary>
@@ -699,6 +709,11 @@ public sealed partial class BanterClient : IAsyncDisposable
 
                 switch (payload)
                 {
+                    case AgentAnnouncePayload effective:
+                        EffectiveAttributes = effective;
+                        AttributesSet?.Invoke(effective);
+                        break;
+
                     case ByePayload bye:
                         Farewell = bye.Reason ?? "The server ended this session.";
                         return;

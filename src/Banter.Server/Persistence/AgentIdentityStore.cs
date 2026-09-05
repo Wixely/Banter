@@ -23,9 +23,23 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
     /// </summary>
     public static readonly TimeSpan EnrolmentWindow = TimeSpan.FromHours(1);
 
-    private sealed record Row(
-        string Nick, string Rooms, string Skills, string Locality, string Clearance,
-        byte[]? PublicKey, byte[]? EnrolmentHash, byte[]? EnrolmentSalt, long? EnrolmentExpiresAt);
+    // Properties rather than a positional record: Dapper's property mapping converts
+    // provider-specific numerics (SQLite INTEGER → bool?, PostgreSQL BOOLEAN), where constructor
+    // mapping demands exact types. Still a record, because EnrolAsync uses `with`.
+    private sealed record Row
+    {
+        public string Nick { get; set; } = "";
+        public string Rooms { get; set; } = "";
+        public string Skills { get; set; } = "";
+        public string Locality { get; set; } = "";
+        public string Clearance { get; set; } = "";
+        public int? CostTier { get; set; }
+        public bool? WantsDelegator { get; set; }
+        public byte[]? PublicKey { get; set; }
+        public byte[]? EnrolmentHash { get; set; }
+        public byte[]? EnrolmentSalt { get; set; }
+        public long? EnrolmentExpiresAt { get; set; }
+    }
 
     /// <summary>
     /// Creates the identity and returns the code to hand to whoever will run it. The code is
@@ -41,9 +55,9 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         await connection.ExecuteAsync(
             """
             INSERT INTO agent_identities
-                (nick, rooms, skills, locality, clearance, public_key,
+                (nick, rooms, skills, locality, clearance, cost_tier, wants_delegator, public_key,
                  enrolment_hash, enrolment_salt, enrolment_expires_at, created_at)
-            VALUES (@Nick, @Rooms, @Skills, @Locality, @Clearance, NULL,
+            VALUES (@Nick, @Rooms, @Skills, @Locality, @Clearance, @CostTier, @WantsDelegator, NULL,
                     @Hash, @Salt, @Expires, @Created)
             """,
             new
@@ -53,6 +67,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
                 Skills = Join(identity.Skills),
                 Locality = identity.Locality.ToString().ToLowerInvariant(),
                 Clearance = identity.Clearance.ToString().ToLowerInvariant(),
+                identity.CostTier,
+                identity.WantsDelegator,
                 Hash = hash,
                 Salt = salt,
                 Expires = (now + EnrolmentWindow).ToUnixTimeSeconds(),
@@ -90,13 +106,20 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         return changed == 0 ? null : code;
     }
 
-    /// <summary>Changes what an identity may do. Null arguments leave that field alone.</summary>
+    /// <summary>
+    /// Changes what an identity may do. Null arguments leave that field alone — except the
+    /// override tuples, where null is a value ("the agent decides") and the Set flag is what says
+    /// whether to write it. The CASE guards use integer flags rather than boolean parameters so
+    /// the same SQL runs on both dialects.
+    /// </summary>
     public async Task<bool> UpdateAsync(
         string nick,
         IReadOnlyList<string>? rooms,
         IReadOnlyList<string>? skills,
         AgentLocality? locality,
         DataSensitivity? clearance,
+        (bool Set, int? Value) costTier = default,
+        (bool Set, bool? Value) wantsDelegator = default,
         CancellationToken cancellationToken = default)
     {
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -106,7 +129,9 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
                SET rooms     = COALESCE(@Rooms, rooms),
                    skills    = COALESCE(@Skills, skills),
                    locality  = COALESCE(@Locality, locality),
-                   clearance = COALESCE(@Clearance, clearance)
+                   clearance = COALESCE(@Clearance, clearance),
+                   cost_tier       = CASE WHEN @SetCost = 1 THEN @CostTier ELSE cost_tier END,
+                   wants_delegator = CASE WHEN @SetWants = 1 THEN @WantsDelegator ELSE wants_delegator END
              WHERE nick = @Nick
             """,
             new
@@ -116,6 +141,10 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
                 Skills = skills is null ? null : Join(skills),
                 Locality = locality?.ToString().ToLowerInvariant(),
                 Clearance = clearance?.ToString().ToLowerInvariant(),
+                SetCost = costTier.Set ? 1 : 0,
+                CostTier = costTier.Value,
+                SetWants = wantsDelegator.Set ? 1 : 0,
+                WantsDelegator = wantsDelegator.Value,
             }).ConfigureAwait(false);
 
         return changed > 0;
@@ -135,7 +164,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         var row = await connection.QuerySingleOrDefaultAsync<Row>(
             """
             SELECT nick AS Nick, rooms AS Rooms, skills AS Skills, locality AS Locality,
-                   clearance AS Clearance, public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
+                   clearance AS Clearance, cost_tier AS CostTier, wants_delegator AS WantsDelegator,
+                   public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
                    enrolment_salt AS EnrolmentSalt, enrolment_expires_at AS EnrolmentExpiresAt
               FROM agent_identities WHERE nick = @Nick
             """,
@@ -150,7 +180,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         var rows = await connection.QueryAsync<Row>(
             """
             SELECT nick AS Nick, rooms AS Rooms, skills AS Skills, locality AS Locality,
-                   clearance AS Clearance, public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
+                   clearance AS Clearance, cost_tier AS CostTier, wants_delegator AS WantsDelegator,
+                   public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
                    enrolment_salt AS EnrolmentSalt, enrolment_expires_at AS EnrolmentExpiresAt
               FROM agent_identities ORDER BY nick
             """).ConfigureAwait(false);
@@ -178,7 +209,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         var candidates = await connection.QueryAsync<Row>(
             """
             SELECT nick AS Nick, rooms AS Rooms, skills AS Skills, locality AS Locality,
-                   clearance AS Clearance, public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
+                   clearance AS Clearance, cost_tier AS CostTier, wants_delegator AS WantsDelegator,
+                   public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
                    enrolment_salt AS EnrolmentSalt, enrolment_expires_at AS EnrolmentExpiresAt
               FROM agent_identities WHERE enrolment_hash IS NOT NULL
             """).ConfigureAwait(false);
@@ -231,6 +263,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         Clearance = Enum.TryParse<DataSensitivity>(row.Clearance, ignoreCase: true, out var clearance)
             ? clearance
             : DataSensitivity.Sensitive,
+        CostTier = row.CostTier,
+        WantsDelegator = row.WantsDelegator,
         PublicKey = row.PublicKey,
         EnrolmentPending = row.EnrolmentHash is not null,
     };

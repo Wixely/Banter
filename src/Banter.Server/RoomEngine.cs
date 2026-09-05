@@ -466,7 +466,9 @@ internal sealed class RoomEngine(
 
         // The announcement is always attributed to the authenticated nick, never to whatever the
         // payload claims — otherwise an agent could announce on another's behalf.
-        var owned = await ClampToIdentityAsync(announce with { Nick = session.Nick }).ConfigureAwait(false);
+        var requested = announce with { Nick = session.Nick };
+        session.RequestedAnnouncement = requested;
+        var owned = await ClampToIdentityAsync(requested).ConfigureAwait(false);
         session.Announcement = owned;
 
         foreach (var room in _rooms.Values.Where(r => r.Members.Contains(session)))
@@ -479,15 +481,21 @@ internal sealed class RoomEngine(
         }
 
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
+
+        // What the agent actually got, pushed after the Ok. An agent that asked for one thing and
+        // was granted another should not have to discover it from a roster; one that predates this
+        // push ignores the frame harmlessly.
+        session.Send(owned);
     }
 
     /// <summary>
     /// The announcement is a request; the identity is the answer. Locality, clearance and skills
-    /// decide what an agent may see and be handed, so for an agent the admin manages they come
-    /// from the identity record — what the agent announced is a default that stands only where no
-    /// identity exists (legacy password agents) or where the record has nothing to say. The agent
-    /// keeps CostTier and WantsDelegator: preferences, not permissions, and the identity does not
-    /// store them.
+    /// decide what an agent may see and be handed, so for an agent the admin manages they always
+    /// come from the identity record — what the agent announced stands only where no identity
+    /// exists (legacy password agents) or where the record has nothing to say. Cost and the
+    /// delegator wish are the agent's by default, but an identity override outranks them too:
+    /// a self-flagged delegator wins the election outright, which makes the wish a permission in
+    /// all but name.
     /// </summary>
     private async ValueTask<AgentAnnouncePayload> ClampToIdentityAsync(AgentAnnouncePayload announced)
     {
@@ -502,6 +510,8 @@ internal sealed class RoomEngine(
             Locality = identity.Locality,
             Clearance = identity.Clearance,
             Skills = identity.Skills.Count > 0 ? identity.Skills : announced.Skills,
+            CostTier = identity.CostTier ?? announced.CostTier,
+            WantsDelegator = identity.WantsDelegator ?? announced.WantsDelegator,
         };
     }
 
@@ -515,13 +525,19 @@ internal sealed class RoomEngine(
         {
             foreach (var session in SessionsFor(nick))
             {
-                if (session.Announcement is not { } announced)
+                // Clamped from the REQUESTED announcement, not the effective one: clearing an
+                // override falls back to the agent's own words, which only the request still holds.
+                if (session.RequestedAnnouncement is not { } requested)
                 {
                     continue;
                 }
 
-                var owned = await ClampToIdentityAsync(announced).ConfigureAwait(false);
+                var owned = await ClampToIdentityAsync(requested).ConfigureAwait(false);
                 session.Announcement = owned;
+
+                // The live agent learns its new attributes the moment the admin sets them, the
+                // same push a fresh announce gets.
+                session.Send(owned);
 
                 foreach (var room in _rooms.Values.Where(r => r.Members.Contains(session)))
                 {

@@ -65,6 +65,27 @@ public sealed partial class BanterChatSession
         }
     }
 
+    /// <summary>
+    /// Writes the override panel's absolute state: a value sets the override, null clears it back
+    /// to the agent's own announcement. The server re-clamps the live agent either way.
+    /// </summary>
+    public async Task SetAgentOverridesAsync(string nick, int? costTier, bool? wantsDelegator)
+    {
+        try
+        {
+            await _client.UpdateAgentAsync(
+                nick,
+                costTier: costTier, clearCostTier: costTier is null,
+                wantsDelegator: wantsDelegator, clearWantsDelegator: wantsDelegator is null)
+                .ConfigureAwait(false);
+            await LoadAgentIdentitiesAsync().ConfigureAwait(false);
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
     // ---- The users tab ----
 
     public async Task LoadUsersAsync()

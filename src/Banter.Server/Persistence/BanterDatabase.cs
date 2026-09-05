@@ -338,5 +338,22 @@ public static class SchemaManifest
                 created_at BIGINT NOT NULL
             );
             """),
+
+        new(8,
+            "agent-identity-overrides",
+            // Nullable on purpose: null is a meaning, not an absence — "the agent's announced
+            // value stands". Locality and clearance never needed this because the identity always
+            // answers for them; cost and the delegator wish are the agent's until an admin says
+            // otherwise.
+            SqliteSql:
+            """
+            ALTER TABLE agent_identities ADD COLUMN cost_tier INTEGER NULL;
+            ALTER TABLE agent_identities ADD COLUMN wants_delegator INTEGER NULL;
+            """,
+            PostgresSql:
+            """
+            ALTER TABLE agent_identities ADD COLUMN cost_tier INTEGER NULL;
+            ALTER TABLE agent_identities ADD COLUMN wants_delegator BOOLEAN NULL;
+            """),
     ];
 }

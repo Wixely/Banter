@@ -49,14 +49,20 @@ public sealed partial class ChatViewModel
     public void SetIsAdmin(bool isAdmin) =>
         Model.AdminButtonClass = isAdmin ? "admin-open" : "admin-open hidden";
 
+    /// <summary>The raw listing, kept beside the rows so selection can read the overrides.</summary>
+    private IReadOnlyList<AgentIdentityPayload> _identityListing = [];
+
     /// <summary>The identities, as the server lists them.</summary>
     public void SetAgentIdentities(IEnumerable<AgentIdentityPayload> identities)
     {
-        Model.AdminAgents = [.. identities.Select(i => new AdminAgentRow
+        _identityListing = [.. identities];
+        Model.AdminAgents = [.. _identityListing.Select(i => new AdminAgentRow
         {
             Nick = i.Nick,
             Initials = InitialsOf(i.Nick),
-            Detail = $"{i.Locality} · {i.Clearance} · {string.Join(", ", i.Rooms)}",
+            Detail = $"{i.Locality} · {i.Clearance} · {string.Join(", ", i.Rooms)}"
+                + (i.CostTier is { } cost ? $" · cost {cost}" : "")
+                + (i.WantsDelegator is { } wants ? (wants ? " · delegator pinned" : " · delegator never") : ""),
 
             // What an operator most needs to know at a glance is whether this identity is actually
             // usable, and if so which machine holds it.
@@ -84,6 +90,58 @@ public sealed partial class ChatViewModel
                 ? "admin-agent selected"
                 : "admin-agent";
         }
+
+        // The override controls show the selected identity's standing state, so "Apply" writes
+        // exactly what the panel says rather than a diff against something invisible.
+        var identity = _identityListing.FirstOrDefault(i =>
+            string.Equals(i.Nick, nick, StringComparison.OrdinalIgnoreCase));
+        Model.AdminCostOverride = identity?.CostTier?.ToString() ?? "";
+        Model.AdminDelegatorLabel = DelegatorLabel(identity?.WantsDelegator);
+    }
+
+    private static string DelegatorLabel(bool? wants) => wants switch
+    {
+        true => "Delegator: pinned",
+        false => "Delegator: never",
+        null => "Delegator: agent decides",
+    };
+
+    /// <summary>Cycles agent decides → pinned → never. Three states, so a cycle beats a dropdown.</summary>
+    public void CycleAdminDelegator() =>
+        Model.AdminDelegatorLabel = Model.AdminDelegatorLabel switch
+        {
+            "Delegator: agent decides" => DelegatorLabel(true),
+            "Delegator: pinned" => DelegatorLabel(false),
+            _ => DelegatorLabel(null),
+        };
+
+    /// <summary>
+    /// The override controls as absolute state to write, or null when they cannot be read — a
+    /// cost that is not a number is refused here, before it becomes a request.
+    /// </summary>
+    public (int? CostTier, bool? WantsDelegator)? ReadAgentOverrides()
+    {
+        var costText = Model.AdminCostOverride.Trim();
+        int? cost = null;
+        if (costText.Length > 0)
+        {
+            if (!int.TryParse(costText, out var parsed) || parsed < 0)
+            {
+                Model.AdminStatus = "Cost must be a number, or empty for the agent to decide.";
+                return null;
+            }
+
+            cost = parsed;
+        }
+
+        bool? wants = Model.AdminDelegatorLabel switch
+        {
+            "Delegator: pinned" => true,
+            "Delegator: never" => false,
+            _ => null,
+        };
+
+        return (cost, wants);
     }
 
     /// <summary>

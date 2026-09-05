@@ -25,6 +25,20 @@ public sealed record AgentIdentity
     /// <summary>The most sensitive material this agent may be shown.</summary>
     public DataSensitivity Clearance { get; init; } = DataSensitivity.Sensitive;
 
+    /// <summary>
+    /// Admin override of the agent's announced cost tier, or null to let the agent's word stand.
+    /// Unlike locality and clearance — which the identity always answers for — this is null by
+    /// default because cost is a preference until an operator decides otherwise.
+    /// </summary>
+    public int? CostTier { get; init; }
+
+    /// <summary>
+    /// Admin override of the delegator wish, or null to let the agent's word stand. Worth
+    /// overriding because the wish is not mild: a self-flagged delegator wins the election
+    /// outright, and whether something reads every message in a room is an operator call.
+    /// </summary>
+    public bool? WantsDelegator { get; init; }
+
     /// <summary>SubjectPublicKeyInfo of the enrolled key, or null until a machine has enrolled.</summary>
     public byte[]? PublicKey { get; init; }
 
@@ -65,9 +79,14 @@ public interface IAgentIdentityStore
 
     Task<string?> ReissueAsync(string nick, DateTimeOffset now, CancellationToken cancellationToken = default);
 
+    /// <summary>Null leaves a field alone. The override tuples set when <c>Set</c> is true —
+    /// to the value given, where null clears the override back to "the agent decides".</summary>
     Task<bool> UpdateAsync(
         string nick, IReadOnlyList<string>? rooms, IReadOnlyList<string>? skills,
-        AgentLocality? locality, DataSensitivity? clearance, CancellationToken cancellationToken = default);
+        AgentLocality? locality, DataSensitivity? clearance,
+        (bool Set, int? Value) costTier = default,
+        (bool Set, bool? Value) wantsDelegator = default,
+        CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(string nick, CancellationToken cancellationToken = default);
 

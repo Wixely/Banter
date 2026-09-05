@@ -192,6 +192,84 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
     }
 
     [Fact]
+    public async Task TheAgentIsToldWhatItActuallyGot()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var agent = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", privateKey)
+            .WaitAsync(Patience);
+
+        var told = new TaskCompletionSource<AgentAnnouncePayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        agent.AttributesSet += granted => told.TrySetResult(granted);
+
+        // It asks for frontier/public; the identity says local/sensitive. The push after the Ok
+        // is how the agent learns the difference instead of discovering it from a roster.
+        await agent.AnnounceAgentAsync(new AgentAnnouncePayload(
+            "scribe", AgentLocality.Frontier, DataSensitivity.Public, ["web"])).WaitAsync(Patience);
+
+        var granted = await told.Task.WaitAsync(Patience);
+        output.WriteLine($"asked frontier/public, told {granted.Locality}/{granted.Clearance}");
+        Assert.Equal(AgentLocality.Local, granted.Locality);
+        Assert.Equal(DataSensitivity.Sensitive, granted.Clearance);
+        Assert.Equal(granted, agent.EffectiveAttributes);
+    }
+
+    [Fact]
+    public async Task AnOverrideOutranksCostAndTheDelegatorWishUntilItIsCleared()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var agent = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", privateKey)
+            .WaitAsync(Patience);
+        await agent.JoinAsync("#main").WaitAsync(Patience);
+        await admin.JoinAsync("#main").WaitAsync(Patience);
+
+        // The agent's word: expensive, and no wish to delegate. With no overrides set, it stands.
+        await agent.AnnounceAgentAsync(new AgentAnnouncePayload(
+            "scribe", AgentLocality.Local, DataSensitivity.Sensitive, ["chat"], CostTier: 5)).WaitAsync(Patience);
+
+        var seen = Assert.Single((await admin.GetAgentsAsync("#main").WaitAsync(Patience)).Agents, a => a.Nick == "scribe");
+        Assert.Equal(5, seen.CostTier);
+
+        // The admin's word: cost 2, and pinned as delegator — a self-flagged delegator wins the
+        // election outright, which is exactly why the wish is an operator's to override.
+        await admin.UpdateAgentAsync("scribe", costTier: 2, wantsDelegator: true).WaitAsync(Patience);
+        await AwaitRosterAsync(admin, a => a.CostTier == 2 && a.IsDelegator,
+            "cost 2 and delegator after the override");
+
+        // Cleared, the agent's own announcement stands again — live, no reconnect.
+        await admin.UpdateAgentAsync("scribe", clearCostTier: true, clearWantsDelegator: true).WaitAsync(Patience);
+        await AwaitRosterAsync(admin, a => a.CostTier == 5, "cost back to the announced 5 after clearing");
+    }
+
+    private async Task AwaitRosterAsync(BanterClient viewer, Func<AgentInfoPayload, bool> holds, string what)
+    {
+        var deadline = DateTimeOffset.UtcNow + Patience;
+        while (true)
+        {
+            var seen = (await viewer.GetAgentsAsync("#main").WaitAsync(Patience)).Agents
+                .SingleOrDefault(a => a.Nick == "scribe");
+            if (seen is not null && holds(seen))
+            {
+                return;
+            }
+
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                Assert.Fail($"roster never showed {what} (saw cost {seen?.CostTier}, delegator {seen?.IsDelegator})");
+            }
+
+            await Task.Delay(50);
+        }
+    }
+
+    [Fact]
     public async Task ACodeWorksOnceAndOnlyOnce()
     {
         await using var admin = await AdminAsync();

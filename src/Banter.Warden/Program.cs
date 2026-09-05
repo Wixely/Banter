@@ -193,6 +193,26 @@ if (systemPrompt is { Length: > 0 })
 await using var agent = new LlmChatAgent(agentOptions, llmOptions);
 agent.TurnStarted += (room, sender) => Console.WriteLine($"[{room}] answering {sender}...");
 
+// What the server granted, against what the flags above asked for. The command line is a request:
+// for a managed agent the identity record answers, and pretending otherwise here would leave an
+// operator debugging routing against attributes this process does not actually have. Fires on
+// start and again if an admin changes the identity while this runs.
+agent.AttributesSet += granted =>
+{
+    var asRequested = granted.Locality == locality
+        && granted.Clearance == clearance
+        && granted.Skills.SequenceEqual(skills)
+        && granted.CostTier == costTier
+        && granted.WantsDelegator == Has("--delegator");
+    if (!asRequested)
+    {
+        Console.WriteLine(
+            $"Admin overrides in effect - granted: {granted.Locality}, clearance {granted.Clearance}, " +
+            $"skills [{string.Join(", ", granted.Skills)}], cost {granted.CostTier}, " +
+            $"delegator {(granted.WantsDelegator ? "pinned" : "not pinned")}.");
+    }
+};
+
 try
 {
     await agent.StartAsync(new TcpBanterTransport());
@@ -204,7 +224,7 @@ catch (Exception ex)
 }
 
 Console.WriteLine($"{user} is in {string.Join(", ", rooms)} using {model} at {endpoint}");
-Console.WriteLine($"Announced as {locality}, clearance {clearance}, skills [{string.Join(", ", skills)}].");
+Console.WriteLine($"Requested {locality}, clearance {clearance}, skills [{string.Join(", ", skills)}] - the server's answer follows if it differs.");
 if (worksTasks)
 {
     Console.WriteLine(assignedOnly

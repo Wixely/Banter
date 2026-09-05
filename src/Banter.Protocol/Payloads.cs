@@ -566,7 +566,11 @@ public sealed record AgentIdentityPayload(
     [property: Key(4)] string Clearance,
     [property: Key(5)] bool Enrolled,
     [property: Key(6)] string KeyFingerprint,
-    [property: Key(7)] bool EnrolmentPending);
+    [property: Key(7)] bool EnrolmentPending,
+    // Overrides, null when the agent's own announcement stands. Trailing optional fields, so an
+    // older peer simply does not see them.
+    [property: Key(8)] int? CostTier = null,
+    [property: Key(9)] bool? WantsDelegator = null);
 
 /// <summary>Admin → server: create an identity. Everything but the nick may be changed later.</summary>
 [MessagePackObject]
@@ -575,7 +579,9 @@ public sealed record AgentIdentityCreatePayload(
     [property: Key(1)] IReadOnlyList<string> Rooms,
     [property: Key(2)] IReadOnlyList<string> Skills,
     [property: Key(3)] string Locality,
-    [property: Key(4)] string Clearance);
+    [property: Key(4)] string Clearance,
+    [property: Key(5)] int? CostTier = null,
+    [property: Key(6)] bool? WantsDelegator = null);
 
 /// <summary>
 /// Server → admin: the identity, and the one-time code to paste into the machine that will run it.
@@ -590,14 +596,24 @@ public sealed record AgentEnrolmentCodePayload(
     [property: Key(1)] string Code,
     [property: Key(2)] long ExpiresAtUnix);
 
-/// <summary>Admin → server: change an identity. Null fields are left as they are.</summary>
+/// <summary>
+/// Admin → server: change an identity. Null fields are left as they are.
+///
+/// <para>The override fields carry their own Set flags because null already means something for
+/// them — "the agent decides" — so it cannot double as "leave alone". Set true with a null value
+/// is how an override is cleared.</para>
+/// </summary>
 [MessagePackObject]
 public sealed record AgentIdentityUpdatePayload(
     [property: Key(0)] string Nick,
     [property: Key(1)] IReadOnlyList<string>? Rooms = null,
     [property: Key(2)] IReadOnlyList<string>? Skills = null,
     [property: Key(3)] string? Locality = null,
-    [property: Key(4)] string? Clearance = null);
+    [property: Key(4)] string? Clearance = null,
+    [property: Key(5)] bool SetCostTier = false,
+    [property: Key(6)] int? CostTier = null,
+    [property: Key(7)] bool SetWantsDelegator = false,
+    [property: Key(8)] bool? WantsDelegator = null);
 
 /// <summary>Admin → server: remove an identity. Any session holding its key is dropped.</summary>
 [MessagePackObject]
