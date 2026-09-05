@@ -85,6 +85,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
     public Func<string, Task> UserRemoveAsync { get; init; } = _ => Task.CompletedTask;
 
+    /// <summary>Told when the interface scale changes, so the head can remember it.</summary>
+    public Action<float> ZoomChanged { get; init; } = _ => { };
+
+    /// <summary>The scale to start at, as the head last saved it.</summary>
+    public float InitialZoom { get; init; } = 1f;
+
     /// <summary>
     /// The system clipboard. Defaults to a no-op so the app runs headlessly; the desktop head
     /// supplies a real one.
@@ -192,6 +198,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="icon-users">
                 <div class="user-head"></div>
                 <div class="user-body"></div>
+              </div>
+            </div>
+            <div class="{{SettingsButtonClass}}" data-settings-open="1">
+              <div class="icon-settings">
+                <div class="cog-tooth cog-a"></div>
+                <div class="cog-tooth cog-b"></div>
+                <div class="cog-tooth cog-c"></div>
+                <div class="cog-ring"></div>
+                <div class="cog-hole"></div>
               </div>
             </div>
           </div>
@@ -320,6 +335,49 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           </div>
           {{{AgentsPage}}}
           {{{UsersPage}}}
+          <div class="{{SettingsPanelClass}}">
+            <div class="mgmt-backdrop" data-settings-close="1"></div>
+            <div class="mgmt-card settings-card">
+              <div class="mgmt-pane">
+                <div class="mgmt-detail-head">
+                  <div class="mgmt-list-heading">
+                    <div class="mgmt-title">Settings</div>
+                    <div class="mgmt-subtitle">How Banter looks on this machine.</div>
+                  </div>
+                  <cupri-button class="mgmt-remove settings-close">Close</cupri-button>
+                </div>
+                <div class="mgmt-fields">
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Zoom</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices wrap">
+                        <div class="{{RowClass}}" data-repeat="ZoomChoices" data-zoom="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">Scales everything, and is remembered. Ctrl and the scroll wheel do the same thing.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Over every page, including the ones that raise it: a question with the screen it
+               came from still visible behind it. -->
+          <div class="{{ConfirmClass}}">
+            <div class="confirm-backdrop" data-confirm-no="1"></div>
+            <div class="confirm-card">
+              <div class="confirm-title">{{ConfirmTitle}}</div>
+              <div class="confirm-body">{{ConfirmBody}}</div>
+              <div class="confirm-buttons">
+                <cupri-button class="confirm-cancel">Cancel</cupri-button>
+                <cupri-button class="confirm-go">{{ConfirmAction}}</cupri-button>
+              </div>
+            </div>
+          </div>
           <div class="{{ConnectClass}}">
             <div class="connect-card">
               <div class="connect-title">Banter</div>
@@ -626,6 +684,20 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .net-edge-up { left: 11px; top: 4px; width: 2px; height: 7px; }
         .net-edge-left { left: 3px; top: 14px; width: 11px; height: 2px; transform: rotate(-41deg); }
         .net-edge-right { left: 11px; top: 14px; width: 11px; height: 2px; transform: rotate(41deg); }
+
+        /* A cog: a ring with a hole, and three teeth spaced by rotation. Three rather than the
+           usual six or eight because a tooth is 4px wide here and any more becomes a smudge. */
+        .icon-settings { position: relative; width: 22px; height: 22px; }
+        .cog-ring { position: absolute; left: 4px; top: 4px; width: 14px; height: 14px;
+                    border-radius: 7px; background: #bec5cf; }
+        .cog-hole { position: absolute; left: 8px; top: 8px; width: 6px; height: 6px;
+                    border-radius: 3px; background: #1b2029; }
+        .cog-tooth { position: absolute; left: 9px; top: 0px; width: 4px; height: 22px;
+                     border-radius: 2px; background: #bec5cf; }
+        .cog-a { transform: rotate(0deg); }
+        .cog-b { transform: rotate(60deg); }
+        .cog-c { transform: rotate(120deg); }
+        .rail-button:hover .cog-hole { background: #242a34; }
 
         /* Two tracks with a knob apiece. The panel behind this button is per-agent tool GRANTS —
            a row of switches — so sliders say what it does; a spanner drawn from boxes came out
@@ -1007,6 +1079,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-hint { font-size: 10px; color: #5f6877; margin-top: 5px; }
 
         .mgmt-choices { display: flex; flex-direction: row; }
+        /* Zoom offers seven steps; on one row each would be too narrow to read. */
+        .mgmt-choices.wrap { flex-wrap: wrap; }
+        .mgmt-choice.compact { flex: 0 0 auto; width: 104px; margin-bottom: 8px; }
         .mgmt-choice { flex: 1; min-width: 0; display: flex; flex-direction: row;
                        background: #0b0e13; border: 1px solid #252b35; border-radius: 10px;
                        padding: 9px 10px; margin-right: 8px; cursor: pointer; }
@@ -1042,6 +1117,33 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                                             font-weight: bold; background: #2563eb; color: #ffffff;
                                             border: 1px solid #2563eb; border-radius: 10px;
                                             text-align: center; margin-left: 8px; }
+
+        /* Settings has no list, so its card is the width of the pane and no more. */
+        .settings-card { left: 300px; top: 140px; width: 640px; height: 320px; }
+        .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
+
+        /* ── Confirming something destructive ──────────────────────────────────────────────
+           Above the page that raised it, and deliberately small: it asks one question about one
+           named thing, and the page behind stays visible so the answer has its context. */
+        .confirm { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; }
+        .confirm.hidden { display: none; }
+        .confirm-backdrop { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                            background: #05070ac0; }
+        .confirm-card { position: absolute; left: 400px; top: 280px; width: 440px;
+                        display: flex; flex-direction: column; background: #151920;
+                        border: 1px solid #33202a; border-radius: 14px; padding: 18px; }
+        .confirm-title { font-size: 15px; font-weight: bold; color: #f3f5f7; }
+        .confirm-body { font-size: 12px; color: #98a2b0; margin-top: 8px; }
+        .confirm-buttons { display: flex; flex-direction: row; justify-content: flex-end;
+                           margin-top: 18px; }
+        .confirm-cancel { min-width: 92px; padding: 8px 16px; font-size: 12px; background: #1b2029;
+                          color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
+                          text-align: center; margin-right: 8px; }
+        /* The destructive button is the one that is coloured, and it is never the default focus:
+           the safe answer should be the one your hand is already on. */
+        .confirm-go { min-width: 132px; padding: 8px 16px; font-size: 12px; font-weight: bold;
+                      background: #b91c1c; color: #ffffff; border: 1px solid #b91c1c;
+                      border-radius: 10px; text-align: center; }
 
         /* The secret is shown exactly once, so it gets the width of the pane rather than being
            tucked into the form that produced it. */
@@ -1084,6 +1186,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public override void Configure(CupriDocument doc)
     {
         _doc = doc;
+
+        // Page zoom is the mode that reflows rather than only magnifying, which is what makes a
+        // zoomed window still use its full width instead of scrolling sideways. Enabled here so
+        // it is the behaviour by default rather than something to discover.
+        doc.PageZoomEnabled = true;
+        doc.Zoom = InitialZoom;
+        ViewModel.SetZoom(doc.Zoom);
+
+        // The wheel and the keyboard reach zoom without this page, so the page has to follow
+        // them rather than be the only thing that knows.
+        doc.ZoomChanged += zoom =>
+        {
+            ViewModel.SetZoom(zoom);
+            ZoomChanged(zoom);
+        };
 
         doc.OnClick(".send", _ => Send());
         doc.OnClick(".mic", _ => ToggleVoice());
@@ -1309,16 +1426,88 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             doc.Refresh();
         });
 
+        // Removal asks first. The button raises the question; the dialog is what acts.
         doc.OnClick(".mgmt-remove", _unused =>
         {
             if (ViewModel.Model.AgentSelected.Length > 0)
             {
-                _ = AgentRemoveAsync(ViewModel.Model.AgentSelected);
+                ViewModel.ConfirmRemoveAgent();
             }
             else if (ViewModel.Model.UserSelected.Length > 0)
             {
-                _ = UserRemoveAsync(ViewModel.Model.UserSelected);
+                ViewModel.ConfirmRemoveUser();
             }
+
+            doc.Refresh();
+        });
+
+        doc.OnClick(".confirm-go", _unused =>
+        {
+            // Taking it clears the dialog, so a second click cannot run the same removal twice.
+            if (ViewModel.TakeConfirmed() is not { } confirmed || confirmed.Subject.Length == 0)
+            {
+                doc.Refresh();
+                return;
+            }
+
+            _ = confirmed.IsAgent
+                ? AgentRemoveAsync(confirmed.Subject)
+                : UserRemoveAsync(confirmed.Subject);
+            doc.Refresh();
+        });
+
+        doc.OnClick(".confirm-cancel", _unused =>
+        {
+            ViewModel.CancelConfirm();
+            doc.Refresh();
+        });
+
+        // Clicking away from a question is not an answer to it, so it cancels.
+        doc.OnAction("data-confirm-no", _unused =>
+        {
+            ViewModel.CancelConfirm();
+            doc.Refresh();
+            return true;
+        });
+
+        // ---- Settings ----
+
+        doc.OnAction("data-settings-open", _unused =>
+        {
+            ViewModel.ShowSettingsPanel(true);
+            ViewModel.SetZoom(doc.Zoom);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-settings-close", _unused =>
+        {
+            ViewModel.ShowSettingsPanel(false);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnClick(".settings-close", _unused =>
+        {
+            ViewModel.ShowSettingsPanel(false);
+            doc.Refresh();
+        });
+
+        doc.OnAction("data-zoom", e =>
+        {
+            if (!float.TryParse(e.Value, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var zoom))
+            {
+                return false;
+            }
+
+            // Set it, then read it back: CupriFace clamps to its own bounds, and the page should
+            // show what is in force rather than what was asked for.
+            doc.Zoom = zoom;
+            ViewModel.SetZoom(doc.Zoom);
+            ZoomChanged(doc.Zoom);
+            doc.Refresh();
+            return true;
         });
 
         // Both inline actions share a class, and only one page is ever open, so which one this

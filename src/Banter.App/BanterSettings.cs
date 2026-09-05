@@ -44,6 +44,13 @@ public sealed record BanterSettings
     public bool StayInTray { get; init; }
 
     /// <summary>
+    /// Interface scale. Stored rather than derived because it is a preference about eyesight and
+    /// monitors, not about this session — someone who needs 150% needs it every time.
+    /// Clamped to CupriFace's own bounds when applied.
+    /// </summary>
+    public float Zoom { get; init; } = 1f;
+
+    /// <summary>
     /// Speech settings (PLAN §6). The API key is absent for the same reason the password is:
     /// it comes from <c>BANTER_SPEECH_KEY</c>.
     /// </summary>

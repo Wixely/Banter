@@ -492,6 +492,111 @@ public sealed partial class ChatViewModel
         return (name, Chosen(Model.UserRoleChoices) == "admin");
     }
 
+    // ── Confirming something destructive ─────────────────────────────────────────────────────
+
+    /// <summary>What the confirmation dialog is currently asking about, or none.</summary>
+    private enum PendingAct
+    {
+        None,
+        RemoveAgent,
+        RemoveUser,
+    }
+
+    private PendingAct _pendingAct = PendingAct.None;
+
+    /// <summary>
+    /// Asks before removing the selected agent. Removal is instant and total on the server — the
+    /// key stops working on the next thing the agent tries — so it is worth one deliberate step,
+    /// and the dialog names the subject rather than saying "this item".
+    /// </summary>
+    public void ConfirmRemoveAgent()
+    {
+        if (Model.AgentSelected.Length == 0)
+        {
+            return;
+        }
+
+        _pendingAct = PendingAct.RemoveAgent;
+        Model.ConfirmTitle = $"Remove {Model.AgentSelected}?";
+        Model.ConfirmBody = "Its key stops working immediately, and any session it is holding open "
+            + "ends. Enrolling it again means a new code and a new key.";
+        Model.ConfirmAction = "Remove agent";
+        Model.ConfirmClass = "confirm";
+    }
+
+    public void ConfirmRemoveUser()
+    {
+        if (Model.UserSelected.Length == 0)
+        {
+            return;
+        }
+
+        _pendingAct = PendingAct.RemoveUser;
+        Model.ConfirmTitle = $"Remove {Model.UserSelected}?";
+        Model.ConfirmBody = "Their password stops working immediately and they are signed out. "
+            + "The account cannot be restored — it would have to be created again.";
+        Model.ConfirmAction = "Remove user";
+        Model.ConfirmClass = "confirm";
+    }
+
+    public void CancelConfirm()
+    {
+        _pendingAct = PendingAct.None;
+        Model.ConfirmClass = "confirm hidden";
+    }
+
+    public bool ConfirmOpen => !Model.ConfirmClass.Contains("hidden", StringComparison.Ordinal);
+
+    /// <summary>What was confirmed, and the subject it applies to. Clears the dialog either way,
+    /// so a second click cannot run the same removal twice.</summary>
+    public (bool IsAgent, string Subject)? TakeConfirmed()
+    {
+        var act = _pendingAct;
+        var subject = act == PendingAct.RemoveAgent ? Model.AgentSelected : Model.UserSelected;
+        CancelConfirm();
+        return act switch
+        {
+            PendingAct.RemoveAgent => (true, subject),
+            PendingAct.RemoveUser => (false, subject),
+            _ => null,
+        };
+    }
+
+    // ── Settings ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The steps offered on the settings page. Presets rather than a free number because the
+    /// useful range is small and every value in it should be one the layout was looked at in.
+    /// </summary>
+    public static IReadOnlyList<float> ZoomSteps { get; } = [0.75f, 0.9f, 1f, 1.15f, 1.35f, 1.6f, 2f];
+
+    public void ShowSettingsPanel(bool show)
+    {
+        Model.SettingsPanelClass = show ? "mgmt" : "mgmt hidden";
+        if (show)
+        {
+            Model.AgentsPanelClass = "mgmt hidden";
+            Model.UsersPanelClass = "mgmt hidden";
+        }
+    }
+
+    public bool SettingsPanelOpen => !Model.SettingsPanelClass.Contains("hidden", StringComparison.Ordinal);
+
+    /// <summary>Reflects the zoom actually in force. Called after the document has been told, so
+    /// the page shows what happened rather than what was asked for.</summary>
+    public void SetZoom(float zoom)
+    {
+        Model.ZoomLabel = $"{Math.Round(zoom * 100)}%";
+        Model.ZoomChoices = [.. ZoomSteps.Select(z => new ChoiceRow
+        {
+            Value = z.ToString(global::System.Globalization.CultureInfo.InvariantCulture),
+            Label = $"{Math.Round(z * 100)}%",
+            Hint = "",
+            RowClass = Math.Abs(z - zoom) < 0.001f ? "mgmt-choice compact selected" : "mgmt-choice compact",
+            DotClass = Math.Abs(z - zoom) < 0.001f ? "mgmt-dot on" : "mgmt-dot",
+        })];
+    }
+
     // ── Choice groups ────────────────────────────────────────────────────────────────────────
 
     private static List<ChoiceRow> Choices(string selected, params (string Value, string Label, string Hint)[] options) =>

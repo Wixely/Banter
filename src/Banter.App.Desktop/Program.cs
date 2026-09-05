@@ -212,6 +212,16 @@ var app = new BanterChatApp(vm)
     UserRemoveAsync = session.RemoveUserAccountAsync,
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
     StayInTray = settings.StayInTray,
+    InitialZoom = settings.Zoom,
+
+    // Zoom is a preference about eyesight and monitors, so it is written the moment it changes
+    // rather than only when --save is passed: nobody expects to have to re-choose it.
+    ZoomChanged = zoom =>
+    {
+        var updated = settings with { Zoom = zoom };
+        updated.TrySave(settingsPath, p => Console.Error.WriteLine($"warning: {p}"));
+        settings = updated;
+    },
     FilePicker = filePicker,
     // The picker hands back a path; quoting it is what lets a chosen file have spaces in its name.
     AttachAsync = (room, path) => session.UploadAsync(room, $"\"{path}\""),

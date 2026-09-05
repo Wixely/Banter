@@ -222,6 +222,106 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
         Assert.Contains("hidden", Pane(vm, page).Detail, StringComparison.Ordinal);
     }
 
+    // ── Confirming a removal ─────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [MemberData(nameof(BothPages))]
+    public void RemovingAsksFirstAndNamesWhatItWouldRemove(string page)
+    {
+        var vm = Room();
+        var app = new BanterChatApp(vm);
+        var removed = new List<string>();
+        app = page == "agents"
+            ? new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } }
+            : new BanterChatApp(vm) { UserRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+
+        Open(vm, page);
+        Select(vm, page, Existing(page));
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+        var (rx, ry) = PointOn(doc, ".mgmt-remove");
+        doc.DispatchClick(rx, ry, 1);
+
+        // Nothing has happened yet — the button raises a question, the dialog is what acts.
+        Assert.Empty(removed);
+        Assert.True(vm.ConfirmOpen);
+        Assert.Contains(Existing(page), vm.Model.ConfirmTitle, StringComparison.Ordinal);
+        output.WriteLine($"{vm.Model.ConfirmTitle} / {vm.Model.ConfirmBody}");
+
+        doc.BuildDisplayList(Width, Height);
+        var (gx, gy) = PointOn(doc, ".confirm-go");
+        doc.DispatchClick(gx, gy, 1);
+
+        Assert.Equal(Existing(page), Assert.Single(removed));
+        Assert.False(vm.ConfirmOpen);
+    }
+
+    [Theory]
+    [MemberData(nameof(BothPages))]
+    public void SayingNoRemovesNothing(string page)
+    {
+        var vm = Room();
+        var removed = new List<string>();
+        var app = page == "agents"
+            ? new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } }
+            : new BanterChatApp(vm) { UserRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+
+        Open(vm, page);
+        Select(vm, page, Existing(page));
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+        doc.DispatchClick(PointOn(doc, ".mgmt-remove").X, PointOn(doc, ".mgmt-remove").Y, 1);
+
+        doc.BuildDisplayList(Width, Height);
+        var (cx, cy) = PointOn(doc, ".confirm-cancel");
+        doc.DispatchClick(cx, cy, 1);
+
+        Assert.Empty(removed);
+        Assert.False(vm.ConfirmOpen);
+
+        // And the subject is still selected, so saying no leaves the page as it was.
+        var selected = page == "agents" ? vm.Model.AgentSelected : vm.Model.UserSelected;
+        Assert.Equal(Existing(page), selected);
+    }
+
+    [Fact]
+    public void ClickingAwayFromTheQuestionIsNotAnAnswer()
+    {
+        var vm = Room();
+        var removed = new List<string>();
+        var app = new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+        vm.ShowAgentsPanel(true);
+        vm.SelectAdminAgent("dagger");
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+        doc.DispatchClick(PointOn(doc, ".mgmt-remove").X, PointOn(doc, ".mgmt-remove").Y, 1);
+        doc.BuildDisplayList(Width, Height);
+
+        var (bx, by) = FirstPointOn(doc, ".confirm-backdrop");
+        doc.DispatchClick(bx, by, 1);
+
+        Assert.Empty(removed);
+        Assert.False(vm.ConfirmOpen);
+    }
+
+    [Fact]
+    public void TheConfirmationCannotBeAnsweredTwice()
+    {
+        var vm = Room();
+        var removed = new List<string>();
+        var app = new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+        vm.ShowAgentsPanel(true);
+        vm.SelectAdminAgent("dagger");
+        vm.ConfirmRemoveAgent();
+
+        // Taking the answer clears it, so a double click cannot run the removal twice.
+        Assert.NotNull(vm.TakeConfirmed());
+        Assert.Null(vm.TakeConfirmed());
+    }
+
     // ── Clicking away ────────────────────────────────────────────────────────────────────────
 
     [Theory]

@@ -338,6 +338,19 @@ public sealed partial class ChatModel
     public string UsersButtonClass { get; set; } = "rail-button hidden";
     public string AgentsPanelClass { get; set; } = "mgmt hidden";
     public string UsersPanelClass { get; set; } = "mgmt hidden";
+    public string SettingsButtonClass { get; set; } = "rail-button";
+    public string SettingsPanelClass { get; set; } = "mgmt hidden";
+
+    /// <summary>Interface scale, as the settings page shows it ("100%").</summary>
+    public string ZoomLabel { get; set; } = "100%";
+    public List<ChoiceRow> ZoomChoices { get; set; } = [];
+
+    // Destructive acts ask first. One dialog serves both pages: what differs is the sentence,
+    // which is the only part that should differ.
+    public string ConfirmClass { get; set; } = "confirm hidden";
+    public string ConfirmTitle { get; set; } = "";
+    public string ConfirmBody { get; set; } = "";
+    public string ConfirmAction { get; set; } = "Remove";
 
     public List<AdminAgentRow> AdminAgents { get; set; } = [];
     public List<AdminUserRow> AdminUsers { get; set; } = [];
