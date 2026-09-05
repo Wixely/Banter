@@ -316,6 +316,7 @@ internal sealed class ClientSession(
                         Clearance = ParseClearance(create.Clearance),
                         CostTier = create.CostTier,
                         WantsDelegator = create.WantsDelegator,
+                        WorkMode = ParseWorkMode(create.WorkMode),
                     },
                     now,
                     cancellationToken).ConfigureAwait(false);
@@ -352,6 +353,7 @@ internal sealed class ClientSession(
                     update.Clearance is null ? null : ParseClearance(update.Clearance),
                     (update.SetCostTier, update.CostTier),
                     (update.SetWantsDelegator, update.WantsDelegator),
+                    (update.SetWorkMode, ParseWorkMode(update.WorkMode)),
                     cancellationToken).ConfigureAwait(false);
 
                 if (changed)
@@ -409,13 +411,18 @@ internal sealed class ClientSession(
         identity.KeyFingerprint,
         identity.EnrolmentPending,
         identity.CostTier,
-        identity.WantsDelegator);
+        identity.WantsDelegator,
+        identity.WorkMode?.ToString().ToLowerInvariant());
 
     private static AgentLocality ParseLocality(string value) =>
         Enum.TryParse<AgentLocality>(value, ignoreCase: true, out var parsed) ? parsed : AgentLocality.Local;
 
     private static DataSensitivity ParseClearance(string value) =>
         Enum.TryParse<DataSensitivity>(value, ignoreCase: true, out var parsed) ? parsed : DataSensitivity.Sensitive;
+
+    /// <summary>Null stays null — for the override fields that is a value, not an absence.</summary>
+    private static AgentWorkMode? ParseWorkMode(string? value) =>
+        Enum.TryParse<AgentWorkMode>(value, ignoreCase: true, out var parsed) ? parsed : null;
 
     /// <summary>
     /// The users page's verbs, shaped like <see cref="TryHandleIdentityAsync"/> above: admin-gated

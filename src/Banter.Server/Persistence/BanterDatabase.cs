@@ -355,5 +355,13 @@ public static class SchemaManifest
             ALTER TABLE agent_identities ADD COLUMN cost_tier INTEGER NULL;
             ALTER TABLE agent_identities ADD COLUMN wants_delegator BOOLEAN NULL;
             """),
+
+        new(9,
+            "agent-identity-work-mode",
+            // Nullable for the same reason cost_tier is: null means the agent's announced value
+            // stands. Stored as text so a mode added later reads as itself in the table rather
+            // than as a number somebody has to look up.
+            SqliteSql: "ALTER TABLE agent_identities ADD COLUMN work_mode TEXT NULL;",
+            PostgresSql: "ALTER TABLE agent_identities ADD COLUMN work_mode TEXT NULL;"),
     ];
 }

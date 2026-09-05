@@ -253,6 +253,26 @@ async Task<bool> HandleAsync(string line)
                     Print($"* '{nick}' now costs {cost}, whatever it announces");
                     break;
 
+                case ["work", var nick, "auto"]:
+                    await client.UpdateAgentAsync(nick!, clearWorkMode: true);
+                    Print($"* '{nick}' decides for itself what to do with work it cannot hand out");
+                    break;
+
+                case ["work", var nick, var mode] when mode is "only" or "both" or "alone":
+                    await client.UpdateAgentAsync(nick!, workMode: mode switch
+                    {
+                        "only" => AgentWorkMode.DelegateOnly,
+                        "alone" => AgentWorkMode.WorkWhenAlone,
+                        _ => AgentWorkMode.DelegateAndWork,
+                    });
+                    Print(mode switch
+                    {
+                        "only" => $"* '{nick}' delegates and never answers itself",
+                        "alone" => $"* '{nick}' answers only when there is nobody to hand work to",
+                        _ => $"* '{nick}' answers whatever nobody else can take",
+                    });
+                    break;
+
                 case ["delegator", var nick, "auto"]:
                     await client.UpdateAgentAsync(nick!, clearWantsDelegator: true);
                     Print($"* '{nick}' decides for itself whether it wants delegation");
@@ -269,6 +289,7 @@ async Task<bool> HandleAsync(string line)
                     Print("! /agent list | add <nick> [rooms] [skills] [local|frontier] [public|internal|sensitive]");
                     Print("!        | rooms <nick> <a,b> | skills <nick> <a,b> | clearance <nick> <level>");
                     Print("!        | cost <nick> <n|auto> | delegator <nick> <always|never|auto>");
+                    Print("!        | work <nick> <only|both|alone|auto>");
                     Print("!        | reissue <nick> | remove <nick>");
                     break;
             }

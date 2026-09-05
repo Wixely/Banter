@@ -353,7 +353,31 @@ public sealed record AgentAnnouncePayload(
     [property: Key(3)] IReadOnlyList<string> Skills,
     [property: Key(4)] string Description = "",
     [property: Key(5)] int CostTier = 1,
-    [property: Key(6)] bool WantsDelegator = false);
+    [property: Key(6)] bool WantsDelegator = false,
+    [property: Key(7)] AgentWorkMode WorkMode = AgentWorkMode.DelegateAndWork);
+
+/// <summary>
+/// What a delegator does with work nobody else can take.
+///
+/// <para>A delegator answering a request itself holds its turn gate for the length of that answer,
+/// and a delegator mid-answer cannot hand anything out. In a busy room that is how the one agent
+/// responsible for routing becomes the one agent too busy to route.</para>
+/// </summary>
+public enum AgentWorkMode
+{
+    /// <summary>Answers what nobody else can take. The room always gets a reply, and the
+    /// delegator can be tied up by one while the next request waits.</summary>
+    DelegateAndWork = 0,
+
+    /// <summary>Hands out work and does none, so it is always free to hand out the next thing.
+    /// A request no other agent can take goes unanswered, and is said to be.</summary>
+    DelegateOnly = 1,
+
+    /// <summary>Hands out work while there is anyone to hand it to, and answers only when there
+    /// is not — a room with one agent in it still works, without a delegator in a full room ever
+    /// disappearing into a long answer.</summary>
+    WorkWhenAlone = 2,
+}
 
 /// <summary>One roster entry, as the server holds it.</summary>
 [MessagePackObject]
@@ -364,7 +388,8 @@ public sealed record AgentInfoPayload(
     [property: Key(3)] IReadOnlyList<string> Skills,
     [property: Key(4)] string Description,
     [property: Key(5)] int CostTier,
-    [property: Key(6)] bool IsDelegator);
+    [property: Key(6)] bool IsDelegator,
+    [property: Key(7)] AgentWorkMode WorkMode = AgentWorkMode.DelegateAndWork);
 
 /// <summary>Server → client: the agents in a room and their attributes.</summary>
 [MessagePackObject]
@@ -570,7 +595,8 @@ public sealed record AgentIdentityPayload(
     // Overrides, null when the agent's own announcement stands. Trailing optional fields, so an
     // older peer simply does not see them.
     [property: Key(8)] int? CostTier = null,
-    [property: Key(9)] bool? WantsDelegator = null);
+    [property: Key(9)] bool? WantsDelegator = null,
+    [property: Key(10)] string? WorkMode = null);
 
 /// <summary>Admin → server: create an identity. Everything but the nick may be changed later.</summary>
 [MessagePackObject]
@@ -581,7 +607,8 @@ public sealed record AgentIdentityCreatePayload(
     [property: Key(3)] string Locality,
     [property: Key(4)] string Clearance,
     [property: Key(5)] int? CostTier = null,
-    [property: Key(6)] bool? WantsDelegator = null);
+    [property: Key(6)] bool? WantsDelegator = null,
+    [property: Key(7)] string? WorkMode = null);
 
 /// <summary>
 /// Server → admin: the identity, and the one-time code to redeem wherever the agent will run.
@@ -613,7 +640,9 @@ public sealed record AgentIdentityUpdatePayload(
     [property: Key(5)] bool SetCostTier = false,
     [property: Key(6)] int? CostTier = null,
     [property: Key(7)] bool SetWantsDelegator = false,
-    [property: Key(8)] bool? WantsDelegator = null);
+    [property: Key(8)] bool? WantsDelegator = null,
+    [property: Key(9)] bool SetWorkMode = false,
+    [property: Key(10)] string? WorkMode = null);
 
 /// <summary>Admin → server: remove an identity. Any session holding its key is dropped.</summary>
 [MessagePackObject]

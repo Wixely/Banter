@@ -39,6 +39,12 @@ public sealed record AgentIdentity
     /// </summary>
     public bool? WantsDelegator { get; init; }
 
+    /// <summary>
+    /// Admin override of what this agent does with work it cannot hand out, or null to let the
+    /// agent's own announcement stand.
+    /// </summary>
+    public AgentWorkMode? WorkMode { get; init; }
+
     /// <summary>SubjectPublicKeyInfo of the enrolled key, or null until a machine has enrolled.</summary>
     public byte[]? PublicKey { get; init; }
 
@@ -86,6 +92,7 @@ public interface IAgentIdentityStore
         AgentLocality? locality, DataSensitivity? clearance,
         (bool Set, int? Value) costTier = default,
         (bool Set, bool? Value) wantsDelegator = default,
+        (bool Set, AgentWorkMode? Value) workMode = default,
         CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(string nick, CancellationToken cancellationToken = default);

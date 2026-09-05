@@ -168,6 +168,7 @@ public sealed partial class ChatViewModel
         Model.AgentLocalityChoices = LocalityChoices("local");
         Model.AgentClearanceChoices = ClearanceChoices("sensitive");
         Model.AgentDelegatorChoices = DelegatorChoices("auto");
+        Model.AgentWorkModeChoices = WorkModeChoices("auto");
 
         Model.AgentDetailTitle = "New agent";
         Model.AgentDetailSubtitle = "Create an identity, then enrol it where the agent will run.";
@@ -210,6 +211,7 @@ public sealed partial class ChatViewModel
         Model.AgentClearanceChoices = ClearanceChoices(identity.Clearance);
         Model.AgentDelegatorChoices = DelegatorChoices(
             identity.WantsDelegator switch { true => "always", false => "never", null => "auto" });
+        Model.AgentWorkModeChoices = WorkModeChoices(identity.WorkMode ?? "auto");
         Model.AgentFingerprint = identity.Enrolled ? identity.KeyFingerprint : "not enrolled yet";
 
         Model.AgentDetailTitle = identity.Nick;
@@ -256,6 +258,9 @@ public sealed partial class ChatViewModel
     public void ChooseAgentDelegator(string value) =>
         Apply(() => Model.AgentDelegatorChoices = DelegatorChoices(value));
 
+    public void ChooseAgentWorkMode(string value) =>
+        Apply(() => Model.AgentWorkModeChoices = WorkModeChoices(value));
+
     private void Apply(Action change)
     {
         change();
@@ -291,6 +296,7 @@ public sealed partial class ChatViewModel
         Chosen(Model.AgentLocalityChoices),
         Chosen(Model.AgentClearanceChoices),
         Chosen(Model.AgentDelegatorChoices),
+        Chosen(Model.AgentWorkModeChoices),
     ]);
 
     private void MarkAgentDirty() => Model.AgentDirtyClass = "mgmt-dirty";
@@ -338,7 +344,14 @@ public sealed partial class ChatViewModel
                 _ => DataSensitivity.Sensitive,
             },
             cost,
-            Chosen(Model.AgentDelegatorChoices) switch { "always" => true, "never" => false, _ => null });
+            Chosen(Model.AgentDelegatorChoices) switch { "always" => true, "never" => false, _ => null },
+            Chosen(Model.AgentWorkModeChoices) switch
+            {
+                "delegateonly" => AgentWorkMode.DelegateOnly,
+                "workwhenalone" => AgentWorkMode.WorkWhenAlone,
+                "delegateandwork" => AgentWorkMode.DelegateAndWork,
+                _ => null,
+            });
     }
 
     // ── Users: the list ──────────────────────────────────────────────────────────────────────
@@ -628,6 +641,17 @@ public sealed partial class ChatViewModel
         ("auto", "Agent decides", "Whatever the agent asks for when it announces."),
         ("always", "Always", "Pinned as delegator wherever it is eligible."),
         ("never", "Never", "Never the configured delegator, whatever it asks."));
+
+    /// <summary>
+    /// What a delegator does with work nobody else can take. Worth an operator's attention
+    /// because answering holds the delegator's turn for the length of the answer, and a delegator
+    /// mid-answer cannot hand anything out.
+    /// </summary>
+    private static List<ChoiceRow> WorkModeChoices(string selected) => Choices(selected.ToLowerInvariant(),
+        ("auto", "Agent decides", "Whatever the agent asks for when it announces."),
+        ("delegateonly", "Delegate only", "Never answers itself, so it stays free to hand out the next thing."),
+        ("delegateandwork", "Delegate and work", "Answers what nobody else can take, and is busy while it does."),
+        ("workwhenalone", "Work when alone", "Answers only when there is no other agent to hand it to."));
 
     private static List<ChoiceRow> RoleChoices(string selected) => Choices(selected,
         ("member", "Member", "Joins rooms and talks. Cannot manage anyone."),

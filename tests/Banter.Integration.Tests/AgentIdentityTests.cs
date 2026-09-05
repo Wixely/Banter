@@ -331,6 +331,48 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
     }
 
     [Fact]
+    public async Task AnAdminSetsWhatADelegatorDoesWithWorkItCannotHandOut()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var agent = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", privateKey).WaitAsync(Patience);
+        await agent.JoinAsync("#main").WaitAsync(Patience);
+        await admin.JoinAsync("#main").WaitAsync(Patience);
+
+        // The agent asks to work whatever it cannot hand out — the default.
+        await agent.AnnounceAgentAsync(new AgentAnnouncePayload(
+            "scribe", AgentLocality.Local, DataSensitivity.Sensitive, ["chat"])).WaitAsync(Patience);
+
+        var seen = Assert.Single((await admin.GetAgentsAsync("#main").WaitAsync(Patience)).Agents);
+        Assert.Equal(AgentWorkMode.DelegateAndWork, seen.WorkMode);
+
+        // The operator decides otherwise, while it runs. A delegator that ties itself up is an
+        // operational problem, so who settles it is an operator's call rather than the agent's.
+        await admin.UpdateAgentAsync("scribe", workMode: AgentWorkMode.DelegateOnly).WaitAsync(Patience);
+
+        var deadline = DateTimeOffset.UtcNow + Patience;
+        while (true)
+        {
+            var now = Assert.Single((await admin.GetAgentsAsync("#main").WaitAsync(Patience)).Agents);
+            if (now.WorkMode == AgentWorkMode.DelegateOnly)
+            {
+                break;
+            }
+
+            Assert.True(DateTimeOffset.UtcNow < deadline, $"still {now.WorkMode} after the override");
+            await Task.Delay(50);
+        }
+
+        // Cleared, the agent's own answer stands again.
+        await admin.UpdateAgentAsync("scribe", clearWorkMode: true).WaitAsync(Patience);
+        await AwaitRosterAsync(admin, a => a.WorkMode == AgentWorkMode.DelegateAndWork,
+            "back to the announced mode after clearing");
+    }
+
+    [Fact]
     public async Task ACodeWorksOnceAndOnlyOnce()
     {
         await using var admin = await AdminAsync();

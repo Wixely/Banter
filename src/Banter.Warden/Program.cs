@@ -84,6 +84,12 @@ var clearance = (Arg("--clearance") ?? "sensitive").ToLowerInvariant() switch
 var skills = (Arg("--skills") ?? "chat").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var costTier = int.TryParse(Arg("--cost"), out var parsedCost) ? parsedCost : 1;
 var routes = Has("--route");
+var workMode = (Arg("--work-mode") ?? "delegate-and-work").ToLowerInvariant() switch
+{
+    "delegate-only" => AgentWorkMode.DelegateOnly,
+    "work-when-alone" => AgentWorkMode.WorkWhenAlone,
+    _ => AgentWorkMode.DelegateAndWork,
+};
 var noFrontier = Has("--no-frontier");
 var smartClassifier = Has("--llm-classify");
 var worksTasks = Has("--work-tasks");
@@ -114,6 +120,10 @@ if ((pass is null && keyFile is null) || model is null || Has("--help") || Has("
           --delegator           ask to be this room's delegator
           --route               when elected delegator, classify each request and hand it to
                                 the best-suited agent instead of answering everything
+          --work-mode <mode>    what to do, while delegator, with work nobody else can take:
+                                delegate-and-work (default), delegate-only, or work-when-alone.
+                                Answering holds this agent's turn until it finishes, and a
+                                delegator mid-answer cannot hand anything out.
           --no-frontier         never route anything to a frontier agent, whatever the
                                 classification says. Static policy beats the model.
           --llm-classify        use the model to classify request sensitivity instead of the
@@ -158,6 +168,7 @@ var agentOptions = new BanterAgentOptions
     Description = Arg("--description") ?? $"{model} via {endpoint}",
     CostTier = costTier,
     WantsDelegator = Has("--delegator"),
+    WorkMode = workMode,
     TaskWork = worksTasks ? new TaskWorkOptions { ClaimOpenTasks = !assignedOnly } : null,
     Routing = routes
         ? new RoutingOptions

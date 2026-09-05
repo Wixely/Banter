@@ -61,7 +61,9 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
     }
 
     /// <summary>The local delegator: routes, and is cleared for everything.</summary>
-    private BanterAgentOptions Delegator(bool allowFrontier = true, bool subRooms = false) => new()
+    private BanterAgentOptions Delegator(
+        bool allowFrontier = true, bool subRooms = false,
+        AgentWorkMode workMode = AgentWorkMode.DelegateAndWork) => new()
     {
         Server = _server.Endpoint,
         User = "local",
@@ -70,6 +72,7 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
         Locality = AgentLocality.Local,
         Clearance = DataSensitivity.Sensitive,
         Skills = ["chat", "email"],
+        WorkMode = workMode,
         Routing = new RoutingOptions { AllowFrontier = allowFrontier, SubRoomForFanOut = subRooms },
     };
 
@@ -112,6 +115,65 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
         Skills = ["github", "web", "research"],
         CostTier = 5,
     };
+
+    // ── What a delegator does with work nobody else can take (PLAN 8a) ───────────────────────
+
+    [Fact]
+    public async Task ADelegateOnlyAgentHandsWorkOutAndAnswersNothingItself()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(
+            Delegator(workMode: AgentWorkMode.DelegateOnly), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // Alone in the room and asked something only it could take. Delegate-only means it does
+        // not: answering would hold its turn, and a delegator mid-answer cannot route.
+        await human.SendMessageAsync("#main", "write me a short note about the meeting");
+
+        var refusal = await WaitForAsync(human, m => m.Sender == "local" && m.Text.Contains("hand work out"));
+        Assert.NotNull(refusal);
+
+        // And it really did not answer — the refusal is not accompanied by the answer as well.
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text == "LOCAL-ANSWERED", within: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public async Task WorkWhenAloneAnswersOnlyWithNobodyToHandItTo()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(
+            Delegator(workMode: AgentWorkMode.WorkWhenAlone), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // Alone: it answers, because a room with one agent in it still has to work.
+        await human.SendMessageAsync("#main", "write me a short note about the meeting");
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "LOCAL-ANSWERED"));
+    }
+
+    [Fact]
+    public async Task ADelegatorThatOnlyDelegatesStaysFreeWhileAWorkingOneIsBusy()
+    {
+        // The point of the whole setting. A delegator that answers holds its turn gate for the
+        // length of the answer, so the request arriving behind it waits; one that only delegates
+        // is never mid-answer and picks the second request up immediately.
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(
+            Delegator(workMode: AgentWorkMode.DelegateOnly), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var claude = new MarkerAgent(Frontier(), "FRONTIER-ANSWERED");
+        await claude.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // One it cannot hand out, immediately followed by one it can.
+        await human.SendMessageAsync("#main", "write me a short note about the meeting");
+        await human.SendMessageAsync("#main", "search github for the public issue about parsing");
+
+        // The second still gets routed: refusing the first cost it nothing.
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "FRONTIER-ANSWERED"));
+    }
 
     private static async Task<MsgPayload?> WaitForAsync(
         BanterClient client, Func<MsgPayload, bool> predicate, TimeSpan? within = null)

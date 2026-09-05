@@ -51,6 +51,12 @@ public sealed record BanterAgentOptions
     /// <summary>Lower is cheaper. A tie-break in election and routing.</summary>
     public int CostTier { get; init; } = 1;
 
+    /// <summary>
+    /// What this agent does, while delegator, with work no other agent can take. An admin can
+    /// override it on the identity, and the granted value arrives in the effective attributes.
+    /// </summary>
+    public Protocol.AgentWorkMode WorkMode { get; init; } = Protocol.AgentWorkMode.DelegateAndWork;
+
     /// <summary>Ask to be this room's delegator. Only honoured for agents that are eligible.</summary>
     public bool WantsDelegator { get; init; }
 

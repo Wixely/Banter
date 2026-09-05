@@ -582,6 +582,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 "The most sensitive material this agent may be shown."),
             Field("Delegation", ChoiceControl("AgentDelegatorChoices", "data-agent-delegator"),
                 "A pinned agent wins the election outright, so this is an operator's call."),
+            Field("While delegating", ChoiceControl("AgentWorkModeChoices", "data-agent-workmode"),
+                "Answering a request holds this agent's turn until it finishes, and a delegator "
+                + "mid-answer cannot hand anything out."),
             Field("Cost", TextControl("{{AgentFormCost}}", "agent decides"),
                 "Lower is cheaper, and only ever a tie-break. Empty lets the agent say."),
             Field("Key", ReadOnlyControl("{{AgentFingerprint}}") + "\n" +
@@ -1382,6 +1385,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-agent-delegator", e =>
         {
             ViewModel.ChooseAgentDelegator(e.Value ?? "auto");
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-agent-workmode", e =>
+        {
+            ViewModel.ChooseAgentWorkMode(e.Value ?? "auto");
             doc.Refresh();
             return true;
         });

@@ -17,7 +17,8 @@ public sealed record AgentCandidate(
     IReadOnlyList<string> Skills,
     int CostTier,
     long JoinSequence,
-    bool ConfiguredDelegator = false);
+    bool ConfiguredDelegator = false,
+    AgentWorkMode WorkMode = AgentWorkMode.DelegateAndWork);
 
 /// <summary>Who won, and why — the reason is announced into the room.</summary>
 public sealed record ElectionResult(string? Nick, string Reason);

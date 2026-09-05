@@ -428,7 +428,7 @@ internal sealed class RoomEngine(
     }
 
     private static AgentCandidate ToCandidate(AgentAnnouncePayload a, long joinSequence) =>
-        new(a.Nick, a.Locality, a.Clearance, a.Skills, a.CostTier, joinSequence, a.WantsDelegator);
+        new(a.Nick, a.Locality, a.Clearance, a.Skills, a.CostTier, joinSequence, a.WantsDelegator, a.WorkMode);
 
     /// <summary>
     /// Re-run the election and, if the outcome changed, announce it. Announcing only on change is
@@ -512,6 +512,7 @@ internal sealed class RoomEngine(
             Skills = identity.Skills.Count > 0 ? identity.Skills : announced.Skills,
             CostTier = identity.CostTier ?? announced.CostTier,
             WantsDelegator = identity.WantsDelegator ?? announced.WantsDelegator,
+            WorkMode = identity.WorkMode ?? announced.WorkMode,
         };
     }
 
@@ -565,7 +566,8 @@ internal sealed class RoomEngine(
                 room.Agents.Values
                     .Select(a => new AgentInfoPayload(
                         a.Nick, a.Locality, a.Clearance, a.Skills, "", a.CostTier,
-                        string.Equals(a.Nick, room.Delegator, StringComparison.OrdinalIgnoreCase)))
+                        string.Equals(a.Nick, room.Delegator, StringComparison.OrdinalIgnoreCase),
+                        a.WorkMode))
                     .ToArray()),
             replyTo: envelope.MsgId);
     }

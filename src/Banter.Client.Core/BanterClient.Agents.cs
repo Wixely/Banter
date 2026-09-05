@@ -25,13 +25,14 @@ public sealed partial class BanterClient
         DataSensitivity clearance = DataSensitivity.Sensitive,
         int? costTier = null,
         bool? wantsDelegator = null,
+        AgentWorkMode? workMode = null,
         CancellationToken cancellationToken = default) =>
         RequestAsync<AgentEnrolmentCodePayload>(
             new AgentIdentityCreatePayload(
                 nick, rooms, skills,
                 locality.ToString().ToLowerInvariant(),
                 clearance.ToString().ToLowerInvariant(),
-                costTier, wantsDelegator),
+                costTier, wantsDelegator, workMode?.ToString()),
             cancellationToken);
 
     /// <summary>
@@ -51,6 +52,8 @@ public sealed partial class BanterClient
         bool clearCostTier = false,
         bool? wantsDelegator = null,
         bool clearWantsDelegator = false,
+        AgentWorkMode? workMode = null,
+        bool clearWorkMode = false,
         CancellationToken cancellationToken = default) =>
         RequestAsync<OkPayload>(
             new AgentIdentityUpdatePayload(
@@ -60,7 +63,9 @@ public sealed partial class BanterClient
                 SetCostTier: costTier is not null || clearCostTier,
                 CostTier: clearCostTier ? null : costTier,
                 SetWantsDelegator: wantsDelegator is not null || clearWantsDelegator,
-                WantsDelegator: clearWantsDelegator ? null : wantsDelegator),
+                WantsDelegator: clearWantsDelegator ? null : wantsDelegator,
+                SetWorkMode: workMode is not null || clearWorkMode,
+                WorkMode: clearWorkMode ? null : workMode?.ToString()),
             cancellationToken);
 
     /// <summary>Removes an agent. Its key stops working on the next thing it tries.</summary>

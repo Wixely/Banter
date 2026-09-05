@@ -74,7 +74,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         await _client.AnnounceAgentAsync(
             new AgentAnnouncePayload(
                 Options.User, Options.Locality, Options.Clearance, Options.Skills,
-                Options.Description, Options.CostTier, Options.WantsDelegator),
+                Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode),
             cancellationToken).ConfigureAwait(false);
 
         // Before joining anything, so the first message in a room can already use tools.
@@ -170,6 +170,13 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
     /// <summary>Raised with the granted attributes — on start, and again on live admin changes.</summary>
     public event Action<AgentAnnouncePayload>? AttributesSet;
+
+    /// <summary>
+    /// The work mode actually in force: what the server granted if it has said, and what this
+    /// agent asked for until then. Read rather than cached, so an admin changing it mid-session
+    /// takes effect on the next request rather than the next restart.
+    /// </summary>
+    private AgentWorkMode EffectiveWorkMode => EffectiveAttributes?.WorkMode ?? Options.WorkMode;
 
     private void OnAttributesSet(AgentAnnouncePayload effective)
     {
@@ -477,14 +484,36 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
         if (!decision.HasRecipients)
         {
-            // Nobody better than us: answer it ourselves. Reporting why keeps a silent fallback
-            // from looking like the routing simply did not run.
-            if (routing.ExplainDecisions)
+            // Nobody else can take it. Whether we answer it ourselves is the whole of the work
+            // mode, and it matters because answering holds this agent's turn gate for the length
+            // of the answer — and a delegator mid-answer cannot hand anything out. That is how
+            // the one agent responsible for routing becomes the one agent too busy to route.
+            var alone = roster.Count(a => !string.Equals(a.Nick, Nick, StringComparison.OrdinalIgnoreCase)) == 0;
+            var takeIt = EffectiveWorkMode switch
             {
-                await SayAsync(m.Room, $"({decision.Reason}; handling this myself)").ConfigureAwait(false);
+                AgentWorkMode.DelegateOnly => false,
+                AgentWorkMode.WorkWhenAlone => alone,
+                _ => true,
+            };
+
+            if (takeIt)
+            {
+                // Reporting why keeps a silent fallback from looking like routing did not run.
+                if (routing.ExplainDecisions)
+                {
+                    await SayAsync(m.Room, $"({decision.Reason}; handling this myself)").ConfigureAwait(false);
+                }
+
+                return false;
             }
 
-            return false;
+            // Refusing silently would read as the room being broken, so it says so. Handled as
+            // far as this agent is concerned: it stays free for the next thing to hand out.
+            await SayAsync(
+                m.Room,
+                $"({decision.Reason}; I hand work out rather than do it, so this one needs an agent that can take it.)")
+                .ConfigureAwait(false);
+            return true;
         }
 
         // Data leaving our systems is the most consequential thing this room does, so it is

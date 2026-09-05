@@ -161,7 +161,8 @@ public sealed record AgentForm(
     AgentLocality Locality,
     DataSensitivity Clearance,
     int? CostTier,
-    bool? WantsDelegator);
+    bool? WantsDelegator,
+    AgentWorkMode? WorkMode);
 
 /// <summary>One agent identity on the agents page.</summary>
 [CupriBindable]
@@ -385,6 +386,7 @@ public sealed partial class ChatModel
     public List<ChoiceRow> AgentLocalityChoices { get; set; } = [];
     public List<ChoiceRow> AgentClearanceChoices { get; set; } = [];
     public List<ChoiceRow> AgentDelegatorChoices { get; set; } = [];
+    public List<ChoiceRow> AgentWorkModeChoices { get; set; } = [];
 
     // Users detail pane.
     public string UserSelected { get; set; } = "";
