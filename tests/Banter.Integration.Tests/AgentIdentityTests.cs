@@ -119,6 +119,79 @@ public sealed class AgentIdentityTests(ITestOutputHelper output) : IAsyncLifetim
     }
 
     [Fact]
+    public async Task AnAgentsAnnouncementCannotOutrankItsIdentity()
+    {
+        await using var admin = await AdminAsync();
+
+        // The admin's word: local, sensitive, note-taking.
+        var code = await CreateAsync(admin, "scribe", locality: "local", clearance: "sensitive");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var agent = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", privateKey)
+            .WaitAsync(Patience);
+        await agent.JoinAsync("#main").WaitAsync(Patience);
+        await admin.JoinAsync("#main").WaitAsync(Patience);
+
+        // The agent's word: frontier, public — a compromised or misconfigured agent talking
+        // itself DOWN the trust ladder here, but the same clamp stops talking itself up.
+        await agent.AnnounceAgentAsync(new AgentAnnouncePayload(
+            "scribe", AgentLocality.Frontier, DataSensitivity.Public, ["exfiltration"],
+            WantsDelegator: true)).WaitAsync(Patience);
+
+        var roster = await admin.GetAgentsAsync("#main").WaitAsync(Patience);
+        var seen = Assert.Single(roster.Agents, a => a.Nick == "scribe");
+        output.WriteLine($"announced frontier/public, room sees {seen.Locality}/{seen.Clearance} [{string.Join(",", seen.Skills)}]");
+
+        // The room believes the identity record, not the machine.
+        Assert.Equal(AgentLocality.Local, seen.Locality);
+        Assert.Equal(DataSensitivity.Sensitive, seen.Clearance);
+        Assert.Equal(["chat"], seen.Skills);
+
+        // And because the clamped agent is genuinely local, it is electable delegator —
+        // the announced "frontier" would have made it ineligible in a sensitive room.
+        Assert.True(seen.IsDelegator);
+    }
+
+    [Fact]
+    public async Task AnAdminsEditBindsTheLiveAgentWithoutAReconnect()
+    {
+        await using var admin = await AdminAsync();
+        var code = await CreateAsync(admin, "scribe");
+        var (_, privateKey) = await AgentEnrolment.EnrolAsync(_transport, _server.Endpoint, code).WaitAsync(Patience);
+
+        await using var agent = await BanterClient
+            .ConnectWithKeyAsync(_transport, _server.Endpoint, "scribe", privateKey)
+            .WaitAsync(Patience);
+        await agent.JoinAsync("#main").WaitAsync(Patience);
+        await admin.JoinAsync("#main").WaitAsync(Patience);
+        await agent.AnnounceAgentAsync(new AgentAnnouncePayload(
+            "scribe", AgentLocality.Local, DataSensitivity.Sensitive, ["chat"])).WaitAsync(Patience);
+
+        // The agents page demotes it to frontier while it runs. "After it happens to reconnect"
+        // is not a policy anyone chose, so the change must show on the roster without one.
+        await admin.UpdateAgentAsync("scribe", locality: AgentLocality.Frontier, skills: ["web"]).WaitAsync(Patience);
+
+        var deadline = DateTimeOffset.UtcNow + Patience;
+        while (true)
+        {
+            var roster = await admin.GetAgentsAsync("#main").WaitAsync(Patience);
+            var seen = Assert.Single(roster.Agents, a => a.Nick == "scribe");
+            if (seen.Locality == AgentLocality.Frontier && seen.Skills.SequenceEqual(["web"]))
+            {
+                break;
+            }
+
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                Assert.Fail($"still {seen.Locality} [{string.Join(",", seen.Skills)}] after the identity changed");
+            }
+
+            await Task.Delay(50);
+        }
+    }
+
+    [Fact]
     public async Task ACodeWorksOnceAndOnlyOnce()
     {
         await using var admin = await AdminAsync();

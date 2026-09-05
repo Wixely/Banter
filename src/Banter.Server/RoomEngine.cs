@@ -16,7 +16,8 @@ internal sealed class RoomEngine(
     AgentGuardrails? guardrails = null,
     TaskStore? tasks = null,
     TaskLimits? taskLimits = null,
-    Tools.IToolBroker? tools = null)
+    Tools.IToolBroker? tools = null,
+    IAgentIdentityStore? identities = null)
 {
     private readonly AgentGuardrails _guardrails = guardrails ?? AgentGuardrails.Default;
     private readonly TaskStore? _tasks = tasks;
@@ -465,7 +466,7 @@ internal sealed class RoomEngine(
 
         // The announcement is always attributed to the authenticated nick, never to whatever the
         // payload claims — otherwise an agent could announce on another's behalf.
-        var owned = announce with { Nick = session.Nick };
+        var owned = await ClampToIdentityAsync(announce with { Nick = session.Nick }).ConfigureAwait(false);
         session.Announcement = owned;
 
         foreach (var room in _rooms.Values.Where(r => r.Members.Contains(session)))
@@ -479,6 +480,60 @@ internal sealed class RoomEngine(
 
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
+
+    /// <summary>
+    /// The announcement is a request; the identity is the answer. Locality, clearance and skills
+    /// decide what an agent may see and be handed, so for an agent the admin manages they come
+    /// from the identity record — what the agent announced is a default that stands only where no
+    /// identity exists (legacy password agents) or where the record has nothing to say. The agent
+    /// keeps CostTier and WantsDelegator: preferences, not permissions, and the identity does not
+    /// store them.
+    /// </summary>
+    private async ValueTask<AgentAnnouncePayload> ClampToIdentityAsync(AgentAnnouncePayload announced)
+    {
+        if (identities is null
+            || await identities.FindAsync(announced.Nick).ConfigureAwait(false) is not { } identity)
+        {
+            return announced;
+        }
+
+        return announced with
+        {
+            Locality = identity.Locality,
+            Clearance = identity.Clearance,
+            Skills = identity.Skills.Count > 0 ? identity.Skills : announced.Skills,
+        };
+    }
+
+    /// <summary>
+    /// Re-applies an identity's attributes to any session already announced under it, and
+    /// re-elects where it matters — so an admin's change on the agents page takes effect on the
+    /// live agent now, not on whenever it next happens to reconnect.
+    /// </summary>
+    public ValueTask ReapplyIdentityAsync(string nick) =>
+        _commands.Writer.WriteAsync(async () =>
+        {
+            foreach (var session in SessionsFor(nick))
+            {
+                if (session.Announcement is not { } announced)
+                {
+                    continue;
+                }
+
+                var owned = await ClampToIdentityAsync(announced).ConfigureAwait(false);
+                session.Announcement = owned;
+
+                foreach (var room in _rooms.Values.Where(r => r.Members.Contains(session)))
+                {
+                    if (room.Agents.TryGetValue(nick, out var current))
+                    {
+                        room.Agents[nick] = ToCandidate(owned, current.JoinSequence);
+                    }
+
+                    await ReelectAsync(room).ConfigureAwait(false);
+                }
+            }
+        });
 
     private void HandleAgentList(ClientSession session, BanterEnvelope envelope, AgentListPayload request)
     {

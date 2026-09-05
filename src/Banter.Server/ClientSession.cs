@@ -346,6 +346,11 @@ internal sealed class ClientSession(
                 if (changed)
                 {
                     Send(new OkPayload(), replyTo: envelope.MsgId);
+
+                    // The change binds the live agent now, not at its next reconnect — locality
+                    // and clearance decide what it may see, and "after it happens to reconnect"
+                    // is not a policy anyone chose.
+                    await engine.ReapplyIdentityAsync(update.Nick).ConfigureAwait(false);
                 }
                 else
                 {
