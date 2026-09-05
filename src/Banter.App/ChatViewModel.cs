@@ -211,9 +211,9 @@ public sealed partial class ChatViewModel
             Time = FormatTime(timestamp),
             // An egress announcement is the one message in a room that must never be skimmed
             // past, so it is styled apart from ordinary agent chatter.
-            RowClass = text.StartsWith("[egress]", StringComparison.Ordinal)
+            RowClass = WithPresence(room, sender, text.StartsWith("[egress]", StringComparison.Ordinal)
                 ? "line egress"
-                : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass,
+                : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass),
             FileId = fileId,
             // Metadata arrives on a separate round-trip, so show the row immediately with a
             // placeholder rather than withholding it until the name and size are known.
@@ -251,6 +251,63 @@ public sealed partial class ChatViewModel
     }
 
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
+
+    // ── Who is still here ────────────────────────────────────────────────────────────────────
+    //
+    // A room's backlog outlives the people in it. Reading one where half the names left an hour
+    // ago is misleading in a way that matters here: the reply you are waiting for may be from
+    // somebody who is no longer in the room to give it.
+
+    private readonly Dictionary<string, HashSet<string>> _presentAgents = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _presentUsers = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether the roster for this room has been read at all. Until it has, nobody is marked
+    /// absent — history loads before the roster does, and a timeline that greys every name for a
+    /// moment on entering a room looks broken rather than informative.
+    /// </summary>
+    private bool KnowsWhoIsHere(string room) => _presentUsers.ContainsKey(room);
+
+    private bool IsHere(string room, string nick) =>
+        (_presentUsers.TryGetValue(room, out var users) && users.Contains(nick))
+        || (_presentAgents.TryGetValue(room, out var agents) && agents.Contains(nick));
+
+    /// <summary>
+    /// Adds <c>away</c> to a row's classes when its author has left. System lines have no author
+    /// and your own messages are yours whether or not the room still lists you, so neither is ever
+    /// marked.
+    /// </summary>
+    private string WithPresence(string room, string sender, string rowClass)
+    {
+        var bare = rowClass.Replace(" away", "");
+        if (bare.Contains("system", StringComparison.Ordinal)
+            || string.Equals(sender, Model.Nick, StringComparison.OrdinalIgnoreCase)
+            || !KnowsWhoIsHere(room)
+            || IsHere(room, sender))
+        {
+            return bare;
+        }
+
+        return bare + " away";
+    }
+
+    /// <summary>
+    /// Re-marks a room's backlog after the roster changes. Someone leaving has to grey what they
+    /// already said, not just stop new messages from being marked — which is the whole difference
+    /// between "who is here" and "who was here when this arrived".
+    /// </summary>
+    private void RefreshPresence(string room)
+    {
+        if (!_rooms.TryGetValue(room, out var backlog))
+        {
+            return;
+        }
+
+        foreach (var row in backlog)
+        {
+            row.RowClass = WithPresence(room, row.Sender, row.RowClass);
+        }
+    }
 
     /// <summary>
     /// Show a downloaded image inline. Applies to every room, since the same file can be granted
@@ -551,6 +608,8 @@ public sealed partial class ChatViewModel
         }).ToList();
 
         _agents[room] = rows;
+        _presentAgents[room] = [.. rows.Select(r => r.Nick)];
+        RefreshPresence(room);
         if (room == Model.ActiveRoom)
         {
             ShowAgentsFor(room);
@@ -572,6 +631,10 @@ public sealed partial class ChatViewModel
             RowClass = "member",
         })];
 
+        // Recorded even when empty: an empty roster is still an answer about who is here, and it
+        // is what makes KnowsWhoIsHere true for this room.
+        _presentUsers[room] = [.. _users[room].Select(r => r.Nick)];
+        RefreshPresence(room);
         if (room == Model.ActiveRoom)
         {
             ShowUsersFor(room);

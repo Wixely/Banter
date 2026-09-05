@@ -243,6 +243,12 @@ public sealed partial class ChatViewModel
         Model.AgentDetailClass = "mgmt-detail hidden";
         Model.AgentEmptyClass = "mgmt-empty";
         Model.AgentDirtyClass = "mgmt-dirty hidden";
+
+        // The head is always on screen now, so it must not keep announcing whatever was last
+        // selected. Only the close control is left when nothing is.
+        Model.AgentDetailTitle = "";
+        Model.AgentDetailSubtitle = "";
+        Model.AgentRemoveClass = "mgmt-remove hidden";
     }
 
     public bool AgentIsNew => _agentMode == DetailMode.New;
@@ -458,6 +464,12 @@ public sealed partial class ChatViewModel
         Model.UserDetailClass = "mgmt-detail hidden";
         Model.UserEmptyClass = "mgmt-empty";
         Model.UserDirtyClass = "mgmt-dirty hidden";
+
+        // The head is always on screen now, so it must not keep announcing whatever was last
+        // selected. Only the close control is left when nothing is.
+        Model.UserDetailTitle = "";
+        Model.UserDetailSubtitle = "";
+        Model.UserRemoveClass = "mgmt-remove hidden";
     }
 
     public bool UserIsNew => _userMode == DetailMode.New;

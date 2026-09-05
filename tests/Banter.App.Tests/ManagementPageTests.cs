@@ -349,6 +349,48 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
         Assert.False(page == "agents" ? vm.AgentsPanelOpen : vm.UsersPanelOpen);
     }
 
+    [Theory]
+    [MemberData(nameof(BothPages))]
+    public void TheXClosesThePageAndIsThereWithNothingSelected(string page)
+    {
+        var vm = Room();
+        var app = new BanterChatApp(vm);
+        Open(vm, page);
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+
+        // Present before anything is chosen: clicking away closes too, but a page with no visible
+        // way out asks you to already know that.
+        var (x, y) = PointOn(doc, ".mgmt-x");
+        doc.DispatchClick(x, y, 1);
+
+        Assert.False(page == "agents" ? vm.AgentsPanelOpen : vm.UsersPanelOpen);
+    }
+
+    [Theory]
+    [MemberData(nameof(BothPages))]
+    public void ClosingLeavesNothingAnnouncedBehindIt(string page)
+    {
+        var vm = Room();
+        Open(vm, page);
+        Select(vm, page, Existing(page));
+        Assert.Equal(Existing(page), Pane(vm, page).Title);
+
+        // The head is always on screen now, so it must not keep naming whatever was last chosen.
+        if (page == "agents")
+        {
+            vm.ClearAgentDetail();
+        }
+        else
+        {
+            vm.ClearUserDetail();
+        }
+
+        Assert.Equal("", Pane(vm, page).Title);
+        Assert.Contains("hidden", Pane(vm, page).Remove, StringComparison.Ordinal);
+    }
+
     // ── Shared shape ─────────────────────────────────────────────────────────────────────────
 
     [Theory]

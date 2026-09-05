@@ -248,7 +248,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <div class="{{RowClass}}" data-repeat="Messages" data-msg="{{Id}}">
                   <span class="pfp">{{Initials}}</span>
                   <span class="msg-main">
-                    <span class="msg-head"><span class="sender">{{Sender}}</span><span class="time">{{Time}}</span><span class="edited">{{EditedMark}}</span></span>
+                    <span class="msg-head"><span class="sender">{{Sender}}</span><span class="sender-away">left the room</span><span class="time">{{Time}}</span><span class="edited">{{EditedMark}}</span></span>
                     <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
                   </span>
                 </div>
@@ -453,15 +453,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                     </div>
                   </div>
                   <div class="mgmt-pane">
+                    <!-- The head is outside the detail so the close control exists even with
+                         nothing selected. Clicking away closes too, but a page with no visible
+                         way out asks you to already know that. -->
+                    <div class="mgmt-detail-head">
+                      <div class="mgmt-list-heading">
+                        <div class="mgmt-title">{{{detailTitle}}}</div>
+                        <div class="mgmt-subtitle">{{{detailSubtitle}}}</div>
+                      </div>
+                      <cupri-button class="{{{removeClass}}}">{{{removeLabel}}}</cupri-button>
+                      <div class="mgmt-x" {{{closeAction}}}="1">
+                        <div class="x-bar x-a"></div>
+                        <div class="x-bar x-b"></div>
+                      </div>
+                    </div>
                     <div class="{{{emptyClass}}}">{{{emptyText}}}</div>
                     <div class="{{{detailClass}}}">
-                      <div class="mgmt-detail-head">
-                        <div class="mgmt-list-heading">
-                          <div class="mgmt-title">{{{detailTitle}}}</div>
-                          <div class="mgmt-subtitle">{{{detailSubtitle}}}</div>
-                        </div>
-                        <cupri-button class="{{{removeClass}}}">{{{removeLabel}}}</cupri-button>
-                      </div>
                       <div class="{{AdminCodeClass}}">
                         <div class="mgmt-secret-note">{{AdminCodeFor}}</div>
                         <div class="mgmt-secret-row">
@@ -783,6 +790,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .msg-main { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-left: 10px; }
         .msg-head { display: flex; flex-direction: row; align-items: center; }
         .sender { color: #f8fafc; font-size: 12px; font-weight: bold; }
+        /* Said in words as well as in colour: a grey name is a guess, and colour alone is no use
+           to a reader who cannot tell these two greys apart. */
+        .sender-away { display: none; font-size: 9px; color: #6b7482; padding-left: 6px; }
         .time { color: #596474; font-size: 9px; padding-left: 8px; }
         .text { display: flex; flex-direction: column; }
         /* pre-wrap is load-bearing: messages carry hard newlines (agent replies are mostly
@@ -795,6 +805,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .body { white-space: pre-wrap; font-size: 13px; color: #c8ced7; margin-top: 2px; }
         .line.own .sender { color: #34d399; }
         /* No author, so no avatar: the line sits where the text would start instead. */
+        /* Somebody who has left the room. The words stay exactly as legible - history is still
+           history - and it is the AUTHOR that is marked, because what changed is not what was
+           said but whether saying anything back will reach them. */
+        .line.away .pfp { background: #14171c; border: 1px solid #2b323c; color: #5d6674; }
+        .line.away .sender { color: #6b7482; }
+        .line.away .sender-away { display: inline; }
+
         .line.system { color: #748094; font-style: italic; padding-left: 64px; }
         .line.system .sender { color: #8d97a6; }
         .line.system .pfp { display: none; }
@@ -1063,6 +1080,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-remove { padding: 7px 14px; font-size: 12px; background: #2a1618; color: #fca5a5;
                        border: 1px solid #4c1d1d; border-radius: 10px; text-align: center; }
         .mgmt-remove.hidden { display: none; }
+
+        /* Drawn from two bars rather than set as a glyph, for the reason the rail icons are: no
+           face is embedded, so a multiplication sign is whatever the host machine happens to have. */
+        .mgmt-x { position: relative; width: 30px; height: 30px; border-radius: 9px;
+                  background: #1b2029; margin-left: 10px; cursor: pointer; }
+        .mgmt-x:hover { background: #2a323e; }
+        .x-bar { position: absolute; left: 7px; top: 14px; width: 16px; height: 2px;
+                 border-radius: 1px; background: #bec5cf; }
+        .x-a { transform: rotate(45deg); }
+        .x-b { transform: rotate(-45deg); }
 
         .mgmt-fields { flex: 1; min-width: 0; overflow: scroll; padding-top: 14px; }
         .mgmt-field { display: flex; flex-direction: row; margin-bottom: 16px; }
