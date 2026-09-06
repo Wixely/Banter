@@ -171,6 +171,63 @@ public sealed class WorkPageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ThePageKeepsItselfCurrentRatherThanOfferingARefreshButton()
+    {
+        var vm = Room();
+        var loads = 0;
+        var app = new BanterChatApp(vm)
+        {
+            WorkListAsync = () => { loads++; return System.Threading.Tasks.Task.CompletedTask; },
+        };
+
+        using var doc = app.CreateDocument();
+        doc.Refresh();
+        doc.BuildDisplayList(Width, Height);
+
+        // Closed: the pump ticks and nothing is asked for.
+        app.Present(Width, Height);
+        app.Present(Width, Height);
+        Assert.Equal(0, loads);
+
+        // Open: read once immediately, and not again on the very next frame — the pump runs at
+        // 20 Hz and a board re-read every 50 ms would be a load, not a live view.
+        vm.ShowWorkPanel(true);
+        app.Present(Width, Height);
+        Assert.Equal(1, loads);
+
+        app.Present(Width, Height);
+        app.Present(Width, Height);
+        Assert.Equal(1, loads);
+
+        // Closing stops it, and reopening reads straight away rather than waiting out an
+        // interval that elapsed while the page was shut.
+        vm.ShowWorkPanel(false);
+        app.Present(Width, Height);
+        Assert.Equal(1, loads);
+
+        vm.ShowWorkPanel(true);
+        app.Present(Width, Height);
+        Assert.Equal(2, loads);
+    }
+
+    [Fact]
+    public void ARefreshKeepsTheOpenDetailUpToDate()
+    {
+        var vm = Room();
+        vm.SetTasks([Job("a", state: TaskState.Open)]);
+        vm.SelectTask("a");
+        Assert.Equal("waiting for an agent", vm.Model.TaskState);
+
+        // Somebody claimed it while the pane was open. A lease counting down behind a pane still
+        // showing the old number is the one thing this page exists to get right.
+        vm.SetTasks([Job("a", state: TaskState.Claimed, assignee: "scribe", lease: Now + 60_000)]);
+
+        Assert.Equal("claimed", vm.Model.TaskState);
+        Assert.Equal("scribe", vm.Model.TaskAssignee);
+        Assert.Contains("held for another", vm.Model.TaskLease, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ThePageIsReadOnly()
     {
         var vm = Room();
@@ -183,9 +240,11 @@ public sealed class WorkPageTests(ITestOutputHelper output)
         doc.BuildDisplayList(Width, Height);
 
         // Handing work out is the delegator's job; a page that let an admin claim on an agent's
-        // behalf would be a second way to decide the same thing.
+        // behalf would be a second way to decide the same thing. And nothing to create either,
+        // so the button that would say so is not there.
         Assert.False(Paints(doc, ".mgmt-save-task"));
         Assert.False(Paints(doc, ".mgmt-remove"));
+        Assert.False(Paints(doc, ".mgmt-new"));
     }
 
     private static bool Paints(CupriDocument doc, string selector)

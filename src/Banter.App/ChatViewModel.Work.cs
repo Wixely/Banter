@@ -72,10 +72,12 @@ public sealed partial class ChatViewModel
 
         Model.TaskScopeChoices = ScopeChoices(IncludeFinished ? "all" : "live");
 
-        if (Model.TaskSelected.Length > 0
-            && !_taskListing.Any(t => string.Equals(t.TaskId, Model.TaskSelected, StringComparison.Ordinal)))
+        // The page refreshes itself, so the open detail has to move with it: a lease counting
+        // down behind a pane that still shows the old number is the one thing this page exists to
+        // get right. Re-selecting also drops the pane when the task has gone.
+        if (Model.TaskSelected.Length > 0)
         {
-            ClearTaskDetail();
+            SelectTask(Model.TaskSelected);
         }
     }
 

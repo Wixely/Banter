@@ -519,7 +519,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         string cancelClass,
         string saveClass,
         string saveLabel,
-        string footerClass = "mgmt-footer") => $$$"""
+        string footerClass = "mgmt-footer",
+        string newClass = "mgmt-new") => $$$"""
               <div class="{{{panelClass}}}">
                 <!-- The backdrop is a sibling BEFORE the card, so the card paints over it and
                      takes the hit. A click that reaches the backdrop is therefore a click that
@@ -532,7 +533,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         <div class="mgmt-title">{{{listTitle}}}</div>
                         <div class="mgmt-subtitle">{{{listSubtitle}}}</div>
                       </div>
-                      <cupri-button class="mgmt-new" {{{newAction}}}="1">{{{newLabel}}}</cupri-button>
+                      <cupri-button class="{{{newClass}}}" {{{newAction}}}="1">{{{newLabel}}}</cupri-button>
                     </div>
                     <div class="mgmt-status">{{{status}}}</div>
                     <div class="mgmt-rows">
@@ -707,8 +708,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         closeAction: "data-work-close",
         listTitle: "Work",
         listSubtitle: "Every room's tasks.",
-        newLabel: "Refresh",
-        newAction: "data-work-refresh",
+        // Nothing to create here, and nothing to refresh by hand: the page keeps itself current
+        // while it is open, so a button asking you to do that would only ever be a button asking
+        // you to doubt what is on screen.
+        newLabel: "",
+        newAction: "data-work-none",
         status: "{{WorkStatus}}",
         rowsBinding: "AdminTasks",
         rowAction: "data-admin-task",
@@ -741,6 +745,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         cancelClass: "mgmt-cancel-task",
         saveClass: "mgmt-save-task hidden",
         saveLabel: "",
+        newClass: "mgmt-new hidden",
         // Nothing to save and nothing to cancel: a footer holding one dead button is worse than
         // no footer. The X and clicking away are how this page is left.
         footerClass: "mgmt-footer hidden");
@@ -1207,11 +1212,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-list-heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
         .mgmt-title { font-size: 17px; font-weight: bold; color: #f3f5f7; }
         .mgmt-subtitle { font-size: 11px; color: #6b7482; margin-top: 2px; }
+        .mgmt-new.hidden { display: none; }
         .mgmt-new { padding: 8px 14px; font-size: 12px; font-weight: bold; background: #2563eb;
                     color: #ffffff; border: 1px solid #2563eb; border-radius: 10px;
                     text-align: center; }
         .mgmt-status { font-size: 10px; color: #5f6877; padding: 12px 2px 6px 2px; }
-        .mgmt-rows { flex: 1; min-width: 0; overflow: scroll; }
+        .mgmt-rows { flex: 1; min-width: 0; overflow: scroll; padding-right: 10px; }
 
         .mgmt-row { padding: 8px; border-radius: 10px; margin-bottom: 6px; background: #131820;
                     border: 1px solid #131820; cursor: pointer; }
@@ -1257,7 +1263,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .x-a { transform: rotate(45deg); }
         .x-b { transform: rotate(-45deg); }
 
-        .mgmt-fields { flex: 1; min-width: 0; overflow: scroll; padding-top: 14px; }
+        /* The right padding is the scrollbar's lane. Without it a field's border runs under the
+           bar and the two are drawn on top of each other, which reads as a rendering fault
+           rather than as a scrollable list. */
+        .mgmt-fields { flex: 1; min-width: 0; overflow: scroll; padding-top: 14px;
+                       padding-right: 16px; }
         .mgmt-field { display: flex; flex-direction: row; margin-bottom: 16px; }
         .mgmt-field.hidden { display: none; }
         .mgmt-label { width: 116px; font-size: 12px; font-weight: bold; color: #aab3c0;
@@ -1332,7 +1342,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            than pushing the rest of the page off the bottom. Its own class rather than a modifier
            on .mgmt-rows: that rule carries flex:1, which in a column with no height of its own
            collapsed the list to nothing, and a compound selector did not reliably outrank it. */
-        .voice-rows { height: 150px; overflow: scroll; }
+        .voice-rows { height: 150px; overflow: scroll; padding-right: 10px; }
         .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
 
         /* ── Confirming something destructive ──────────────────────────────────────────────
@@ -1514,6 +1524,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         {
             ViewModel.ShowWorkPanel(true);
             _ = WorkListAsync();
+            _nextWorkPoll = DateTimeOffset.UtcNow + WorkPollInterval;
             doc.Refresh();
             return true;
         });
@@ -1522,12 +1533,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         {
             ViewModel.ShowWorkPanel(false);
             doc.Refresh();
-            return true;
-        });
-
-        doc.OnAction("data-work-refresh", _unused =>
-        {
-            _ = WorkListAsync();
             return true;
         });
 
@@ -1994,7 +1999,44 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _doc?.Refresh();
         }
 
+        PollWork();
+
         return Presentation(width, height, _doc?.Zoom ?? 1f);
+    }
+
+    /// <summary>
+    /// How often the work page re-reads the board while it is open. A task board is not a chat
+    /// feed: things change on it every few minutes, and the point of watching one is to notice a
+    /// lease running down. Frequent enough to see that happen, rare enough that leaving the page
+    /// open is not a load.
+    /// </summary>
+    private static readonly TimeSpan WorkPollInterval = TimeSpan.FromSeconds(5);
+
+    private DateTimeOffset _nextWorkPoll = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// Keeps the work page current while it is open, and stops the moment it is not. Driven from
+    /// <see cref="Present"/> because that already ticks whether or not anything happened — a
+    /// board that only updated when somebody clicked would be a board nobody could trust.
+    /// </summary>
+    private void PollWork()
+    {
+        if (!ViewModel.WorkPanelOpen)
+        {
+            // Reset, so reopening reads immediately rather than waiting out an interval that
+            // started while the page was shut.
+            _nextWorkPoll = DateTimeOffset.MinValue;
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now < _nextWorkPoll)
+        {
+            return;
+        }
+
+        _nextWorkPoll = now + WorkPollInterval;
+        _ = WorkListAsync();
     }
 
     /// <summary>
