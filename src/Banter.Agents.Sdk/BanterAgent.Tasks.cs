@@ -1,3 +1,4 @@
+using Banter.Client.Core;
 using Banter.Protocol;
 
 namespace Banter.Agents.Sdk;
@@ -36,6 +37,44 @@ public abstract partial class BanterAgent
         Client.UpdateTaskAsync(taskId, note, cancellationToken);
 
     // ── Automatic working ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Re-reads a room's task board.
+    ///
+    /// <para>An agent only ever hears about tasks through live broadcasts, so one that was not
+    /// connected when a task was posted never learns of it — it would sit open in a room with an
+    /// agent in it that could do it. Called on join and again after a reconnect, for the same
+    /// reason the message backfill is.</para>
+    ///
+    /// <para><b>Unlike missed messages, this one acts.</b> A message is a request made at a
+    /// moment, and answering it hours later is worse than not answering; a task is a unit of work
+    /// that stays open until somebody finishes it, which is the whole point of writing it to a
+    /// ledger. So a missed message is context and a missed task is work.</para>
+    /// </summary>
+    private async Task RefreshTaskBoardAsync(string room, CancellationToken cancellationToken)
+    {
+        if (Options.TaskWork is not { } work)
+        {
+            return;
+        }
+
+        TaskListPayload board;
+        try
+        {
+            board = await Client.ListTasksAsync(room, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is BanterClientException or OperationCanceledException)
+        {
+            return;
+        }
+
+        foreach (var task in board.Tasks)
+        {
+            // Exactly what a live broadcast would have done with it, so there is one rule for
+            // what this agent does with a task rather than two that can disagree.
+            OnTaskChanged(task);
+        }
+    }
 
     private void OnTaskChanged(TaskInfoPayload task)
     {

@@ -86,6 +86,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
             await _client.JoinAsync(room, cancellationToken).ConfigureAwait(false);
             await RefreshRosterAsync(room, cancellationToken).ConfigureAwait(false);
             await BackfillAsync(room, cancellationToken).ConfigureAwait(false);
+            await RefreshTaskBoardAsync(room, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -257,6 +258,11 @@ public abstract partial class BanterAgent : IAsyncDisposable
                     // agent's place in the room but says nothing about the gap, which is exactly
                     // when there is a gap to say something about.
                     await BackfillAsync(room, _stopping.Token).ConfigureAwait(false);
+
+                    // And the board: a task posted while the connection was down was never
+                    // broadcast to us, and would sit open in a room with an agent that could
+                    // do it. Unlike a missed message, this one is still worth acting on.
+                    await RefreshTaskBoardAsync(room, _stopping.Token).ConfigureAwait(false);
                 }
             }
             catch (Exception)

@@ -157,6 +157,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
+| Reconnect: re-announce, missed context, missed work (§8a-r) | – | – | – | – | – | – | ✅ |
 | DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
 | MCP tools executed server-side, agent tool loop (§8c) | ✅ | ✅ | ⬜ | – | – | – | ✅ |
 | Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
@@ -877,6 +878,59 @@ safe but useless here, which is the right way round.
 (`AGENT_LIST`), room mode and delegator are room state (`ROOM_MODE`, `DELEGATOR_SET` + an
 announcement), and dispatch reuses `TASK_ASSIGN` from §8b so delegation and the work ledger are
 one mechanism rather than two.
+
+### 8a-r. What an agent does when it reconnects
+
+*Written 2026-09-06.* A dropped connection is ordinary — a server restart, a laptop lid, a flaky
+link — and an agent has more to restore than a chat client does. The full sequence, and why each
+step is there:
+
+**The client half** (`BanterClient`, shared with humans). Detects the drop, redials with backoff
+jittered to 50–100% of nominal (one server restart drops every agent at once; without jitter a
+fleet redials in lockstep against a server still starting), re-authenticates from scratch — a
+signed challenge for a keyed agent, so a reconnect proves the key again rather than resuming
+anything — and rejoins every room it had joined. It gives up on `BanterAuthException`, deliberately:
+a revoked or reissued identity must stop retrying rather than hammer a door that is now locked.
+An eviction (§ users/agents pages) also stops it, for the same reason.
+
+**The agent half** (`BanterAgent.OnReconnected`), because a rejoin restores a seat in a room and
+nothing else:
+
+| Restored | Why it has to be |
+|---|---|
+| Announced attributes | They lived on the server session that died. Without re-announcing, a restart silently demotes the agent to Unknown locality and clearance — which the election treats as frontier and uncleared. It would still be in its rooms and still answering, just no longer electable, routable or cleared, and nothing would say so. |
+| Tool grants | A snapshot taken at start (§8c). |
+| Rosters | Also a snapshot. Stale rosters make a delegator answer another agent's chatter, which is the loop the guardrails exist to stop. |
+| Missed messages | Read back into context and **never acted on** — see below. |
+| The task board | Re-read, and missed work **is** acted on — see below. |
+
+Every room it holds state for, not only the configured ones: an agent moved into a sub-room
+(§8a) has a gap there too.
+
+**Missed messages are context; missed work is work.** This is the one genuinely interesting
+decision here, and the two halves point opposite ways:
+
+- A **message** is a request made at a moment. An agent that answers a backlog of them comes back
+  and replies to every question it was asked while it was gone — hours late, all at once, and
+  again on the next reconnect. So backfilled messages reach `OnMissedMessages` and nothing else,
+  never the path that decides whether to reply; the LLM agent folds them into context between
+  markers saying what they are and that nobody is waiting. It is a property of the shape rather
+  than of remembering to check.
+- A **task** is a unit of work that stays open until somebody finishes it — which is the entire
+  point of writing it to a ledger rather than saying it out loud. An open task in a room with an
+  agent that could do it is work going undone, so the board is re-read and matching open tasks
+  are claimed exactly as a live broadcast would have them claimed.
+
+**What the gap costs.** A task this agent had claimed keeps its lease while the connection is
+down; progress reports renew it, and one that goes quiet past `lease_seconds` is swept back to
+open and offered to somebody else (§8b), which is what the lease is for. A message stream left
+half-written is closed by the server on disconnect and the accumulated deltas become the final
+text, so the room never sees a message with no end.
+
+**Backfill is bounded and deduplicated by message id, not by a watermark.** Joining a room
+provokes an election announcement; that announcement is a stored message *newer* than everything
+missed, so a "last seen" cursor taken from it skips the entire gap. What matters is not where the
+agent got to but which messages it has actually heard.
 
 ### 8b. Work: delegation & claiming
 

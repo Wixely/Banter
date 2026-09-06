@@ -83,7 +83,9 @@ public sealed class MissedMessageTests(ITestOutputHelper output) : IAsyncLifetim
         _database = new BanterDatabase(BanterStorageOptions.DefaultSqlite(Path.Combine(_root, "banter.db")));
         await _database.InitializeAsync();
         _files = new FileStore(_database, new FileStoreOptions { DataDirectory = Path.Combine(_root, "files") });
-        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
+        _server = new BanterServer(
+            _transport, _accounts, new DbServerStore(_database), _files,
+            tasks: new TaskStore(_database));
         await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
     }
 
@@ -106,12 +108,15 @@ public sealed class MissedMessageTests(ITestOutputHelper output) : IAsyncLifetim
         BackfillOnJoin = backfill,
     };
 
-    private static async Task UntilAsync(Func<bool> condition, string what)
+    private static async Task UntilAsync(Func<bool> condition, string what) =>
+        await UntilAsync(() => Task.FromResult(condition()), what);
+
+    private static async Task UntilAsync(Func<Task<bool>> condition, string what)
     {
         var deadline = DateTimeOffset.UtcNow + Patience;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            if (condition())
+            if (await condition())
             {
                 return;
             }
@@ -210,7 +215,9 @@ public sealed class MissedMessageTests(ITestOutputHelper output) : IAsyncLifetim
 
         // Take the server away and bring it back on the same port; the client redials by itself.
         await _server.DisposeAsync();
-        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
+        _server = new BanterServer(
+            _transport, _accounts, new DbServerStore(_database), _files,
+            tasks: new TaskStore(_database));
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -233,6 +240,37 @@ public sealed class MissedMessageTests(ITestOutputHelper output) : IAsyncLifetim
         // Nothing it already heard comes back as missed, and its one answer is still its one.
         Assert.DoesNotContain(scribe.Missed, t => t.Contains("@scribe hello"));
         Assert.Single(scribe.Answered);
+    }
+
+    [Fact]
+    public async Task WorkPostedWhileAwayIsPickedUpEvenThoughMessagesAreNot()
+    {
+        // The line between the two. A message is a request made at a moment, and answering it
+        // hours late is worse than not answering; a task is a unit of work that stays open until
+        // somebody finishes it, which is the entire point of writing it to a ledger. So an agent
+        // that comes back ignores the backlog of chat and takes the job.
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
+        await human.JoinAsync("#main");
+
+        await human.SendMessageAsync("#main", "@scribe can you write the notes?");
+        var posted = await human.PostTaskAsync("#main", "write the notes", "from today's meeting");
+
+        await using var scribe = new WatchfulAgent(Options() with
+        {
+            // A skill the task's text actually mentions: an agent only claims work that looks
+            // like its own, which is the ordinary matching rule and not what is under test here.
+            Skills = ["notes"],
+            TaskWork = new TaskWorkOptions { ClaimOpenTasks = true },
+        });
+        await scribe.StartAsync(_transport);
+
+        await UntilAsync(
+            async () => (await human.ListTasksAsync("#main")).Tasks
+                .Any(t => t.TaskId == posted.TaskId && t.Assignee == "scribe"),
+            "the task posted while the agent was away was never claimed");
+
+        // And the chat message asking the same thing is still only context.
+        Assert.Contains(scribe.Missed, t => t.Contains("write the notes?"));
     }
 
     [Fact]
