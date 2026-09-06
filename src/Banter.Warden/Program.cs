@@ -96,7 +96,12 @@ var smartClassifier = Has("--llm-classify");
 var worksTasks = Has("--work-tasks");
 var assignedOnly = Has("--assigned-only");
 
-if ((pass is null && keyFile is null) || model is null || Has("--help") || Has("-h"))
+// An agent that only asks questions needs no model to decide to ask them, which is the point:
+// it makes the ask controls something you can look at and answer without an endpoint running,
+// and something that behaves the same way twice.
+var demoAsks = Has("--demo-asks");
+
+if ((pass is null && keyFile is null) || (model is null && !demoAsks) || Has("--help") || Has("-h"))
 {
     Console.Error.WriteLine("""
         banter-warden - run an LLM agent as a Banter user
@@ -140,6 +145,13 @@ if ((pass is null && keyFile is null) || model is null || Has("--help") || Has("
           --assigned-only       with --work-tasks, only run tasks assigned to this agent -
                                 never take work off the open board
 
+        Demonstrating and testing the ask controls (PLAN 8c-a):
+          --demo-asks           run an agent that asks scripted questions instead of thinking
+                                of its own. No model and no --model needed. Say its name with
+                                'confirm', 'pick', 'many', 'tabs', 'write' or 'all', and answer
+                                what comes back. It says what it received, so the free-text box
+                                can be checked as well as the buttons.
+
         --pass also reads BANTER_PASS; --model reads BANTER_MODEL; --llm reads BANTER_LLM.
         """);
     return 1;
@@ -181,11 +193,13 @@ var agentOptions = new BanterAgentOptions
         ? new RoutingOptions
         {
             AllowFrontier = !noFrontier,
-            Classifier = smartClassifier
+            // A model is needed to classify with one. --demo-asks is the only way to get here
+            // without a model, and keyword rules are the documented fallback anyway.
+            Classifier = smartClassifier && model is { Length: > 0 } classifierModel
                 ? new LlmRequestClassifier(new OpenAiChatClient(new LlmChatAgentOptions
                 {
                     Endpoint = new Uri(endpoint),
-                    Model = model,
+                    Model = classifierModel,
                     ApiKey = apiKey,
                     // Classification is a gate on every message: a slow one stalls the room.
                     Timeout = TimeSpan.FromSeconds(45),
@@ -197,10 +211,42 @@ var agentOptions = new BanterAgentOptions
         : null,
 };
 
+if (demoAsks)
+{
+    await using var demo = new DemoAskAgent(agentOptions);
+    try
+    {
+        await demo.StartAsync(new TcpBanterTransport());
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"error: could not start agent: {ex.Message}");
+        return 1;
+    }
+
+    Console.WriteLine($"{user} is in {string.Join(", ", rooms)}, asking rather than answering.");
+    Console.WriteLine($"Say \"@{user} confirm\" in a room with it - or pick, many, tabs, write, all.");
+    Console.WriteLine("Press Ctrl+C to stop.");
+
+    using var demoStopping = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        demoStopping.Cancel();
+    };
+
+    await demo.RunAsync(demoStopping.Token);
+    return 0;
+}
+
+// Past the demo branch, so the guard at the top guarantees one: the only route here without a
+// model was --demo-asks, and it has already returned.
+var chatModel = model!;
+
 var llmOptions = new LlmChatAgentOptions
 {
     Endpoint = new Uri(endpoint),
-    Model = model,
+    Model = chatModel,
     ApiKey = apiKey,
 };
 

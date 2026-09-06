@@ -208,6 +208,34 @@
       "stopAtEntry": false
     },
     {
+      // The ask controls (PLAN 8c-a), without a model in the way. This agent never thinks: it
+      // asks a scripted question and reports what came back, so the panel can be looked at and
+      // answered on a machine with no LM Studio running, and behaves the same way twice.
+      //
+      // Say "@asker confirm" in #main - or pick (radio), many (checkboxes), tabs (three
+      // questions at once), write (no options, type the answer), or all.
+      //
+      // NEEDS: "asker" enrolled, same as any agent (see the header).
+      "name": "Agent (asker, asks questions - no model needed)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Warden/bin/Debug/net10.0/banter-warden.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "asker",
+        "--key", "${workspaceFolder}/.banter-dev/asker.key",
+        "--room", "#main",
+        "--demo-asks",
+        "--clearance", "sensitive",
+        "--skills", "chat",
+        "--description", "asks scripted questions so the ask controls can be tested"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
       // The one-time step that turns a code from the agents page into a key on this machine.
       // Enrolment generates the keypair HERE and sends only the public half - which is why this
       // is a launch configuration and not something the server could do for you. Run it once per
@@ -373,6 +401,31 @@
         "Desktop app (alice)",
         "Agent (dagger, local)",
         "Agent (scout, simulated frontier)"
+      ],
+      "stopAll": true
+    },
+    {
+      // Try the ask controls. Sign in as admin rather than alice, because the first thing to do
+      // is create "asker" on the agents page and enrol it - after that, say "@asker confirm".
+      // Nothing here needs a model or an endpoint.
+      "name": "Server + admin + ask demo",
+      "configurations": [
+        "Server",
+        "Desktop app (admin)",
+        "Agent (asker, asks questions - no model needed)"
+      ],
+      "stopAll": true
+    },
+    {
+      // The same demo with two people in the room, which is the part worth seeing: a question
+      // belongs to the room, either of them may answer it, and the moment one does the controls
+      // go away for the other rather than letting two answers race.
+      "name": "Server + alice + bob + ask demo",
+      "configurations": [
+        "Server",
+        "Desktop app (alice)",
+        "Desktop app (bob)",
+        "Agent (asker, asks questions - no model needed)"
       ],
       "stopAll": true
     }

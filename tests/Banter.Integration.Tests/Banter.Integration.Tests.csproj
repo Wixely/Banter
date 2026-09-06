@@ -14,6 +14,9 @@
     <ProjectReference Include="../../src/Banter.Core/Banter.Core.csproj" />
     <ProjectReference Include="../../src/Banter.Protocol/Banter.Protocol.csproj" />
     <ProjectReference Include="../../src/Banter.Server/Banter.Server.csproj" />
+    <!-- For DemoAskAgent, which the ask demo runs. A demo nobody tests is one that breaks
+         under the person who sat down to try the feature. -->
+    <ProjectReference Include="../../src/Banter.Warden/Banter.Warden.csproj" />
     <ProjectReference Include="../../src/Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
   </ItemGroup>
 </Project>
