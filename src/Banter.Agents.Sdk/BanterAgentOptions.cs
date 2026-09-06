@@ -87,6 +87,15 @@ public sealed record BanterAgentOptions
     /// whether to reply.</para>
     /// </summary>
     public int BackfillOnJoin { get; init; } = 50;
+
+    /// <summary>
+    /// Whether this agent, while delegator, is offered tools that act on the conversation: open a
+    /// side room, invite an agent into it with its own instruction, ask the room for a decision.
+    /// On by default, and only ever offered to the delegator — the server refuses the underlying
+    /// verbs to anyone else anyway, and offering a tool that would be refused invites a model to
+    /// keep trying it.
+    /// </summary>
+    public bool RoomTools { get; init; } = true;
 }
 
 public sealed record LlmChatAgentOptions

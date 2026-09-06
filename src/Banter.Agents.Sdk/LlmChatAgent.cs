@@ -110,7 +110,7 @@ public sealed class LlmChatAgent : BanterAgent
 
         // The catalogue the server granted this agent. Empty on a server with no tool backend,
         // which collapses the loop below to exactly the one-shot stream it used to be.
-        var specs = Tools.Select(t => new ToolSpec(t.Name, t.Description, t.Schema)).ToList();
+        var specs = ToolsFor(room).Select(t => new ToolSpec(t.Name, t.Description, t.Schema)).ToList();
 
         var reply = new System.Text.StringBuilder();
         for (var round = 1; ; round++)
@@ -148,7 +148,7 @@ public sealed class LlmChatAgent : BanterAgent
             {
                 // The server runs it. A refusal comes back as an ordinary error result, which the
                 // model can read and work around — it must not look like the tool crashed.
-                var result = await CallToolAsync(call.Name, call.Arguments, room, cancellationToken)
+                var result = await InvokeToolAsync(call.Name, call.Arguments, room, cancellationToken)
                     .ConfigureAwait(false);
                 messages.Add(ChatTurn.Tool(call.Id, result.Content));
             }

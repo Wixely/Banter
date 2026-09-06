@@ -156,6 +156,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ⬜ | ⬜ | ✅ |
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
 | Agents conferring in a collaboration room (§8a-c) | ✅ | ✅ | – | – | – | – | ✅ |
+| Delegator room tools + operator escalation (§8a-d) | – | ✅ | – | – | – | – | ✅ |
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | Reconnect: re-announce, missed context, missed work (§8a-r) | – | – | – | – | – | – | ✅ |
@@ -962,6 +963,44 @@ Why the venue and not a per-agent flag:
   default) stops a conversation going round in circles, and a human speaking clears it. Nothing
   here gives agents an unlimited budget to talk to each other — it gives them a room in which
   talking to each other is not immediately ignored.
+
+### 8a-d. What a delegator can *do*
+
+*Written 2026-09-06.* A delegator could route and it could react, but it could not act on
+anything it was told. It opened a side room only as a fixed response to a fan-out it had already
+classified, and if a human said "yes, add scout" the best it could manage was to say yes back. An
+agent that answers "I'll add scout" and then does nothing is worse than one that says it cannot.
+
+So the actions are **tools**, sitting beside whatever MCP tools the server granted (§8c) and going
+through the same loop — but run in the SDK rather than on the tool broker, because they act on the
+conversation rather than on an outside system.
+
+| Tool | Who gets it | What it does |
+|---|---|---|
+| `open_side_room` | delegator | Opens a child room in `Collaborate` mode and returns its name. |
+| `invite_agent` | delegator | Moves an agent in *and* addresses it with its own instruction, in one step. |
+| `ask_operator` | **every agent** | Says what needs deciding, and stops. |
+
+Two tiers, because they answer to different things. Rearranging the room is the delegator's, which
+is also what the server enforces — but **asking for a decision is everyone's**: a worker that hits
+something outside its brief is exactly who needs to, and routing that through the delegator would
+add a telephone game to the one moment accuracy matters most.
+
+Per-agent instructions are the point of `invite_agent` taking one. An agent told the whole task
+does the whole task, and two of those duplicate each other; the fan-out path now names each agent
+separately for the same reason.
+
+**The escalation loop this makes possible**, end to end and covered by a test: a request arrives →
+the delegator opens a side room and gives each agent its slice → they confer there (§8a-c) → one
+needs an agent that is not present and calls `ask_operator` → the message appears in the room a
+human is already in (admins are added to every room an agent opens, §8a) → the human answers the
+delegator → the delegator, which is the only one that may, brings the agent in.
+
+**A tool an agent does not have is a refusal, not a crash.** Calling an unknown name used to reach
+the server and come back as `NO_TOOLS` — an exception that ended the turn, and a misleading message
+besides ("this server has no tool backend" is a different fact from "you cannot call that"). It now
+returns an error result naming what the agent *can* call, so a model that reaches for the wrong
+thing carries on without it.
 
 ### 8b. Work: delegation & claiming
 

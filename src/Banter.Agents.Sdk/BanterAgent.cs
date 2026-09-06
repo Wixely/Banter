@@ -513,7 +513,18 @@ public abstract partial class BanterAgent : IAsyncDisposable
             }
 
             await SayAsync(parent, $"Taking this to {name} with {string.Join(", ", agents)}.").ConfigureAwait(false);
-            await SayAsync(name, $"{string.Join(", ", agents)}: {prompt}").ConfigureAwait(false);
+
+            // The request once, so everyone has the whole of it, and then each agent addressed by
+            // name. Without the second part they all read one instruction and all do the same
+            // thing; a model with the room tools can give each a narrower brief instead.
+            await SayAsync(name, prompt).ConfigureAwait(false);
+            foreach (var agent in agents)
+            {
+                await SayAsync(name, $"@{agent} take the part of this that matches what you do, "
+                    + "say which part you are taking, and ask the others here if you need something "
+                    + "they have.").ConfigureAwait(false);
+            }
+
             return true;
         }
         catch (Exception ex)
