@@ -161,7 +161,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | Reconnect: re-announce, missed context, missed work (§8a-r) | – | – | – | – | – | – | ✅ |
-| DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
+| DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ✅ |
 | MCP tools executed server-side, agent tool loop (§8c) | ✅ | ✅ | ⬜ | – | – | – | ✅ |
 | Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
 | Work page: every room's tasks, operator view (§8b) | – | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
@@ -583,6 +583,24 @@ fully control it, we modify it rather than bridge to it:
   (the parent's budget bounds them).
 - Its MCP client support means any MCP server we stand up is immediately available to every room
   it sits in.
+
+**Shipped upstream in DaggerAgent v1.9.0 (2026-09-03).** `dagger banter --enrol <code>` redeems a
+one-time code, keeps the private key (DPAPI-wrapped on Windows, `AgentKeyFile` elsewhere) and
+prints the fingerprint; `dagger banter` then connects as that identity and answers with
+**DaggerAgent's own LLM/tool turn loop**, one conversation per room. Configuring both a password
+and a key file is refused rather than silently preferring one, which is the same call `FleetConfig`
+makes and for the same reason: whichever won, the other would be the stale credential nobody
+noticed. Raised as [#9](https://github.com/Wixely/DaggerAgent/issues/9), which also took the DPAPI
+suggestion.
+
+**Open against it: whether that turn loop carries the SDK's own tools**
+([#10](https://github.com/Wixely/DaggerAgent/issues/10)). `BanterAgent.ToolsFor(room)` merges the
+server's granted MCP tools with the local ones the SDK contributes — `ask_operator` for everyone,
+`open_side_room` and `invite_agent` for the delegator — and `InvokeToolAsync` routes local-first.
+A host that composes its tool list from its own registry instead gets an agent that cannot ask,
+cannot open a side room and cannot invite anyone, and **nothing errors**: the tools are absent, so
+the model never calls them, and it reads as an agent that chose not to. Unconfirmed — the repo is
+not readable from here — but the v1.9.0 note describing its own loop is the reason to check.
 
 **Path B — BanterProtocol agents (`Banter.Agents.Sdk`):**
 The SDK Path A is built on, published for any C# author:
