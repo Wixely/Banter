@@ -157,6 +157,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
 | Agents conferring in a collaboration room (§8a-c) | ✅ | ✅ | – | – | – | – | ✅ |
 | Delegator room tools + operator escalation (§8a-d) | – | ✅ | – | – | – | – | ✅ |
+| Structured asks + replies (§8c-a) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | Reconnect: re-announce, missed context, missed work (§8a-r) | – | – | – | – | – | – | ✅ |
@@ -1164,12 +1165,34 @@ reply quotes what it answers, above itself; a quote whose subject is off the top
 still says it is a reply, and fills itself in when older history is paged in. The server threads the
 `[answered]` line to the `[asking]` line for the same reason.
 
-**Do frontier models support this?** Not as a first-class API primitive — neither Anthropic's
-Messages API nor OpenAI's have an "ask the user a structured question" verb. Both Claude Code and
-Codex implement it as **an ordinary tool** the model calls, with the harness rendering the UI. That
-is exactly what `ask_operator` is here: a normal tool in the agent's tool loop, JSON-schema'd
-questions and options, so any model that can call tools can ask. Nothing in Dagger needs to change
-for it to work — the SDK's tool loop already carries it.
+**Do frontier models support this?** Checked, 2026-09-06. **Not as an API primitive** — neither
+Anthropic's Messages API nor OpenAI's has an "ask the user a structured question" verb. Both
+pioneers implement it as **an ordinary tool the model calls, with the harness rendering the UI**,
+which is exactly the shape `ask_operator` is here. So any model that can call tools can already ask,
+and nothing in Dagger needs changing for it to work — the SDK's tool loop carries it.
+
+- **Claude Code / Agent SDK — `AskUserQuestion`.** Routed through the `canUseTool` permission
+  callback; the host renders the questions and returns the answers as `updatedInput`. Schema is
+  `questions[]` of `{question, header, options[{label, description}], multiSelect}`, limited to
+  **1–4 questions, 2–4 options each**, `header` ≤ 12 characters. Free text is a host convention —
+  show an extra "Other" choice and put the typed text in as the answer value — plus a top-level
+  `response` field for a general reply that answers no specific question. TypeScript hosts can opt
+  into a `preview` field per option (markdown or sanitised HTML) for visual comparisons. Not
+  available to subagents.
+- **Codex CLI — `ask_user_question`.** Same idea, and its UI is the one we converged on
+  independently: **a tab per question**, keyboard navigation, single-choice advancing on select,
+  multi-select toggling, and a per-question custom option the user types into. Gated to Plan mode at
+  the time of checking, and human-input tools are stripped from the toolset entirely in
+  non-interactive runs.
+
+**Where we differ, and why.** Free text is an explicit `AllowText` flag and a per-answer `Text`
+field rather than an "Other" option the model has to remember to offer — an option list that forgets
+to include "Other" is a question you cannot answer honestly. We allow a question with **no** options
+(write-only), which their 2–4 floor forbids, because a chat panel can take a sentence where a
+terminal picker cannot. We do not have Anthropic's per-option `preview`; worth revisiting if agents
+start proposing layouts. And we do not strip asks in unattended rooms the way Codex does — the
+`AskTimeout` is the backstop, and a room can gain a person at any moment — which is a switch worth
+having if Warden ever runs a fleet nobody is watching.
 
 ## 9. Build order & milestones
 
