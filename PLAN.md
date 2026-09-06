@@ -584,6 +584,23 @@ fully control it, we modify it rather than bridge to it:
 - Its MCP client support means any MCP server we stand up is immediately available to every room
   it sits in.
 
+**Released for it: Banter SDK `v0.2.0` (2026-09-06).** v1.9.0's banter mode was built against
+`v0.1.0`, which predates this entire surface — `BanterAgent.RoomTools.cs` does not exist at that
+tag, so there were no room tools, no asks, and no reconnect backfill to consume. All four
+publishable packages (`Banter.Protocol`, `Banter.Core`, `Banter.Client.Core`, `Banter.Agents.Sdk`)
+ship together on one version, because an agent takes the SDK and gets the other three behind it.
+Additive for every consumer that exists: `ask_operator` changed shape mid-stream but never reached
+the feed in its first form.
+
+**Known gap — the catalogue did not move.** `banter.core` is still ordinal 1 (§4's Phase 0–2
+posture: one component, loose ranges, unsigned), so a `v0.1.0` peer and a `v0.2.0` peer both
+advertise ordinal 1 while speaking different verb sets. That is the thing a catalogue exists to
+prevent, and it is only survivable because both directions degrade cleanly — an unknown envelope
+decodes to null and is answered `UNSUPPORTED` without dropping the session, and the SDK hands that
+back to the model as a tool result rather than an exception. It should become ordinal 2 when the
+per-area catalogues arrive, so a peer can *know* whether asks are available instead of finding out
+by refusal.
+
 **Shipped upstream in DaggerAgent v1.9.0 (2026-09-03).** `dagger banter --enrol <code>` redeems a
 one-time code, keeps the private key (DPAPI-wrapped on Windows, `AgentKeyFile` elsewhere) and
 prints the fingerprint; `dagger banter` then connects as that identity and answers with
