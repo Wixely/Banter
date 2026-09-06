@@ -85,7 +85,117 @@ public abstract partial class BanterAgent : IAsyncDisposable
         {
             await _client.JoinAsync(room, cancellationToken).ConfigureAwait(false);
             await RefreshRosterAsync(room, cancellationToken).ConfigureAwait(false);
+            await BackfillAsync(room, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Message ids this agent has already heard, per room, newest last.
+    ///
+    /// <para>A set of ids rather than a single "last seen" watermark, which is what this was
+    /// first written as and does not work: joining a room provokes an election announcement, that
+    /// announcement is a stored message NEWER than everything the agent missed, and a watermark
+    /// set from it skips the entire gap. What matters is not where the agent got to but which
+    /// messages it has actually heard.</para>
+    ///
+    /// <para>Bounded to the server's own history cap, so a long-lived agent in a busy room does
+    /// not accumulate ids forever.</para>
+    /// </summary>
+    private readonly Dictionary<string, LinkedList<string>> _seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _seenIndex = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _seenLock = new();
+
+    private const int SeenPerRoom = 500;
+
+    private void MarkSeen(string room, string messageId)
+    {
+        lock (_seenLock)
+        {
+            var order = _seen.TryGetValue(room, out var o) ? o : _seen[room] = new LinkedList<string>();
+            var index = _seenIndex.TryGetValue(room, out var i) ? i : _seenIndex[room] = new HashSet<string>(StringComparer.Ordinal);
+            if (!index.Add(messageId))
+            {
+                return;
+            }
+
+            order.AddLast(messageId);
+            while (order.Count > SeenPerRoom)
+            {
+                index.Remove(order.First!.Value);
+                order.RemoveFirst();
+            }
+        }
+    }
+
+    private bool HasSeen(string room, string messageId)
+    {
+        lock (_seenLock)
+        {
+            return _seenIndex.TryGetValue(room, out var index) && index.Contains(messageId);
+        }
+    }
+
+    /// <summary>
+    /// Reads back what was said in a room while this agent was not listening, and hands it to
+    /// <see cref="OnMissedMessages"/> as context.
+    ///
+    /// <para>Only the gap: everything after the last message actually seen. A reconnect after
+    /// thirty seconds re-reads thirty seconds, not the whole page — otherwise a flapping
+    /// connection would re-observe the same conversation on every cycle and the agent's context
+    /// would fill with echoes of itself.</para>
+    /// </summary>
+    private async Task BackfillAsync(string room, CancellationToken cancellationToken)
+    {
+        if (Options.BackfillOnJoin <= 0)
+        {
+            return;
+        }
+
+        HistoryChunkPayload page;
+        try
+        {
+            page = await Client.GetHistoryAsync(room, limit: Options.BackfillOnJoin, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is BanterClientException or OperationCanceledException)
+        {
+            // Missing context is worse than having it and is not worth failing a join over: the
+            // agent carries on deaf to what it missed rather than not arriving at all.
+            return;
+        }
+
+        // Anything already heard is not missed — which is also what stops a flapping connection
+        // re-observing the same conversation on every cycle until the agent's context is echoes
+        // of itself. Our own words are never fed back as though somebody else said them.
+        var missed = page.Messages
+            .Where(m => !string.Equals(m.Sender, Nick, StringComparison.OrdinalIgnoreCase))
+            .Where(m => m.MessageId is not { Length: > 0 } id || !HasSeen(room, id))
+            .ToArray();
+
+        if (missed.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var m in missed)
+        {
+            if (m.MessageId is { Length: > 0 } id)
+            {
+                MarkSeen(room, id);
+            }
+        }
+
+        OnMissedMessages(room, missed);
+    }
+
+    /// <summary>
+    /// What was said while this agent was away. Context only — this is deliberately not the path
+    /// that decides whether to reply, so nothing here can start a turn.
+    ///
+    /// <para>The default does nothing: an agent with no memory has nothing to tell.</para>
+    /// </summary>
+    protected virtual void OnMissedMessages(string room, IReadOnlyList<MsgPayload> missed)
+    {
     }
 
     /// <summary>
@@ -142,6 +252,11 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 foreach (var room in rooms)
                 {
                     await RefreshRosterAsync(room, _stopping.Token).ConfigureAwait(false);
+
+                    // And what was said while the connection was down. A rejoin restores the
+                    // agent's place in the room but says nothing about the gap, which is exactly
+                    // when there is a gap to say something about.
+                    await BackfillAsync(room, _stopping.Token).ConfigureAwait(false);
                 }
             }
             catch (Exception)
@@ -257,6 +372,13 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
     private void OnMessage(MsgPayload m)
     {
+        // Recorded whether or not it is answered, so a backfill can tell what this agent has
+        // already heard from what it genuinely missed.
+        if (m.MessageId is { Length: > 0 } id)
+        {
+            MarkSeen(m.Room, id);
+        }
+
         if (!ShouldRespond(m))
         {
             return;

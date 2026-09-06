@@ -71,6 +71,22 @@ public sealed record BanterAgentOptions
     /// skills, does them, and reports the result. Null means it ignores tasks entirely.
     /// </summary>
     public TaskWorkOptions? TaskWork { get; init; }
+
+    /// <summary>
+    /// How many messages to read back into context on joining a room — including a rejoin after
+    /// a disconnect, which is the case that matters. Zero reads none.
+    ///
+    /// <para>The server keeps every message, so an agent that has been away can be told what it
+    /// missed rather than returning deaf to it. What it must NOT do is act on any of it: a
+    /// backlog full of requests, replayed through the ordinary path, would have the agent answer
+    /// every question it was asked while it was gone — hours late, all at once, and possibly
+    /// several times over if the reconnect happens twice.</para>
+    ///
+    /// <para>That is prevented by construction rather than by care: backfilled messages reach
+    /// <see cref="BanterAgent.OnMissedMessages"/> and nothing else, never the path that decides
+    /// whether to reply.</para>
+    /// </summary>
+    public int BackfillOnJoin { get; init; } = 50;
 }
 
 public sealed record LlmChatAgentOptions

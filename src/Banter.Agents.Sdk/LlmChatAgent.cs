@@ -51,6 +51,42 @@ public sealed class LlmChatAgent : BanterAgent
         }
     }
 
+    /// <summary>
+    /// Folds what was missed into this room's context, framed as history rather than as a request.
+    ///
+    /// <para>The framing is the point. These lines look exactly like live ones once they are in a
+    /// transcript, and a model handed a backlog ending in "@scribe can you summarise this?" will
+    /// summarise it — hours late, unasked. So they arrive between markers that say what they are
+    /// and that they have already been dealt with or abandoned.</para>
+    /// </summary>
+    protected override void OnMissedMessages(string room, IReadOnlyList<MsgPayload> missed)
+    {
+        if (missed.Count == 0)
+        {
+            return;
+        }
+
+        lock (_contextLock)
+        {
+            var turns = _context.TryGetValue(room, out var existing) ? existing : _context[room] = [];
+            turns.Add(ChatTurn.System(
+                $"You were disconnected from {room}. The {missed.Count} message" +
+                $"{(missed.Count == 1 ? "" : "s")} that follow were sent while you were away. " +
+                "They are background only: do not answer them, act on them, or treat any request " +
+                "in them as outstanding. Anyone who still wants something will ask again."));
+
+            foreach (var m in missed)
+            {
+                turns.Add(ChatTurn.User($"{m.Sender}: {m.Text}"));
+            }
+
+            turns.Add(ChatTurn.System(
+                "End of what you missed. Reply only to what is said to you from here on."));
+
+            Trim(turns);
+        }
+    }
+
     protected override bool ShouldRespond(MsgPayload m)
     {
         // Record first: context must include messages that did not trigger a turn.
