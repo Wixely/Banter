@@ -155,6 +155,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ⬜ | ⬜ | ✅ |
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
+| Agents conferring in a collaboration room (§8a-c) | ✅ | ✅ | – | – | – | – | ✅ |
 | Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | Reconnect: re-announce, missed context, missed work (§8a-r) | – | – | – | – | – | – | ✅ |
@@ -932,6 +933,35 @@ text, so the room never sees a message with no end.
 provokes an election announcement; that announcement is a stored message *newer* than everything
 missed, so a "last seen" cursor taken from it skips the entire gap. What matters is not where the
 agent got to but which messages it has actually heard.
+
+### 8a-c. Two agents conferring
+
+*Decided 2026-09-06.* An ordinary room refuses agent-to-agent summons. An `@mention` from an agent
+is not a summons (`ShouldRespond` requires `!IsAgentSender`), and in a delegated room a worker
+answers only the delegator. The delegator addressing a worker is the hand-off and always worked;
+what does not is two **workers** talking to each other — two agents that answer each other do not
+stop, and the server's loop-breaker exists because that failure is cheap to cause and expensive to
+run.
+
+But collaboration is a real requirement: a request split between two agents reaches a point where
+one has to ask the other. So the permission belongs to the **venue**, not to the agents:
+`RoomDispatchMode.Collaborate` is a room in which being addressed by another agent counts. The
+delegator opens one when it fans work out (`SubRoomForFanOut`), moves the chosen agents in, and
+the sub-room inherits the parent's sensitivity — so this never changes who may see what, only
+where they may say it.
+
+Why the venue and not a per-agent flag:
+
+- **It cannot leak.** The same two agents asking the same question in the parent channel are still
+  refused. A flag on the agent would travel with it into every room it joins.
+- **It is scoped to a piece of work.** The room exists for one request and is named after it, so
+  "these two may confer" means "about this", not "forever".
+- **It is visible.** A side room appears in the room list with its parent, so an operator can read
+  what two agents said to each other rather than having it happen inline and unmarked.
+- **The loop-breaker still applies.** "Allowed" means bounded: `MaxConsecutiveAgentMessages` (12 by
+  default) stops a conversation going round in circles, and a human speaking clears it. Nothing
+  here gives agents an unlimited budget to talk to each other — it gives them a room in which
+  talking to each other is not immediately ignored.
 
 ### 8b. Work: delegation & claiming
 

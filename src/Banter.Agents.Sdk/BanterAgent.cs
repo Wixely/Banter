@@ -433,6 +433,14 @@ public abstract partial class BanterAgent : IAsyncDisposable
             return true;
         }
 
+        // A room opened for two agents to work something out together. Being addressed by another
+        // agent counts here and nowhere else: the permission is the room's, not the agent's, so
+        // conferring cannot leak back into the main channel where it would not stop.
+        if (ModeFor(m.Room) == RoomDispatchMode.Collaborate)
+        {
+            return Addressed(m);
+        }
+
         if (ModeFor(m.Room) == RoomDispatchMode.Delegated)
         {
             var delegatorNick = DelegatorFor(m.Room);
@@ -492,6 +500,11 @@ public abstract partial class BanterAgent : IAsyncDisposable
         try
         {
             await Client.CreateSubRoomAsync(name, parent, Summarise(prompt), _stopping.Token).ConfigureAwait(false);
+
+            // The whole point of the side room: in here they may ask each other. In the parent
+            // they may not, and nothing about opening this changes that.
+            await Client.SetRoomModeAsync(name, RoomDispatchMode.Collaborate, _stopping.Token)
+                .ConfigureAwait(false);
 
             foreach (var agent in agents)
             {

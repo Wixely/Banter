@@ -33,6 +33,12 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
 
     private sealed class MarkerAgent(BanterAgentOptions options, string reply) : BanterAgent(options)
     {
+        /// <summary>Says something as this agent, so a test can make one agent address another.</summary>
+        public Task SayForTestAsync(string room, string text) => SayAsync(room, text);
+
+        /// <summary>Joins a room, standing in for the delegator moving this agent into one.</summary>
+        public Task JoinForTestAsync(string room) => Client.JoinAsync(room);
+
         protected override async IAsyncEnumerable<string> RespondAsync(
             string room, string sender, string prompt,
             [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -173,6 +179,79 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
 
         // The second still gets routed: refusing the first cost it nothing.
         Assert.NotNull(await WaitForAsync(human, m => m.Text == "FRONTIER-ANSWERED"));
+    }
+
+    // ── Two agents conferring (PLAN 8a) ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TwoWorkersCannotConferInAnOrdinaryRoom()
+    {
+        // The delegator addressing a worker is the hand-off and always worked. What does not is
+        // two WORKERS talking to each other: two agents that answer each other do not stop, so an
+        // ordinary channel refuses it — an @mention from an agent is not a summons, whatever it
+        // says.
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var one = new MarkerAgent(LocalHelper("local-2", "notes"), "ONE-ANSWERED");
+        await one.StartAsync(_transport);
+        await using var two = new MarkerAgent(LocalHelper("local-3", "notes"), "TWO-ANSWERED");
+        await two.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        await one.SayForTestAsync("#main", "@local-3 what did you find?");
+
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text == "TWO-ANSWERED", within: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public async Task TwoWorkersMayConferInARoomOpenedForIt()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var one = new MarkerAgent(LocalHelper("local-2", "notes"), "ONE-ANSWERED");
+        await one.StartAsync(_transport);
+        await using var two = new MarkerAgent(LocalHelper("local-3", "notes"), "TWO-ANSWERED");
+        await two.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // A side room for work that needs two heads. The permission belongs to the room, not to
+        // the agents: the same two, asking the same question, are refused in #main.
+        await human.CreateSubRoomAsync("#confer", "#main", "working this out");
+        await human.SetRoomModeAsync("#confer", RoomDispatchMode.Collaborate);
+        await human.JoinAsync("#confer");
+        await one.JoinForTestAsync("#confer");
+        await two.JoinForTestAsync("#confer");
+
+        await one.SayForTestAsync("#confer", "@local-3 what did you find?");
+
+        Assert.NotNull(await WaitForInAsync(human, "#confer", m => m.Text == "TWO-ANSWERED"));
+
+        // And it stays contained: allowing it in the side room did not allow it in the parent.
+        await one.SayForTestAsync("#main", "@local-3 and in here?");
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text == "TWO-ANSWERED", within: TimeSpan.FromSeconds(2)));
+    }
+
+    private static async Task<MsgPayload?> WaitForInAsync(
+        BanterClient client, string room, Func<MsgPayload, bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var history = await client.GetHistoryAsync(room, limit: 200);
+            var hit = history.Messages.FirstOrDefault(predicate);
+            if (hit is not null)
+            {
+                return hit;
+            }
+
+            await Task.Delay(25);
+        }
+
+        return null;
     }
 
     private static async Task<MsgPayload?> WaitForAsync(

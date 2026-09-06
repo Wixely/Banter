@@ -339,6 +339,19 @@ public enum RoomDispatchMode
 
     /// <summary>Every agent answers when its own nick is mentioned.</summary>
     Mention = 1,
+
+    /// <summary>
+    /// A room agents may talk to each other in. Like <see cref="Mention"/>, except that being
+    /// addressed BY ANOTHER AGENT counts — which everywhere else is refused, because two agents
+    /// that answer each other do not stop.
+    ///
+    /// <para>The permission belongs to the venue rather than to the agents: a delegator opens one
+    /// of these for a piece of work that genuinely needs two heads, and conferring is allowed
+    /// there and nowhere else. The server's loop-breaker still applies, so "allowed" means
+    /// bounded, not unlimited — a collaboration that goes round in circles is stopped by the same
+    /// counter that stops an accidental one, and a human speaking clears it.</para>
+    /// </summary>
+    Collaborate = 2,
 }
 
 /// <summary>
