@@ -76,12 +76,15 @@ jobs:
         id: ver
         shell: bash
         # A tag is the release; anything else is a CI build nobody should depend on, and its
-        # version says so.
+        # version says so. The untagged version is read from Directory.Build.props rather than
+        # written here: hardcoded, it went stale the moment the repo moved past it, and a CI
+        # package claiming a version the repo left behind is a lie nobody would think to check.
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=0.1.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            prefix=$(grep -o '<VersionPrefix>[^<]*' Directory.Build.props | cut -d'>' -f2)
+            echo "version=${prefix:?VersionPrefix not found in Directory.Build.props}-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
       - name: Pack
         # One version across all four. They are a single surface — an agent takes the SDK and gets
