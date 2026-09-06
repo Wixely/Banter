@@ -32,17 +32,19 @@ public interface IServerStore
 
 public sealed class DbServerStore(BanterDatabase database) : IServerStore
 {
+    // Constructor-mapped by Dapper, which matches the SELECT's column ORDER, not just its names:
+    // every column the queries project must have a parameter here, in the same order.
     private sealed record MessageRow(
         long Seq, string MessageId, string Room, string Sender, string Text, long Timestamp,
-        string? FileId, long? EditedAt, long? DeletedAt);
+        string? FileId, string? ReplyTo, long? EditedAt, long? DeletedAt);
 
     public async ValueTask AppendMessageAsync(ChatMessage message, CancellationToken cancellationToken = default)
     {
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await connection.ExecuteAsync(
             """
-            INSERT INTO messages (message_id, room, sender, text, timestamp, file_id)
-            VALUES (@MessageId, @Room, @Sender, @Text, @Timestamp, @FileId)
+            INSERT INTO messages (message_id, room, sender, text, timestamp, file_id, reply_to)
+            VALUES (@MessageId, @Room, @Sender, @Text, @Timestamp, @FileId, @ReplyTo)
             """,
             message).ConfigureAwait(false);
     }
@@ -67,7 +69,7 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
         var rows = (await connection.QueryAsync<MessageRow>(
             """
             SELECT seq AS Seq, message_id AS MessageId, room AS Room, sender AS Sender,
-                   text AS Text, timestamp AS Timestamp, file_id AS FileId,
+                   text AS Text, timestamp AS Timestamp, file_id AS FileId, reply_to AS ReplyTo,
                    edited_at AS EditedAt, deleted_at AS DeletedAt
             FROM messages
             WHERE room = @Room AND (@BeforeSeq IS NULL OR seq < @BeforeSeq)
@@ -91,6 +93,7 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
             {
                 EditedAt = m.EditedAt,
                 DeletedAt = m.DeletedAt,
+                ReplyTo = m.ReplyTo,
             })
             .ToArray();
         return new HistoryPage(messages, nextCursor);
@@ -103,7 +106,7 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
         var row = await connection.QuerySingleOrDefaultAsync<MessageRow>(
             """
             SELECT seq AS Seq, message_id AS MessageId, room AS Room, sender AS Sender,
-                   text AS Text, timestamp AS Timestamp, file_id AS FileId,
+                   text AS Text, timestamp AS Timestamp, file_id AS FileId, reply_to AS ReplyTo,
                    edited_at AS EditedAt, deleted_at AS DeletedAt
             FROM messages
             WHERE room = @Room AND message_id = @MessageId
@@ -116,6 +119,7 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
             {
                 EditedAt = row.EditedAt,
                 DeletedAt = row.DeletedAt,
+                ReplyTo = row.ReplyTo,
             };
     }
 

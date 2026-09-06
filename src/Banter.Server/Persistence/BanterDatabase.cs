@@ -363,5 +363,12 @@ public static class SchemaManifest
             // than as a number somebody has to look up.
             SqliteSql: "ALTER TABLE agent_identities ADD COLUMN work_mode TEXT NULL;",
             PostgresSql: "ALTER TABLE agent_identities ADD COLUMN work_mode TEXT NULL;"),
+
+        new(10,
+            "message-reply-to",
+            // Threading, so an answer names what it answers. Nullable: most messages reply to
+            // nothing in particular, and a room where every line had to is not a conversation.
+            SqliteSql: "ALTER TABLE messages ADD COLUMN reply_to TEXT NULL;",
+            PostgresSql: "ALTER TABLE messages ADD COLUMN reply_to TEXT NULL;"),
     ];
 }

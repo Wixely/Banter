@@ -96,6 +96,13 @@ public sealed record BanterAgentOptions
     /// keep trying it.
     /// </summary>
     public bool RoomTools { get; init; } = true;
+
+    /// <summary>
+    /// How long an agent waits for somebody to answer a question before giving up on it. Nobody
+    /// is obliged to answer, and an agent holding its turn open forever is one that has quietly
+    /// stopped working.
+    /// </summary>
+    public TimeSpan AskTimeout { get; init; } = TimeSpan.FromMinutes(5);
 }
 
 public sealed record LlmChatAgentOptions

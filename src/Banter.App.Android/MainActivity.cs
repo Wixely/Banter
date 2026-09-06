@@ -49,6 +49,8 @@ public sealed class MainActivity : CupriActivity
         {
             ConnectAsync = ConnectAsync,
             SendAsync = (room, text) => _session?.SendAsync(room, text) ?? Task.CompletedTask,
+            ReplyAsync = (room, text, replyTo) => _session?.SendAsync(room, text, replyTo) ?? Task.CompletedTask,
+            AnswerAsync = answer => _session?.AnswerAsync(answer) ?? Task.CompletedTask,
             CommandAsync = (room, line) => _session?.CommandAsync(room, line) ?? Task.CompletedTask,
             LoadOlderAsync = room => _session?.LoadOlderAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
             DownloadAsync = fileId => _session?.DownloadAsync(fileId) ?? Task.CompletedTask,

@@ -60,6 +60,105 @@ public sealed partial class MessageRow
 
     /// <summary>Hidden until an image has actually been fetched and written to the cache.</summary>
     public string ImageClass { get; set; } = "inline-image hidden";
+
+    // ── Replies ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Id of the message this one answers, empty when it answers nothing.</summary>
+    public string ReplyTo { get; set; } = "";
+
+    /// <summary>"replying to nell: which of these..." — the quoted line, trimmed to one row.</summary>
+    public string ReplyText { get; set; } = "";
+
+    /// <summary>Hidden until this row actually answers something.</summary>
+    public string ReplyClass { get; set; } = "reply-quote hidden";
+
+    // ── An attached question (PLAN §8c-a) ───────────────────────────────────────────────────
+    //
+    // The controls hang off the message rather than opening over the window. Other agents are
+    // working in this room and other people are reading it, so a modal would stop all of them to
+    // ask one of them something — and a question nobody is looking at should still be here later.
+
+    /// <summary>Server ask id, empty on every row that is not a question.</summary>
+    public string AskId { get; set; } = "";
+
+    /// <summary>Hidden until an ask arrives for this row, and again once it is answered.</summary>
+    public string AskClass { get; set; } = "ask hidden";
+
+    /// <summary>Two or three words naming the decision, from the question being shown.</summary>
+    public string AskHeader { get; set; } = "";
+
+    /// <summary>The question itself, as the asker worded it.</summary>
+    public string AskText { get; set; } = "";
+
+    /// <summary>
+    /// One tab per question. An agent may ask two or three things that are really one decision in
+    /// parts, and three separate questions in the timeline would read as three decisions.
+    /// </summary>
+    public List<AskTabRow> AskTabs { get; set; } = [];
+
+    /// <summary>Hidden when there is only one question — a single tab is a label pretending to be
+    /// a control.</summary>
+    public string AskTabsClass { get; set; } = "ask-tabs hidden";
+
+    /// <summary>The options of the question currently being shown, never of all of them.</summary>
+    public List<AskOptionRow> AskOptions { get; set; } = [];
+
+    /// <summary>"choose one", "choose any", or what is already chosen. Says what the controls do
+    /// before somebody finds out by clicking.</summary>
+    public string AskHint { get; set; } = "";
+
+    /// <summary>Invitation to type instead, when the asker allows free text.</summary>
+    public string AskWrite { get; set; } = "";
+
+    /// <summary>Hidden when the asker asked for options only.</summary>
+    public string AskWriteClass { get; set; } = "ask-write hidden";
+
+    /// <summary>Label on the send control: says what will be sent, not just "OK".</summary>
+    public string AskSendLabel { get; set; } = "Send";
+
+    /// <summary>Greyed until something has actually been chosen or written.</summary>
+    public string AskSendClass { get; set; } = "ask-send idle";
+}
+
+/// <summary>
+/// One choice on an attached question. The mark rather than a real radio or checkbox: the row is
+/// the hit target, and a glyph in a fixed-width slot lines up down the left the way a list should.
+/// </summary>
+[CupriBindable]
+public sealed partial class AskOptionRow
+{
+    /// <summary>"askId|questionKey|value" — a click carries which question of which ask it
+    /// answers, because a room may have several open at once.</summary>
+    public string PickKey { get; set; } = "";
+
+    public string Label { get; set; } = "";
+
+    /// <summary>Why somebody would pick it. Blank for options that speak for themselves.</summary>
+    public string Description { get; set; } = "";
+
+    /// <summary>Hidden when the option carries no description, so the row does not gain a blank
+    /// second line.</summary>
+    public string DescriptionClass { get; set; } = "ask-desc hidden";
+
+    /// <summary>The state glyph: a radio or a checkbox depending on the question.</summary>
+    public string Mark { get; set; } = "";
+
+    /// <summary>Drives styling: <c>ask-option</c> or <c>ask-option chosen</c>.</summary>
+    public string RowClass { get; set; } = "ask-option";
+}
+
+/// <summary>One question of a multi-question ask, as a tab.</summary>
+[CupriBindable]
+public sealed partial class AskTabRow
+{
+    /// <summary>"askId|questionKey".</summary>
+    public string TabKey { get; set; } = "";
+
+    public string Label { get; set; } = "";
+
+    /// <summary>Drives styling: <c>ask-tab</c>, <c>ask-tab active</c>, <c>ask-tab done</c> — so a
+    /// reader can see at a glance which parts still need an answer.</summary>
+    public string TabClass { get; set; } = "ask-tab";
 }
 
 /// <summary>
@@ -317,6 +416,25 @@ public sealed partial class ChatModel
 
     /// <summary>Banner above the composer while an edit is in progress; hidden otherwise.</summary>
     public string EditingClass { get; set; } = "editing-banner hidden";
+
+    /// <summary>
+    /// The message the composer is answering, or empty. One mechanism serves two things: replying
+    /// to somebody in a busy room, and writing something an agent's buttons did not offer. Both
+    /// are "this text belongs to that message", and giving each its own field would have meant two
+    /// text boxes that behave almost but not quite the same.
+    /// </summary>
+    public string ReplyingId { get; set; } = "";
+
+    /// <summary>"replying to nell" or "answering scribe" — said above the composer so it is not a
+    /// mode you discover by pressing Enter.</summary>
+    public string ReplyingText { get; set; } = "";
+
+    /// <summary>Banner above the composer while a reply is being written; hidden otherwise.</summary>
+    public string ReplyingClass { get; set; } = "replying-banner hidden";
+
+    /// <summary>Whether "Reply" appears on the right-click menu. Hidden over system lines, which
+    /// nobody is answering.</summary>
+    public string ReplyItemClass { get; set; } = "menu-reply hidden";
 
     /// <summary>Whether "Edit" appears on the right-click menu — only over your own messages,
     /// because the server refuses anyone else and offering it would be a lie.</summary>

@@ -31,6 +31,8 @@ public static class BanterWeb
         {
             ConnectAsync = ConnectAsync,
             SendAsync = (room, text) => _session?.SendAsync(room, text) ?? Task.CompletedTask,
+            ReplyAsync = (room, text, replyTo) => _session?.SendAsync(room, text, replyTo) ?? Task.CompletedTask,
+            AnswerAsync = answer => _session?.AnswerAsync(answer) ?? Task.CompletedTask,
             // Room switching is local: the backlog is held per room and history was filled at join.
             RoomSelected = _ => { },
             LoadOlderAsync = room => _session?.LoadOlderAsync(room, HistoryPageSize) ?? Task.CompletedTask,

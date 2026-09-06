@@ -241,17 +241,22 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
         await extra.StartAsync(_transport);
         await WaitForDelegatorAsync(human, "local");
 
-        // The worker asks. It is a message in the room, so a human simply reads it.
+        // The worker asks. It goes into the room as an ordinary message as well as a set of
+        // choices, so a human reading the history simply reads it.
         worker.Plan.Enqueue(("ask_operator",
-            """{"question":"this needs someone who can search the web. May local-3 join?"}"""));
+            """
+            {"questions":[{"key":"extra","header":"Extra agent",
+              "question":"this needs someone who can search the web. May local-3 join?",
+              "options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]}]}
+            """));
         await human.SendMessageAsync("#main", "@local-2 get started");
         await UntilAsync(
             async () => (await human.GetHistoryAsync("#main", limit: 100)).Messages
-                .Any(m => m.Text.StartsWith("[needs a decision]", StringComparison.Ordinal)),
+                .Any(m => m.Text.StartsWith("[asking]", StringComparison.Ordinal)),
             "the worker never asked");
 
         var asked = (await human.GetHistoryAsync("#main", limit: 100)).Messages
-            .First(m => m.Text.StartsWith("[needs a decision]", StringComparison.Ordinal));
+            .First(m => m.Text.StartsWith("[asking]", StringComparison.Ordinal));
         output.WriteLine(asked.Text);
         Assert.Contains("search the web", asked.Text);
 

@@ -188,7 +188,9 @@ else
 
 var app = new BanterChatApp(vm)
 {
-    SendAsync = session.SendAsync,
+    SendAsync = (room, text) => session.SendAsync(room, text),
+    ReplyAsync = session.SendAsync,
+    AnswerAsync = session.AnswerAsync,
     // Room switching is local — the backlog is already held per room, and history was
     // back-filled at join.
     RoomSelected = _ => { },

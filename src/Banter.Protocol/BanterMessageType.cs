@@ -164,6 +164,19 @@ public enum BanterMessageType : ushort
     /// <summary>Any signed-in human → server: change their own password (old proves it is them).</summary>
     PasswordChange = 109,
 
+    // Asking a question (110–112). An agent that needs a decision puts the choices on the
+    // message rather than in a dialogue: the room has other agents in it and other people, and a
+    // modal would stop all of them to ask one of them something.
+
+    /// <summary>Agent → room: a question, with the ways it can be answered.</summary>
+    Ask = 110,
+
+    /// <summary>Client → server → the agent that asked: what was chosen.</summary>
+    Answer = 111,
+
+    /// <summary>Server → room: an ask is settled, so every client can stop offering it.</summary>
+    AskClosed = 112,
+
 
     // Generic (250–255)
     Error = 250,

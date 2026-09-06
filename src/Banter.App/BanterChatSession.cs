@@ -61,6 +61,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.Evicted += OnEvicted;
         _client.Reconnecting += OnReconnecting;
         _client.Reconnected += OnReconnected;
+        _client.AskReceived += OnAsk;
+        _client.AskClosed += OnAskClosed;
     }
 
     /// <summary>Joins a room and back-fills it from server history so the timeline isn't empty.</summary>
@@ -197,7 +199,7 @@ public sealed partial class BanterChatSession : IDisposable
                 .ConfigureAwait(false);
 
             var older = page.Messages
-                .Select(m => (Id: m.MessageId ?? "", m.Sender, m.Text, m.Timestamp))
+                .Select(m => (Id: m.MessageId ?? "", m.Sender, m.Text, m.Timestamp, ReplyTo: m.ReplyTo ?? ""))
                 .ToList();
 
             _vm.Post(() =>
@@ -222,8 +224,19 @@ public sealed partial class BanterChatSession : IDisposable
         return _client.PartAsync(room, cancellationToken: cancellationToken);
     }
 
-    public Task SendAsync(string room, string text) =>
-        _client.SendMessageAsync(room, text).AsTask();
+    public Task SendAsync(string room, string text, string replyTo = "") =>
+        replyTo.Length > 0
+            ? _client.ReplyAsync(room, text, replyTo).AsTask()
+            : _client.SendMessageAsync(room, text).AsTask();
+
+    /// <summary>Sends what somebody chose on an attached question.</summary>
+    public Task AnswerAsync(Protocol.AnswerPayload answer) =>
+        _client.AnswerAsync(answer.AskId, answer.Answers);
+
+    private void OnAsk(Protocol.AskPayload ask) => _vm.Post(() => _vm.AddAsk(ask));
+
+    private void OnAskClosed(Protocol.AskClosedPayload closed) =>
+        _vm.Post(() => _vm.CloseAsk(closed.AskId, closed.AnsweredBy));
 
     /// <summary>Where downloads land. Defaults to the user's Downloads folder.</summary>
     public string DownloadDirectory { get; init; } =
@@ -575,7 +588,9 @@ public sealed partial class BanterChatSession : IDisposable
     // message the live feed already delivered.
     private void OnMessage(Protocol.MsgPayload m)
     {
-        _vm.Post(() => _vm.Append(m.Room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? "", fileId: m.FileId ?? ""));
+        _vm.Post(() => _vm.Append(
+            m.Room, m.Sender, m.Text, m.Timestamp,
+            id: m.MessageId ?? "", fileId: m.FileId ?? "", replyTo: m.ReplyTo ?? ""));
         SpeakIncoming(m.Room, m.Sender, m.Text);
 
         // The message only carries a file id, so name and size need a round-trip. Done off the
@@ -749,5 +764,7 @@ public sealed partial class BanterChatSession : IDisposable
         _client.Evicted -= OnEvicted;
         _client.Reconnecting -= OnReconnecting;
         _client.Reconnected -= OnReconnected;
+        _client.AskReceived -= OnAsk;
+        _client.AskClosed -= OnAskClosed;
     }
 }

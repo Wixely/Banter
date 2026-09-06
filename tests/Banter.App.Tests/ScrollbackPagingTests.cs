@@ -17,8 +17,8 @@ public sealed class ScrollbackPagingTests
         return vm;
     }
 
-    private static List<(string, string, string, long)> Page(params string[] texts) =>
-        texts.Select((t, i) => ($"id-{t}", "bob", t, (long)i)).ToList();
+    private static List<(string, string, string, long, string)> Page(params string[] texts) =>
+        texts.Select((t, i) => ($"id-{t}", "bob", t, (long)i, "")).ToList();
 
     [Fact]
     public void LoadOlderIsHiddenUntilTheServerSaysThereIsMore()

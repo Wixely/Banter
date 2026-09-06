@@ -141,7 +141,80 @@ public sealed record MsgPayload(
     // Carried so replayed history looks like the room did. Without them a reconnect loses every
     // "edited" marker, and a message someone took back comes back as a blank line.
     [property: Key(6)] long EditedAt = 0,
-    [property: Key(7)] long DeletedAt = 0);
+    [property: Key(7)] long DeletedAt = 0,
+    // The message this one answers, when it answers one. Trailing and optional, so an older peer
+    // simply does not see it. A doc comment cannot sit between record parameters.
+    [property: Key(8)] string? ReplyTo = null);
+
+/// <summary>
+/// One way of answering a question. <see cref="Value"/> is what comes back; <see cref="Label"/> is
+/// what a person reads; <see cref="Description"/> is why they would pick it.
+/// </summary>
+[MessagePackObject]
+public sealed record AskOption(
+    [property: Key(0)] string Value,
+    [property: Key(1)] string Label,
+    [property: Key(2)] string Description = "");
+
+/// <summary>
+/// One question an agent is asking.
+///
+/// <para>Options are offered rather than required: <see cref="AllowText"/> keeps the answer open,
+/// because the useful reply to "which of these three" is often "none of them, do this instead" and
+/// a set of buttons that cannot say so makes people pick the nearest wrong one.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record AskQuestion(
+    [property: Key(0)] string Key,
+    [property: Key(1)] string Header,
+    [property: Key(2)] string Text,
+    [property: Key(3)] IReadOnlyList<AskOption> Options,
+    [property: Key(4)] bool MultiSelect = false,
+    [property: Key(5)] bool AllowText = true);
+
+/// <summary>
+/// Agent → room: a question, carried alongside a message rather than as a dialogue.
+///
+/// <para>A modal would stop the whole client to ask one agent's question, and the room has other
+/// agents working in it and other people reading it. So the choices hang off the message, the room
+/// carries on, and anybody in it can answer — including hours later.</para>
+///
+/// <para>More than one question is allowed for the case where they are genuinely one decision
+/// asked in parts; clients show them together rather than as a queue.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record AskPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string AskId,
+    [property: Key(2)] IReadOnlyList<AskQuestion> Questions,
+    [property: Key(3)] string Asker = "",
+    [property: Key(4)] string? MessageId = null);
+
+/// <summary>What one question was answered with. Both may be set: chosen options AND a note.</summary>
+[MessagePackObject]
+public sealed record AskAnswer(
+    [property: Key(0)] string Key,
+    [property: Key(1)] IReadOnlyList<string> Chosen,
+    [property: Key(2)] string Text = "");
+
+/// <summary>Client → server → the agent that asked. Anyone in the room may answer.</summary>
+[MessagePackObject]
+public sealed record AnswerPayload(
+    [property: Key(0)] string AskId,
+    [property: Key(1)] IReadOnlyList<AskAnswer> Answers,
+    [property: Key(2)] string Responder = "");
+
+/// <summary>
+/// Server → room: this ask is settled. Sent so every other client stops offering controls for a
+/// question somebody else has already answered — two people answering the same question is not a
+/// conflict worth resolving, it is one that should not arise.
+/// </summary>
+[MessagePackObject]
+public sealed record AskClosedPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string AskId,
+    [property: Key(2)] string AnsweredBy = "",
+    [property: Key(3)] string Summary = "");
 
 [MessagePackObject]
 public sealed record PrivMsgPayload(

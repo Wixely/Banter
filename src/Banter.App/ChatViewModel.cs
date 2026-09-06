@@ -187,6 +187,11 @@ public sealed partial class ChatViewModel
         ShowAgentsFor(room);
         ShowUsersFor(room);
         ShowTasksFor(room);
+
+        // The rows for this room have only now been built, so anything hanging off one of them —
+        // a quoted reply, an unanswered question — has to be reattached.
+        ResolveReplies(room);
+        RestoreAsks();
     }
 
     public void SetTopic(string room, string topic)
@@ -199,7 +204,7 @@ public sealed partial class ChatViewModel
 
     public MessageRow Append(
         string room, string sender, string text, long timestamp,
-        string rowClass = "line", string id = "", string fileId = "")
+        string rowClass = "line", string id = "", string fileId = "", string replyTo = "")
     {
         var row = new MessageRow
         {
@@ -219,6 +224,7 @@ public sealed partial class ChatViewModel
             // placeholder rather than withholding it until the name and size are known.
             AttachClass = fileId.Length > 0 ? "attach" : "attach hidden",
             AttachText = fileId.Length > 0 ? "attachment" : "",
+            ReplyTo = replyTo,
         };
 
         // Anyone heard from is somebody who could be given a voice of their own.
@@ -226,6 +232,9 @@ public sealed partial class ChatViewModel
 
         var backlog = _rooms.TryGetValue(room, out var existing) ? existing : _rooms[room] = [];
         backlog.Add(row);
+
+        // After the row is in the backlog, so a reply to the message directly above it resolves.
+        ResolveReply(room, row);
         if (backlog.Count > RoomScrollback)
         {
             backlog.RemoveAt(0);
@@ -453,7 +462,8 @@ public sealed partial class ChatViewModel
     /// rows were actually added to the <em>visible</em> list — messages already present by id are
     /// skipped, so a page that overlaps the live feed cannot duplicate anything.
     /// </summary>
-    public int Prepend(string room, IReadOnlyList<(string Id, string Sender, string Text, long Timestamp)> older)
+    public int Prepend(
+        string room, IReadOnlyList<(string Id, string Sender, string Text, long Timestamp, string ReplyTo)> older)
     {
         if (!_rooms.TryGetValue(room, out var backlog))
         {
@@ -462,7 +472,7 @@ public sealed partial class ChatViewModel
 
         var known = backlog.Where(r => r.Id.Length > 0).Select(r => r.Id).ToHashSet(StringComparer.Ordinal);
         var rows = new List<MessageRow>(older.Count);
-        foreach (var (id, sender, text, timestamp) in older)
+        foreach (var (id, sender, text, timestamp, replyTo) in older)
         {
             if (id.Length > 0 && !known.Add(id))
             {
@@ -476,6 +486,7 @@ public sealed partial class ChatViewModel
                 Text = text,
                 Time = FormatTime(timestamp),
                 RowClass = sender == Model.Nick ? "line own" : "line",
+                ReplyTo = replyTo,
             });
         }
 
@@ -496,6 +507,10 @@ public sealed partial class ChatViewModel
         // Deliberately not trimming to RoomScrollback here: the user has just asked to see
         // further back, so dropping the oldest rows would undo the very thing they requested.
         _prepended += rows.Count;
+
+        // Over the whole room, not just the new rows: a reply that could only say "an earlier
+        // message" before now has the message it was quoting.
+        ResolveReplies(room);
         return rows.Count;
     }
 

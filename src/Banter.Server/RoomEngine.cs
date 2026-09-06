@@ -11,7 +11,7 @@ namespace Banter.Server;
 /// Messages, rooms, and topics persist through <see cref="IServerStore"/>; store awaits happen
 /// inside the single-writer loop, which keeps history ordering identical to fan-out ordering.
 /// </summary>
-internal sealed class RoomEngine(
+internal sealed partial class RoomEngine(
     IServerStore store,
     AgentGuardrails? guardrails = null,
     TaskStore? tasks = null,
@@ -206,6 +206,7 @@ internal sealed class RoomEngine(
                 }
             }
 
+            await CloseAsksFromAsync(session.Nick).ConfigureAwait(false);
             await RemoveFromAllRoomsAsync(session, "disconnected").ConfigureAwait(false);
             if (_sessionsByNick.TryGetValue(session.Nick, out var sessions))
             {
@@ -229,6 +230,12 @@ internal sealed class RoomEngine(
                 break;
             case MsgPayload msg:
                 await HandleMsgAsync(session, envelope, msg).ConfigureAwait(false);
+                break;
+            case AskPayload ask:
+                await HandleAskAsync(session, envelope, ask).ConfigureAwait(false);
+                break;
+            case AnswerPayload answer:
+                await HandleAnswerAsync(session, envelope, answer).ConfigureAwait(false);
                 break;
             case PrivMsgPayload priv:
                 HandlePrivMsg(session, envelope, priv);
@@ -1182,11 +1189,38 @@ internal sealed class RoomEngine(
             authoritative.Sender,
             authoritative.Text,
             authoritative.Timestamp,
-            authoritative.FileId)).ConfigureAwait(false);
+            authoritative.FileId)
+        {
+            ReplyTo = authoritative.ReplyTo,
+        }).ConfigureAwait(false);
 
         // Echo to every member including the sender — the echo carries the authoritative
         // id/timestamp and doubles as delivery confirmation.
         Broadcast(room, authoritative);
+    }
+
+    /// <summary>
+    /// Says something into a room as <paramref name="session"/>, stored and broadcast exactly as
+    /// an ordinary message. Used where a payload also needs to exist as a line of chat — a
+    /// question and the answer to it are part of the conversation, and one that existed only as a
+    /// payload would be missing from the history and from everyone not watching at the time.
+    /// </summary>
+    /// <summary>Says something in the room on a session's behalf and returns the message's id, so
+    /// a caller that needs to point at what it just said does not have to guess.</summary>
+    private async ValueTask<string> RelayAsync(
+        ClientSession session, Room room, string text, string? replyTo = null)
+    {
+        var message = new MsgPayload(
+            room.Name, session.Nick, text,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), null,
+            Guid.NewGuid().ToString("N"), ReplyTo: replyTo);
+
+        await store.AppendMessageAsync(new ChatMessage(
+            message.MessageId!, message.Room, message.Sender, message.Text,
+            message.Timestamp, message.FileId) { ReplyTo = replyTo }).ConfigureAwait(false);
+
+        Broadcast(room, message);
+        return message.MessageId!;
     }
 
     /// <summary>
@@ -1513,7 +1547,7 @@ internal sealed class RoomEngine(
         var messages = page.Messages
             .Select(m => new MsgPayload(
                 m.Room, m.Sender, m.Text, m.Timestamp, m.FileId, m.MessageId,
-                m.EditedAt ?? 0, m.DeletedAt ?? 0))
+                m.EditedAt ?? 0, m.DeletedAt ?? 0, m.ReplyTo))
             .ToArray();
         session.Send(new HistoryChunkPayload(room.Name, messages, page.NextCursor), replyTo: envelope.MsgId);
     }

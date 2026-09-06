@@ -23,6 +23,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public Func<string, string, Task> SendAsync { get; init; } = (_, _) => Task.CompletedTask;
 
+    /// <summary>
+    /// Called when the composer's contents answer a particular message: room, text, and the id of
+    /// the message being answered. Separate from <see cref="SendAsync"/> rather than an optional
+    /// argument on it, so a head that has not wired replies cannot silently drop the thread.
+    /// </summary>
+    public Func<string, string, string, Task> ReplyAsync { get; init; } = (_, _, _) => Task.CompletedTask;
+
+    /// <summary>Called when the user answers an agent's attached question.</summary>
+    public Func<Protocol.AnswerPayload, Task> AnswerAsync { get; init; } = _ => Task.CompletedTask;
+
     /// <summary>Called when the user selects a room tab. Hook so the head can fetch history.</summary>
     public Action<string> RoomSelected { get; init; } = _ => { };
 
@@ -275,11 +285,33 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <div class="{{RowClass}}" data-repeat="Messages" data-msg="{{Id}}">
                   <span class="pfp">{{Initials}}</span>
                   <span class="msg-main">
+                    <span class="{{ReplyClass}}" data-goto-reply="{{ReplyTo}}">{{ReplyText}}</span>
                     <span class="msg-head"><span class="sender">{{Sender}}</span><span class="sender-away">left the room</span><span class="time">{{Time}}</span><span class="edited">{{EditedMark}}</span></span>
                     <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
+                    <span class="{{AskClass}}">
+                      <span class="{{AskTabsClass}}">
+                        <span class="{{TabClass}}" data-repeat="AskTabs" data-ask-tab="{{TabKey}}">{{Label}}</span>
+                      </span>
+                      <span class="ask-head"><span class="ask-header">{{AskHeader}}</span><span class="ask-hint">{{AskHint}}</span></span>
+                      <span class="ask-question">{{AskText}}</span>
+                      <span class="ask-options">
+                        <span class="{{RowClass}}" data-repeat="AskOptions" data-ask-pick="{{PickKey}}">
+                          <span class="ask-mark">{{Mark}}</span>
+                          <span class="ask-option-main">
+                            <span class="ask-label">{{Label}}</span>
+                            <span class="{{DescriptionClass}}">{{Description}}</span>
+                          </span>
+                        </span>
+                      </span>
+                      <span class="ask-foot">
+                        <span class="{{AskWriteClass}}" data-ask-write="{{AskId}}">{{AskWrite}}</span>
+                        <span class="{{AskSendClass}}" data-ask-send="{{AskId}}">{{AskSendLabel}}</span>
+                      </span>
+                    </span>
                   </span>
                 </div>
               </cupri-virtual>
+              <cupri-menu-item class="{{ReplyItemClass}}">Reply</cupri-menu-item>
               <cupri-menu-item class="{{EditItemClass}}">Edit message</cupri-menu-item>
               <cupri-menu-item class="{{DeleteItemClass}}">Delete message</cupri-menu-item>
               <cupri-menu-item class="copy-selection">Copy</cupri-menu-item>
@@ -287,6 +319,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-menu-item class="copy-room">Copy room name</cupri-menu-item>
             </cupri-context-menu>
             <div class="{{EditingClass}}">editing a message — Esc to cancel</div>
+            <div class="{{ReplyingClass}}" data-reply-cancel="1">{{ReplyingText}}</div>
             <div class="composer-wrap">
               <div class="{{MentionsClass}}">
                 <div class="{{RowClass}}" data-repeat="Mentions" data-mention="{{Nick}}">
@@ -1010,7 +1043,69 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .editing-banner { padding: 6px 18px; background: #22304a; color: #b9c6da; font-size: 12px; }
         .editing-banner.hidden { display: none; }
-        .menu-edit.hidden, .menu-delete.hidden { display: none; }
+        .replying-banner { padding: 6px 18px; background: #1d3330; color: #9fd3c4; font-size: 12px;
+                           cursor: pointer; }
+        .replying-banner.hidden { display: none; }
+        .menu-edit.hidden, .menu-delete.hidden, .menu-reply.hidden { display: none; }
+
+        /* What a reply is answering, above the reply itself. Quoted rather than only threaded:
+           the message being answered is often well off the top of the screen, and a thread you
+           have to scroll to follow is one nobody follows. */
+        .reply-quote { color: #7c8899; font-size: 11px; margin-bottom: 2px; cursor: pointer;
+                       padding-left: 7px; border-left: 2px solid #3c4657; }
+        .reply-quote.hidden { display: none; }
+
+        /* ── An agent's question, attached to its message ───────────────────────────────────
+           Inside the row, not over the window. Other agents are working in this room and other
+           people are reading it, so a modal would stop all of them to serve one question - and
+           the question would leave the screen the moment somebody dismissed it. */
+        .ask { display: flex; flex-direction: column; margin-top: 6px; padding: 8px 10px;
+               background: #171d26; border: 1px solid #2c3646; border-radius: 8px; }
+        .ask.hidden { display: none; }
+
+        .ask-tabs { display: flex; flex-direction: row; margin-bottom: 6px; }
+        .ask-tabs.hidden { display: none; }
+        .ask-tab { font-size: 10px; color: #8b96a6; background: #1f2733; border-radius: 6px;
+                   padding: 3px 8px; margin-right: 4px; cursor: pointer; }
+        .ask-tab.active { color: #e2e8f0; background: #2c3646; }
+        .ask-tab.done { color: #6ee7b7; }
+
+        .ask-head { display: flex; flex-direction: row; align-items: center; }
+        .ask-header { font-size: 11px; font-weight: bold; color: #93c5fd; }
+        /* Says what the controls do before somebody finds out by clicking one. */
+        .ask-hint { font-size: 10px; color: #6b7688; padding-left: 8px; }
+        .ask-question { font-size: 12px; color: #cbd5e1; margin-top: 3px; white-space: pre-wrap; }
+
+        .ask-options { display: flex; flex-direction: column; margin-top: 6px; }
+        /* The whole row is the target: a 12px glyph is a hard thing to hit and an easy thing to
+           miss by one pixel into the row underneath. */
+        .ask-option { display: flex; flex-direction: row; align-items: center; cursor: pointer;
+                      padding: 4px 6px; border-radius: 6px; }
+        .ask-option:hover { background: #ffffff08; }
+        .ask-option.chosen { background: #1c2b3a; }
+        .ask-mark { width: 16px; color: #7f8b9c; font-size: 12px; }
+        .ask-option.chosen .ask-mark { color: #60a5fa; }
+        .ask-option-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        .ask-label { font-size: 12px; color: #d5dbe4; }
+        .ask-desc { font-size: 10px; color: #6f7b8c; }
+        .ask-desc.hidden { display: none; }
+
+        .ask-foot { display: flex; flex-direction: row; align-items: center; margin-top: 7px; }
+        /* Free text goes through the composer. A field in here would have nothing to write back
+           to - data-repeat substitutes the bindings and discards the row - and the composer is
+           already the one place in this app where text is typed. */
+        .ask-write { flex: 1; font-size: 10px; color: #6b7688; cursor: pointer; }
+        .ask-write.hidden { display: none; }
+        .ask-send { font-size: 11px; color: #04121e; background: #60a5fa; border-radius: 6px;
+                    padding: 4px 12px; cursor: pointer; }
+        /* Greyed rather than removed while there is nothing to send: a control that disappears
+           takes the shape of the panel with it. */
+        .ask-send.idle { color: #6b7688; background: #232b37; }
+        .ask-send.hidden { display: none; }
+
+        /* Answered: kept in place, spent. The decision is part of the conversation. */
+        .ask.answered { background: #151b17; border: 1px solid #26362c; }
+        .ask.answered .ask-hint { color: #6ee7b7; padding-left: 0; }
 
         .composer-wrap { padding: 8px 16px 12px 16px; }
         .composer-row { display: flex; flex-direction: row; align-items: center;
@@ -1854,6 +1949,60 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        // ── An agent's attached question ────────────────────────────────────────────────────
+        //
+        // Every key carries the ask it belongs to, because a busy room may have two agents
+        // waiting on two different questions and a bare option value would not say which.
+        doc.OnAction("data-ask-pick", e =>
+        {
+            ViewModel.PickAskOption(e.Value ?? "");
+            return true;
+        });
+
+        doc.OnAction("data-ask-tab", e =>
+        {
+            ViewModel.SelectAskTab(e.Value ?? "");
+            return true;
+        });
+
+        // Points the composer at the question, which is what makes typing an answer rather than
+        // a message possible without a second text field.
+        doc.OnAction("data-ask-write", e =>
+        {
+            var message = ViewModel.AskMessage(e.Value ?? "");
+            if (message.Length > 0)
+            {
+                ViewModel.BeginReply(message, answering: true);
+            }
+
+            return true;
+        });
+
+        doc.OnAction("data-ask-send", e =>
+        {
+            SendAnswer(e.Value ?? "");
+            return true;
+        });
+
+        doc.OnAction("data-reply-cancel", _ =>
+        {
+            ViewModel.ClearReply();
+            return true;
+        });
+
+        // Clicking the quote jumps the composer to the message being answered, so a reader who
+        // has followed a thread back can carry on the same thread rather than starting one.
+        doc.OnAction("data-goto-reply", e =>
+        {
+            var id = e.Value ?? "";
+            if (id.Length > 0 && ViewModel.FindMessage(ViewModel.Model.ActiveRoom, id) is not null)
+            {
+                ViewModel.BeginReply(id);
+            }
+
+            return true;
+        });
+
         // Right-click menu items. CupriFace opens the menu at the pointer and leaves the
         // clipboard to the host, so every one of these ends in a call through IClipboard.
         // Which message the menu will act on, from the element the right-click or long-press
@@ -1866,6 +2015,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return false;
         });
 
+        doc.OnClick(".menu-reply", _ => BeginReply());
         doc.OnClick(".menu-edit", _ => BeginEdit());
         doc.OnClick(".menu-delete", _ => DeleteContextMessage());
         doc.OnClick(".copy-selection", _ => CopySelection());
@@ -2229,6 +2379,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         ViewModel.Model.EditItemClass = mine ? "menu-edit" : "menu-edit hidden";
         ViewModel.Model.DeleteItemClass = actionable ? "menu-delete" : "menu-delete hidden";
+        ViewModel.SetReplyTarget(ViewModel.Model.ActiveRoom, messageId ?? "");
     }
 
     /// <summary>
@@ -2259,6 +2410,50 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         ViewModel.MoveMentionSelection(delta);
+        _doc?.Refresh();
+    }
+
+    /// <summary>
+    /// Sends what has been chosen on a question, together with anything typed into the composer
+    /// for it. Both, not one or the other: somebody who wrote something wrote it because the
+    /// buttons did not say what they meant, and somebody who clicked meant the click.
+    /// </summary>
+    private void SendAnswer(string askId)
+    {
+        if (askId.Length == 0 || !ViewModel.IsAskOpen(askId))
+        {
+            return;
+        }
+
+        var written = ViewModel.ReplyingTo == ViewModel.AskMessage(askId)
+            ? ViewModel.Model.Composer.Trim()
+            : "";
+
+        var answer = ViewModel.BuildAnswer(askId, written);
+        if (answer is null)
+        {
+            return;
+        }
+
+        if (written.Length > 0)
+        {
+            ViewModel.Model.Composer = "";
+        }
+
+        ViewModel.ClearReply();
+        _doc?.Refresh();
+        _ = AnswerAsync(answer);
+    }
+
+    /// <summary>Points the composer at the message the right-click menu was opened over.</summary>
+    private void BeginReply()
+    {
+        if (_contextMessage is not { Id.Length: > 0 } row)
+        {
+            return;
+        }
+
+        ViewModel.BeginReply(row.Id, answering: row.AskId.Length > 0 && ViewModel.IsAskOpen(row.AskId));
         _doc?.Refresh();
     }
 
@@ -2317,6 +2512,25 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         ViewModel.Model.Composer = "";
+
+        // Answering a question the composer is pointed at: send the answer rather than a message,
+        // so what was typed reaches the agent that is waiting on it and not just the room.
+        var replyingTo = ViewModel.ReplyingTo;
+        if (replyingTo.Length > 0 && ViewModel.FindMessage(room, replyingTo) is { AskId.Length: > 0 } asked
+            && ViewModel.IsAskOpen(asked.AskId))
+        {
+            var answer = ViewModel.BuildAnswer(asked.AskId, text);
+            ViewModel.ClearReply();
+            _doc?.Refresh();
+            if (answer is not null)
+            {
+                _ = AnswerAsync(answer);
+            }
+
+            return;
+        }
+
+        ViewModel.ClearReply();
         _doc?.Refresh();
 
         if (text[0] == '/')
@@ -2327,6 +2541,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         // Fire-and-forget by design: the authoritative message arrives back as a MSG echo, so
         // there is nothing to await here. Failures surface through the client's error events.
-        _ = SendAsync(room, text);
+        _ = replyingTo.Length > 0 ? ReplyAsync(room, text, replyingTo) : SendAsync(room, text);
     }
 }

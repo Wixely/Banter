@@ -1110,6 +1110,67 @@ Still open: per-agent MCPHub tokens (grants live in Banter's own `tool_grants` t
 MCPHub's tenancy seam), and a persisted audit log — the audit is currently a room message plus a
 stderr line.
 
+### 8c-a. Structured asks: an agent asking a question it can be answered by clicking — ✅ shipped
+
+Claude Code and Codex both stop and ask when a decision is not theirs to make, and both do it with
+buttons rather than by hoping the answer parses. Banter needs the same thing, and needs it in a
+shape that suits a room rather than a terminal.
+
+**The shape is the whole design.** A modal is wrong here. A Banter room has several agents working
+in it and several people reading it; a dialogue over the window stops all of them to serve whichever
+question arrived first, gives it to exactly one person, and takes it off the screen the moment it is
+dismissed. So an ask is **attached to the message that asked it**:
+
+- The room carries on. Nothing blocks. The agent that asked waits on its own turn, not the room's.
+- **Anybody in the room may answer**, not just whoever prompted the work. A question belongs to the
+  room. The first answer settles it, and everybody else is told to stop offering it — two people
+  answering the same question is not a conflict worth resolving, it is one that should not arise.
+- A question nobody happened to be looking at is **still there an hour later**.
+
+**Wire (`110–112`).** `ASK` (agent → server → room), `ANSWER` (anybody → server → the agent that
+asked), `ASK_CLOSED` (broadcast: stop offering this). An ask carries one to four `AskQuestion`s,
+each with a key, a header, the question, options, and `MultiSelect`/`AllowText` flags. Only agents
+may ask — a person with a question can simply ask it, and structured asks exist so an agent's
+question can be answered by clicking rather than by typing something it then has to parse.
+
+**It is also just a message.** The question is relayed into the room as ordinary chat
+(`[asking] …`), and so is the answer (`[answered] …`). A client that knows nothing about asks still
+shows both, the history still reads correctly, and the voice readback still speaks them. The ask
+payload names that message id, which is what lets a client hang the controls off the right row
+rather than floating them somewhere of its own choosing.
+
+**Pending asks live in memory, deliberately.** The agent waiting on one is a process with a timeout,
+so a server restart takes its wait with it; an answer relayed to an agent that is no longer
+listening would be worse than none. An agent that disconnects has its questions closed with a system
+line, so nobody answers into nothing.
+
+**Client.** Controls render inside the timeline row: a tab strip when there is more than one
+question (hidden for one — a single tab is a label pretending to be a control), the active
+question's options as rows with a `◉/○` or `☑/☐` mark, a hint saying *choose one* / *choose any*
+before anyone finds out by clicking, and a Send that is greyed until there is something to send.
+Answered asks stay in place, spent, showing who decided — the decision is part of the conversation.
+
+**Free text goes through the composer**, not a field in the row. Partly a CupriFace fact —
+`data-repeat` substitutes bindings and discards the row object, so a text field inside one has
+nothing to write back to — but mostly the right call anyway: the composer is the one place this app
+types, and answering a question is a kind of reply. What somebody types **rides along with** what
+they clicked rather than replacing it: they wrote it because the buttons did not say what they
+meant, and dropping either half loses half of what they said.
+
+**Replies (`MsgPayload.ReplyTo`, migration 10).** Threading arrived with this and is worth having on
+its own. In a room with four agents working at once, *"the second one"* is unreadable to anybody,
+human or model, who has to decide for themselves which of the last ten lines it came back to. A
+reply quotes what it answers, above itself; a quote whose subject is off the top of the scrollback
+still says it is a reply, and fills itself in when older history is paged in. The server threads the
+`[answered]` line to the `[asking]` line for the same reason.
+
+**Do frontier models support this?** Not as a first-class API primitive — neither Anthropic's
+Messages API nor OpenAI's have an "ask the user a structured question" verb. Both Claude Code and
+Codex implement it as **an ordinary tool** the model calls, with the harness rendering the UI. That
+is exactly what `ask_operator` is here: a normal tool in the agent's tool loop, JSON-schema'd
+questions and options, so any model that can call tools can ask. Nothing in Dagger needs to change
+for it to work — the SDK's tool loop already carries it.
+
 ## 9. Build order & milestones
 
 **Phase 0 — Scaffold + spikes (short):**

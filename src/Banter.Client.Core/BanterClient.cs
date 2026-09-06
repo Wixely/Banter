@@ -116,6 +116,15 @@ public sealed partial class BanterClient : IAsyncDisposable
     /// </summary>
     public event Action<string>? Evicted;
 
+    /// <summary>An agent in a room asked a question. Clients render the choices on the message.</summary>
+    public event Action<AskPayload>? AskReceived;
+
+    /// <summary>A question was settled, so stop offering it — somebody else may have answered.</summary>
+    public event Action<AskClosedPayload>? AskClosed;
+
+    /// <summary>An answer to something this client asked.</summary>
+    public event Action<AnswerPayload>? AnswerReceived;
+
     /// <summary>The reason from the server's farewell, or null while the session lives.</summary>
     public string? Farewell { get; private set; }
 
@@ -195,6 +204,29 @@ public sealed partial class BanterClient : IAsyncDisposable
     /// <see cref="MessageReceived"/> echo to every member including this sender.</summary>
     public ValueTask SendMessageAsync(string room, string text, CancellationToken cancellationToken = default) =>
         SendAsync(_codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null)), cancellationToken);
+
+    /// <summary>
+    /// Says something as a reply to a particular message, so an agent reading it knows which of
+    /// the last ten things said it answers. Ordinary chat otherwise.
+    /// </summary>
+    public ValueTask ReplyAsync(
+        string room, string text, string replyToMessageId, CancellationToken cancellationToken = default) =>
+        SendAsync(
+            _codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null, ReplyTo: replyToMessageId)),
+            cancellationToken);
+
+    /// <summary>
+    /// Asks the room a question with the ways it can be answered. Returns the ask as the server
+    /// stamped it — its id is what an answer refers to.
+    /// </summary>
+    public Task<AskPayload> AskAsync(
+        string room, IReadOnlyList<AskQuestion> questions, CancellationToken cancellationToken = default) =>
+        RequestAsync<AskPayload>(new AskPayload(room, "", questions), cancellationToken);
+
+    /// <summary>Answers somebody's question. Anyone in the room may; the first answer settles it.</summary>
+    public Task<OkPayload> AnswerAsync(
+        string askId, IReadOnlyList<AskAnswer> answers, CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new AnswerPayload(askId, answers), cancellationToken);
 
     /// <summary>
     /// Changes what one of your own messages says. Only the author may edit; the server refuses
@@ -725,6 +757,18 @@ public sealed partial class BanterClient : IAsyncDisposable
                     case AgentAnnouncePayload effective:
                         EffectiveAttributes = effective;
                         AttributesSet?.Invoke(effective);
+                        break;
+
+                    case AskPayload ask:
+                        AskReceived?.Invoke(ask);
+                        break;
+
+                    case AskClosedPayload closed:
+                        AskClosed?.Invoke(closed);
+                        break;
+
+                    case AnswerPayload answered:
+                        AnswerReceived?.Invoke(answered);
                         break;
 
                     case ByePayload bye:

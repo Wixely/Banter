@@ -188,7 +188,7 @@ public sealed class BanterChatAppTests(ITestOutputHelper output)
         doc.BuildDisplayList(Width, Height);
 
         vm.Post(() => vm.Prepend("#main", Enumerable.Range(0, 40)
-            .Select(i => ($"old-{i}", "carol", $"older {i}", (long)i)).ToList()));
+            .Select(i => ($"old-{i}", "carol", $"older {i}", (long)i, "")).ToList()));
 
         // Present drains the queue, calls VirtualListInserted with the count, then refreshes.
         app.Present(Width, Height);

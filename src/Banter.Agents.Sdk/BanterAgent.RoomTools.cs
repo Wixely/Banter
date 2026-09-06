@@ -169,23 +169,143 @@ public abstract partial class BanterAgent
     protected virtual IReadOnlyList<LocalTool> EveryoneTools =>
     [
         new("ask_operator",
-            "Ask the people in this room a question and stop, when something needs a human "
-            + "decision — adding an agent that is not here, spending money, anything outside what "
-            + "you were asked to do. Say what you need and why. Do not act on the answer until "
-            + "somebody gives one.",
+            "Ask the people in this room a question and WAIT for the answer, when something needs "
+            + "a human decision - adding an agent that is not here, spending money, choosing "
+            + "between approaches, anything outside what you were asked to do. Offer options where "
+            + "there are sensible ones and they are shown as buttons to click; whoever answers can "
+            + "always write something else instead. Returns what they chose. Ask more than one "
+            + "question at once only when they are really one decision in parts.",
             """
             {"type":"object","properties":{
-              "question":{"type":"string","description":"What you need decided, and why it is needed."}
-            },"required":["question"]}
+              "questions":{"type":"array","minItems":1,"maxItems":4,"items":{
+                "type":"object","properties":{
+                  "key":{"type":"string","description":"Short identifier for this question, so you can tell the answers apart."},
+                  "header":{"type":"string","description":"Two or three words naming the decision, e.g. 'Extra agent'."},
+                  "question":{"type":"string","description":"What you need decided, and why it is needed."},
+                  "options":{"type":"array","items":{
+                    "type":"object","properties":{
+                      "value":{"type":"string","description":"What comes back if this is chosen."},
+                      "label":{"type":"string","description":"What the person reads."},
+                      "description":{"type":"string","description":"Why they would pick it."}
+                    },"required":["value","label"]}},
+                  "multi_select":{"type":"boolean","description":"Whether several options may be chosen at once."}
+                },"required":["key","question"]}}
+            },"required":["questions"]}
             """,
-            async (room, args, ct) =>
-            {
-                await Client.SendMessageAsync(room, $"[needs a decision] {Text(args, "question")}", ct)
-                    .ConfigureAwait(false);
-                return "Asked. Nobody has answered yet — wait for a reply in the room rather than "
-                     + "assuming one, and do not do the thing you asked about in the meantime.";
-            }),
+            async (room, args, ct) => await AskAndWaitAsync(room, args, ct).ConfigureAwait(false)),
     ];
+
+    /// <summary>
+    /// Puts the question in the room and waits for somebody to answer it.
+    ///
+    /// <para>Waiting is this agent's own turn, not the room's: everybody else carries on, other
+    /// agents keep working, and the question sits on the message until it is answered. An agent
+    /// that asked and then carried on regardless would be asking for form's sake.</para>
+    ///
+    /// <para>The wait is bounded. Nobody is obliged to answer, and an agent holding its turn open
+    /// forever is one that has quietly stopped working - so a timeout hands the model back the
+    /// fact that nobody replied, which is itself an answer of a kind.</para>
+    /// </summary>
+    private async Task<string> AskAndWaitAsync(string room, JsonElement args, CancellationToken cancellationToken)
+    {
+        var questions = ParseQuestions(args);
+        var answered = new TaskCompletionSource<AnswerPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var asked = await Client.AskAsync(room, questions, cancellationToken).ConfigureAwait(false);
+
+        void OnAnswer(AnswerPayload a)
+        {
+            if (string.Equals(a.AskId, asked.AskId, StringComparison.Ordinal))
+            {
+                answered.TrySetResult(a);
+            }
+        }
+
+        void OnClosed(AskClosedPayload c)
+        {
+            // Closed without reaching us. Ending the wait beats holding a turn open for something
+            // that is never going to arrive.
+            if (string.Equals(c.AskId, asked.AskId, StringComparison.Ordinal))
+            {
+                answered.TrySetResult(new AnswerPayload(asked.AskId, [], c.AnsweredBy));
+            }
+        }
+
+        Client.AnswerReceived += OnAnswer;
+        Client.AskClosed += OnClosed;
+        try
+        {
+            var reply = await answered.Task.WaitAsync(Options.AskTimeout, cancellationToken).ConfigureAwait(false);
+            return DescribeAnswer(questions, reply);
+        }
+        catch (TimeoutException)
+        {
+            return $"Nobody answered within {Options.AskTimeout.TotalMinutes:F0} minutes. Do not assume "
+                 + "an answer: say in the room that you are still waiting, and stop rather than "
+                 + "guessing at what was not decided.";
+        }
+        finally
+        {
+            Client.AnswerReceived -= OnAnswer;
+            Client.AskClosed -= OnClosed;
+        }
+    }
+
+    private static string DescribeAnswer(IReadOnlyList<AskQuestion> questions, AnswerPayload reply)
+    {
+        if (reply.Answers.Count == 0)
+        {
+            return "The question was closed without an answer.";
+        }
+
+        var said = reply.Answers.Select(a =>
+        {
+            var q = questions.FirstOrDefault(x => x.Key == a.Key);
+            var chosen = a.Chosen
+                .Select(v => q?.Options.FirstOrDefault(o => o.Value == v)?.Label ?? v)
+                .ToList();
+
+            var value = chosen.Count > 0 ? string.Join(", ", chosen) : "";
+            if (a.Text.Length > 0)
+            {
+                // What somebody typed outranks what they clicked: they wrote it because the
+                // buttons did not say what they meant.
+                value = value.Length > 0 ? $"{value} (and said: {a.Text})" : a.Text;
+            }
+
+            return $"{a.Key} = {(value.Length > 0 ? value : "nothing chosen")}";
+        });
+
+        var who = reply.Responder.Length > 0 ? reply.Responder : "somebody";
+        return $"{who} answered: {string.Join("; ", said)}";
+    }
+
+    private static IReadOnlyList<AskQuestion> ParseQuestions(JsonElement args)
+    {
+        if (!args.TryGetProperty("questions", out var list) || list.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("'questions' is required and must be an array.");
+        }
+
+        var parsed = list.EnumerateArray().Select(q => new AskQuestion(
+            Key: Text(q, "key"),
+            Header: Optional(q, "header") is { Length: > 0 } h ? h : Text(q, "key"),
+            Text: Text(q, "question"),
+            Options: q.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array
+                ? [.. options.EnumerateArray().Select(o => new AskOption(
+                    Text(o, "value"), Text(o, "label"), Optional(o, "description") ?? ""))]
+                : [],
+            MultiSelect: q.TryGetProperty("multi_select", out var multi) && multi.ValueKind == JsonValueKind.True))
+            .ToList();
+
+        return parsed.Count == 0
+            ? throw new InvalidOperationException("Ask at least one question.")
+            : parsed;
+    }
+
+    private static string? Optional(JsonElement args, string name) =>
+        args.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static string Text(JsonElement args, string name) =>
         args.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
