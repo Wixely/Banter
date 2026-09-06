@@ -221,6 +221,9 @@ public sealed partial class ChatViewModel
             AttachText = fileId.Length > 0 ? "attachment" : "",
         };
 
+        // Anyone heard from is somebody who could be given a voice of their own.
+        SawSpeaker(sender);
+
         var backlog = _rooms.TryGetValue(room, out var existing) ? existing : _rooms[room] = [];
         backlog.Add(row);
         if (backlog.Count > RoomScrollback)

@@ -23,11 +23,15 @@ public sealed class DesktopVoice : IAsyncDisposable
         VoiceSession? session,
         ReadbackSession? readback,
         ReadbackPolicy policy,
+        IReadOnlyList<VoiceDescriptor> voices,
+        VoiceAssignment? assignment,
         IDisposable?[] devices)
     {
         Session = session;
         Readback = readback;
         Policy = policy;
+        Voices = voices;
+        Assignment = assignment;
         _devices = devices;
     }
 
@@ -36,6 +40,16 @@ public sealed class DesktopVoice : IAsyncDisposable
     public ReadbackSession? Readback { get; }
 
     public ReadbackPolicy Policy { get; }
+
+    /// <summary>
+    /// What this machine can speak in — asked of the backend rather than listed by hand, so a
+    /// server with its own voices (faster-qwen-tts-aio, a Piper install with several) needs no
+    /// configuration here to be offered on the settings page.
+    /// </summary>
+    public IReadOnlyList<VoiceDescriptor> Voices { get; }
+
+    /// <summary>Who sounds like what, or null when nothing here speaks.</summary>
+    public VoiceAssignment? Assignment { get; }
 
     /// <summary>
     /// Builds what this machine can manage, or null when it can manage nothing. Reasons go to
@@ -110,6 +124,8 @@ public sealed class DesktopVoice : IAsyncDisposable
 
         ReadbackSession? readback = null;
         ITextToSpeech? speaker = null;
+        IReadOnlyList<VoiceDescriptor> pool = [];
+        VoiceAssignment? assignment = null;
 
         // A Wyoming speaker wins over the HTTP one: someone who has configured one has said what
         // they want, and it is the half that makes an entirely self-hosted setup possible.
@@ -132,8 +148,21 @@ public sealed class DesktopVoice : IAsyncDisposable
         {
             // Voices are configuration rather than discovery in both backends, so the options'
             // list is the pool; read here so a server with its own voices needs no code change.
-            var voices = speaker.GetVoicesAsync().AsTask().GetAwaiter().GetResult();
-            readback = new ReadbackSession(speaker, playback, new VoiceAssignment(voices),
+            pool = speaker.GetVoicesAsync().AsTask().GetAwaiter().GetResult();
+            assignment = new VoiceAssignment(pool);
+
+            // Whoever somebody has already chosen a voice for keeps it; the rest are dealt one by
+            // name. A pin naming a voice this server does not have is ignored rather than
+            // honoured as a broken id — speech servers get swapped and the setting outlives them.
+            foreach (var (nick, voiceId) in settings.Voices)
+            {
+                if (pool.Any(v => string.Equals(v.Id, voiceId, StringComparison.Ordinal)))
+                {
+                    assignment.Pin(nick, voiceId);
+                }
+            }
+
+            readback = new ReadbackSession(speaker, playback, assignment,
                 new ReadbackOptions { Policy = policy });
         }
         else if (playback is not null)
@@ -149,7 +178,7 @@ public sealed class DesktopVoice : IAsyncDisposable
 
         // Cast rather than tracked separately: the HTTP backends own an HttpClient and are
         // disposable, the Wyoming ones hold no socket between calls and are not.
-        return new DesktopVoice(session, readback, policy,
+        return new DesktopVoice(session, readback, policy, pool, assignment,
         [
             capture as IDisposable,
             playback as IDisposable,

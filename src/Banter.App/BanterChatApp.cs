@@ -88,6 +88,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Told when the interface scale changes, so the head can remember it.</summary>
     public Action<float> ZoomChanged { get; init; } = _ => { };
 
+    /// <summary>
+    /// The voices this machine's speech backend offers, as (id, label). Empty when nothing here
+    /// speaks — the settings page then says so rather than offering an empty picker.
+    /// </summary>
+    public IReadOnlyList<(string Id, string Label)> Voices { get; init; } = [];
+
+    /// <summary>Told when a speaker's voice is pinned or cleared: (nick, voiceId or null).</summary>
+    public Action<string, string?> VoicePinned { get; init; } = (_, _) => { };
+
+    /// <summary>
+    /// Told when the voice settings on the page change, so the head can save them and rebuild
+    /// whatever it listens and speaks with. The page holds the values; the head reads them off
+    /// the view model rather than being handed a copy that could drift from what is on screen.
+    /// </summary>
+    public Action VoiceSettingsChanged { get; init; } = () => { };
+
     /// <summary>The scale to start at, as the head last saved it.</summary>
     public float InitialZoom { get; init; } = 1f;
 
@@ -347,6 +363,66 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <cupri-button class="mgmt-remove settings-close">Close</cupri-button>
                 </div>
                 <div class="mgmt-fields">
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Hearing</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices">
+                        <div class="{{RowClass}}" data-repeat="TranscribeChoices" data-transcribe="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                            <div class="mgmt-choice-hint">{{Hint}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">What turns speech into text. Nothing here leaves this machine unless you point it somewhere.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Language</div>
+                    <div class="mgmt-control">
+                      <cupri-textfield class="mgmt-input" value="{{VoiceLanguage}}" placeholder="detect"></cupri-textfield>
+                      <div class="mgmt-hint">A hint like "en" or "de". Worth setting: detection on a short utterance is close to a coin flip.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Names</div>
+                    <div class="mgmt-control">
+                      <cupri-textfield class="mgmt-input" value="{{VoiceVocabulary}}" placeholder="dagger, webscribe, CupriNet"></cupri-textfield>
+                      <div class="mgmt-hint">Words the engine has never seen and will otherwise replace with something plausible. Agent names belong here.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Speech server</div>
+                    <div class="mgmt-control">
+                      <cupri-textfield class="mgmt-input" value="{{VoiceWyomingTts}}" placeholder="localhost:10200"></cupri-textfield>
+                      <div class="mgmt-hint">A Wyoming speaker — Piper, or faster-qwen-tts-aio, which serves both this and the OpenAI API. Takes precedence over the endpoint below.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Endpoint</div>
+                    <div class="mgmt-control">
+                      <cupri-textfield class="mgmt-input" value="{{VoiceEndpoint}}" placeholder="http://localhost:8080/v1"></cupri-textfield>
+                      <div class="mgmt-hint">An OpenAI-compatible audio API, used for speech and for transcription when that is set to it.</div>
+                    </div>
+                  </div>
+                  <div class="{{VoiceSpeakersClass}}">
+                    <div class="mgmt-label">Voices</div>
+                    <div class="mgmt-control">
+                      <div class="voice-rows">
+                        <div class="{{RowClass}}" data-repeat="SpeakerVoices" data-voice-cycle="{{Nick}}">
+                          <div class="mgmt-row-inner">
+                            <span class="mgmt-pfp">{{Initials}}</span>
+                            <span class="mgmt-row-main">
+                              <span class="mgmt-row-name">{{Nick}}</span>
+                              <span class="mgmt-row-detail">{{VoiceLabel}} · {{VoiceKind}}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">Click a name to step through the voices your speech server offers, and once more to let it be dealt by name again. Two agents that sound alike are two agents you cannot tell apart with your back to the screen.</div>
+                    </div>
+                  </div>
                   <div class="mgmt-field">
                     <div class="mgmt-label">Zoom</div>
                     <div class="mgmt-control">
@@ -1155,7 +1231,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* Centred by the overlay rather than by auto margins: CupriFace's flex resolves an auto
            margin on the main axis only, so `margin: auto` alone left this pinned to the top. */
         .settings-overlay { align-items: center; justify-content: center; }
-        .settings-card { flex: 0 0 640px; height: 340px; }
+        .settings-card { flex: 0 0 720px; height: 620px; }
+        /* The voice list is the one thing here that grows with the room, so it scrolls rather
+           than pushing the rest of the page off the bottom. Its own class rather than a modifier
+           on .mgmt-rows: that rule carries flex:1, which in a column with no height of its own
+           collapsed the list to nothing, and a compound selector did not reliably outrank it. */
+        .voice-rows { height: 150px; overflow: scroll; }
         .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
 
         /* ── Confirming something destructive ──────────────────────────────────────────────
@@ -1524,8 +1605,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        // Both ways out save. The text fields write straight into the model as they are typed, so
+        // hanging the save off leaving the page is one file write per visit rather than one per
+        // keystroke — and there is no third way out to forget about.
         doc.OnAction("data-settings-close", _unused =>
         {
+            VoiceSettingsChanged();
             ViewModel.ShowSettingsPanel(false);
             doc.Refresh();
             return true;
@@ -1533,8 +1618,31 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         doc.OnClick(".settings-close", _unused =>
         {
+            VoiceSettingsChanged();
             ViewModel.ShowSettingsPanel(false);
             doc.Refresh();
+        });
+
+        doc.OnAction("data-transcribe", e =>
+        {
+            ViewModel.ChooseTranscribe(e.Value ?? "local");
+            VoiceSettingsChanged();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-voice-cycle", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            var next = ViewModel.CycleVoice(e.Value);
+            ViewModel.PinVoice(e.Value, next);
+            VoicePinned(e.Value, next);
+            doc.Refresh();
+            return true;
         });
 
         doc.OnAction("data-zoom", e =>

@@ -216,6 +216,45 @@ var app = new BanterChatApp(vm)
 
     // Zoom is a preference about eyesight and monitors, so it is written the moment it changes
     // rather than only when --save is passed: nobody expects to have to re-choose it.
+    Voices = [.. (voice?.Voices ?? []).Select(v => (v.Id, v.DisplayName))],
+
+    // Pinning takes effect on the next thing spoken, not the next launch: choosing a voice and
+    // then having to restart to hear it is how you end up unable to tell whether it worked.
+    VoicePinned = (nick, voiceId) =>
+    {
+        if (voiceId is { Length: > 0 })
+        {
+            voice?.Assignment?.Pin(nick, voiceId);
+        }
+        else
+        {
+            voice?.Assignment?.Unpin(nick);
+        }
+
+        var pins = new Dictionary<string, string>(vm.VoicePins, StringComparer.OrdinalIgnoreCase);
+        settings = settings with { Voice = settings.Voice with { Voices = pins } };
+        settings.TrySave(settingsPath, p => Console.Error.WriteLine($"warning: {p}"));
+    },
+
+    // The engine and the endpoints are read at startup, so a change here is saved and takes
+    // effect on the next launch. Said on the page rather than pretended otherwise.
+    VoiceSettingsChanged = () =>
+    {
+        settings = settings with
+        {
+            Voice = settings.Voice with
+            {
+                Engine = vm.ChosenTranscribe,
+                Language = vm.Model.VoiceLanguage.Trim(),
+                Vocabulary = vm.Model.VoiceVocabulary.Trim(),
+                Endpoint = vm.Model.VoiceEndpoint.Trim(),
+                WyomingTts = vm.Model.VoiceWyomingTts.Trim(),
+            },
+        };
+
+        settings.TrySave(settingsPath, p => Console.Error.WriteLine($"warning: {p}"));
+    },
+
     ZoomChanged = zoom =>
     {
         var updated = settings with { Zoom = zoom };
@@ -229,6 +268,16 @@ var app = new BanterChatApp(vm)
 
     ReadbackChangedAsync = policy => session.SetReadbackAsync(policy),
 };
+
+// Fill the settings page with what was loaded and what this machine can actually speak with.
+vm.SetVoiceSettings(
+    settings.Voice.Engine,
+    settings.Voice.Language,
+    settings.Voice.Vocabulary,
+    settings.Voice.Endpoint,
+    settings.Voice.WyomingTts,
+    [.. (voice?.Voices ?? []).Select(v => (v.Id, v.DisplayName))],
+    settings.Voice.Voices);
 
 DesktopHost.Run(app, _ => { });
 

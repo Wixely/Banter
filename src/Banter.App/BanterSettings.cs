@@ -170,6 +170,22 @@ public sealed record VoiceSettings
     /// <summary>Voices the Wyoming speaker offers, for per-sender assignment.</summary>
     public IReadOnlyList<string> WyomingVoices { get; init; } = [];
 
+    /// <summary>
+    /// Who sounds like what: nick to voice id, for the ones somebody has chosen deliberately.
+    /// Everyone else is dealt a voice from the pool by name.
+    ///
+    /// <para><b>This is a client setting, not a server one.</b> A voice is a property of the
+    /// speech server this machine talks to and of the ears in front of it: the pool differs
+    /// between a Piper install and a Qwen one, somebody running no TTS at all has no opinion to
+    /// store, and two people in the same room can reasonably want the same agent to sound
+    /// different. Putting it on the agent identity would make it an operator's decision, force
+    /// every listener to share one voice pool, and add a protocol round trip to a preference that
+    /// never leaves this machine — so it lives here, beside the rest of what this client sounds
+    /// like.</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Voices { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
     public string TranscriptionModel { get; init; } = "whisper-1";
 
     public string SpeechModel { get; init; } = "tts-1";

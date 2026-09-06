@@ -212,6 +212,25 @@ public sealed partial class RosterUserRow
 }
 
 /// <summary>
+/// One speaker and the voice they are heard in. A row per person or agent seen in a room, so the
+/// list is who you actually talk to rather than a directory of everyone who ever existed.
+/// </summary>
+[CupriBindable]
+public sealed partial class SpeakerVoiceRow
+{
+    public string Nick { get; set; } = "";
+    public string Initials { get; set; } = "";
+
+    /// <summary>The voice's label, or what is standing in for one when nothing is pinned.</summary>
+    public string VoiceLabel { get; set; } = "";
+
+    /// <summary>"pinned" when somebody chose it, "dealt" when the pool picked it by name.</summary>
+    public string VoiceKind { get; set; } = "";
+
+    public string RowClass { get; set; } = "mgmt-row";
+}
+
+/// <summary>
 /// One option in a radio-card group — the shape both management pages use for every choice, so
 /// locality, clearance, the delegator override and a user's role are all the same control.
 /// </summary>
@@ -345,6 +364,19 @@ public sealed partial class ChatModel
     /// <summary>Interface scale, as the settings page shows it ("100%").</summary>
     public string ZoomLabel { get; set; } = "100%";
     public List<ChoiceRow> ZoomChoices { get; set; } = [];
+
+    // Voice. Transcription is what this machine hears with, speech is what it talks with, and the
+    // voice list is who sounds like what — all three are about this machine, not the server.
+    public List<ChoiceRow> TranscribeChoices { get; set; } = [];
+    public string VoiceLanguage { get; set; } = "";
+    public string VoiceVocabulary { get; set; } = "";
+    public string VoiceEndpoint { get; set; } = "";
+    public string VoiceWyomingTts { get; set; } = "";
+
+    /// <summary>Hidden when nothing on this machine speaks: an empty voice picker is worse than
+    /// none, because it looks like a list that failed to load.</summary>
+    public string VoiceSpeakersClass { get; set; } = "mgmt-field hidden";
+    public List<SpeakerVoiceRow> SpeakerVoices { get; set; } = [];
 
     // Destructive acts ask first. One dialog serves both pages: what differs is the sentence,
     // which is the only part that should differ.

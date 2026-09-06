@@ -144,6 +144,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | OpenAI-compatible speech provider | ⬜ | – | – | – | – | – | – |
 | Wyoming provider (Whisper/Piper) | ⬜ | – | – | – | – | – | – |
 | Local STT (Whisper.net, from Bantz) | ⬜ | – | – | ⬜ | ⬜ | – | – |
+| Voice settings + per-speaker voices (§6b) | – | – | – | ✅ | ⬜ | ⬜ | – |
 | Global push-to-talk hotkey | – | – | – | ⬜ | – | – | – |
 | Always-listening + wake word | – | – | – | ⬜ | ⬜ | ⬜ | – |
 | TTS playback of incoming messages | – | – | – | ⬜ | ⬜ | ⬜ | – |
@@ -453,6 +454,42 @@ agreeing with itself is not enough to pass.
 
 Still to do in Phase 3: nothing built. What remains is verification — none of the audio path has
 met a real microphone or speaker yet.
+
+### 6b. Voice is a client setting, not a room one
+
+*Decided 2026-09-06.* Everything about how this client hears and speaks — which engine
+transcribes, which server synthesises, and **which voice each speaker is heard in** — lives in
+`VoiceSettings` on the client and never crosses the wire.
+
+Per-agent voice was the one worth arguing about, because agent identity is otherwise server-owned
+and admin-controlled (§8a, and the identity overrides that outrank an agent's own announcement).
+It is deliberately not:
+
+- **The voice pool belongs to the listener's speech server.** A Piper install, a Qwen one and
+  OpenAI offer different voices under different ids. A voice id stored on the identity would be
+  meaningless to every listener whose server does not have it, and there is no sensible way for
+  one server to name voices on behalf of all of them.
+- **Two people in one room can reasonably disagree.** Voice is about telling agents apart by ear
+  at your own desk. There is no shared truth to converge on, so making it shared would be
+  choosing one listener's preference for everybody.
+- **It is not a permission.** The agents page is admin-only because clearance and locality decide
+  what data an agent may see. Nothing about a voice can leak anything, so putting it behind an
+  admin gate would restrict a preference for no benefit — and someone with no TTS at all has no
+  opinion to store.
+- **It costs a protocol round trip to gain nothing.** Client-side, it is a dictionary in a JSON
+  file that is read at startup and written when changed.
+
+So: the **settings page** carries the voice section, the pool is **asked of the backend**
+(`ITextToSpeech.GetVoicesAsync`) rather than typed into config, and a pin naming a voice the
+current server does not offer is ignored rather than honoured as a broken id — speech servers get
+swapped and the setting outlives them. Unpinned speakers are still dealt a voice by name, so a
+room is distinguishable by ear without anybody configuring anything.
+
+**faster-qwen-tts-aio needs no new backend.** It serves both an OpenAI-compatible
+`/v1/audio/speech` and a Wyoming server on 10200, so it is reached through the two adapters that
+already exist; its named voices (`aiden`, `serena`, cloned ones) arrive through the same
+discovery as any other server's. The Wyoming path takes precedence when both are configured,
+which is what makes an entirely self-hosted voice setup the default rather than a special case.
 
 **Client audio pipeline** (in `Banter.Voice`, consumed by the CupriFace app and CLI):
 
