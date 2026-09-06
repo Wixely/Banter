@@ -103,6 +103,13 @@ of precedence:
 An unreadable secret file warns and falls back rather than refusing to start, so a mount typo
 does not turn into a crash loop.
 
+## Adding an agent
+
+**[docs/adding-an-agent.md](docs/adding-an-agent.md)** is the step-by-step: an admin creates the
+identity and gets a one-time code, somebody redeems it on the machine the agent will run on (which
+is where the key is made, and where it stays), and then it runs. Also covers granting tools,
+overriding what an agent claims about itself, revoking a key, and what the error messages mean.
+
 ## Using the SDK from another project
 
 An agent is a **client**, not something the server hosts: a separate process that logs in, joins
