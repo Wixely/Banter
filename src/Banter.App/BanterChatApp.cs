@@ -76,6 +76,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
     public Func<Task> UsersListAsync { get; init; } = () => Task.CompletedTask;
 
+    /// <summary>Reads every room's work. Admin-only on the server.</summary>
+    public Func<Task> WorkListAsync { get; init; } = () => Task.CompletedTask;
+
     /// <summary>(username, isAdmin) — the reply's temporary password is the host's to show.</summary>
     public Func<string, bool, Task> UserCreateAsync { get; init; } = (_, _) => Task.CompletedTask;
 
@@ -216,6 +219,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <div class="user-body"></div>
               </div>
             </div>
+            <div class="{{WorkButtonClass}}" data-work-open="1">
+              <div class="icon-work">
+                <div class="clip-board"></div>
+                <div class="clip-tab"></div>
+                <div class="clip-line clip-a"></div>
+                <div class="clip-line clip-b"></div>
+              </div>
+            </div>
             <div class="{{SettingsButtonClass}}" data-settings-open="1">
               <div class="icon-settings">
                 <div class="cog-tooth cog-a"></div>
@@ -351,6 +362,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           </div>
           {{{AgentsPage}}}
           {{{UsersPage}}}
+          {{{WorkPage}}}
           <div class="{{SettingsPanelClass}} settings-overlay">
             <div class="mgmt-backdrop" data-settings-close="1"></div>
             <div class="mgmt-card settings-card">
@@ -506,7 +518,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         string dirtyClass,
         string cancelClass,
         string saveClass,
-        string saveLabel) => $$$"""
+        string saveLabel,
+        string footerClass = "mgmt-footer") => $$$"""
               <div class="{{{panelClass}}}">
                 <!-- The backdrop is a sibling BEFORE the card, so the card paints over it and
                      takes the hit. A click that reaches the backdrop is therefore a click that
@@ -519,7 +532,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         <div class="mgmt-title">{{{listTitle}}}</div>
                         <div class="mgmt-subtitle">{{{listSubtitle}}}</div>
                       </div>
-                      <cupri-button class="mgmt-new" {{{newAction}}}="1">+ {{{newLabel}}}</cupri-button>
+                      <cupri-button class="mgmt-new" {{{newAction}}}="1">{{{newLabel}}}</cupri-button>
                     </div>
                     <div class="mgmt-status">{{{status}}}</div>
                     <div class="mgmt-rows">
@@ -555,7 +568,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       <div class="mgmt-fields">
               {{{fields}}}
                       </div>
-                      <div class="mgmt-footer">
+                      <div class="{{{footerClass}}}">
                         <div class="{{{dirtyClass}}}">You have unsaved changes</div>
                         <cupri-button class="{{{cancelClass}}}">Cancel</cupri-button>
                         <cupri-button class="{{{saveClass}}}">{{{saveLabel}}}</cupri-button>
@@ -637,7 +650,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         closeAction: "data-agents-close",
         listTitle: "Agents",
         listSubtitle: "Who may run in your rooms.",
-        newLabel: "New agent",
+        newLabel: "+ New agent",
         newAction: "data-agent-new",
         status: "{{AgentsStatus}}",
         rowsBinding: "AdminAgents",
@@ -680,12 +693,75 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         saveClass: "mgmt-save-agent",
         saveLabel: "{{AgentSaveLabel}}");
 
+    /// <summary>
+    /// Every room's work. The third instantiation of the management template rather than a page
+    /// of its own: it is the same master-detail shape, so it gets the same close control, the
+    /// same click-away and the same empty state, and cannot drift from the other two.
+    ///
+    /// <para>Read-only on purpose. An operator watching a queue wants to know what is stuck and
+    /// who has it; handing work out is the delegator's job (PLAN 8b), and a page that let an admin
+    /// claim on an agent's behalf would be a second way to decide the same thing.</para>
+    /// </summary>
+    private static string WorkPage => ManagementPage(
+        panelClass: "{{WorkPanelClass}}",
+        closeAction: "data-work-close",
+        listTitle: "Work",
+        listSubtitle: "Every room's tasks.",
+        newLabel: "Refresh",
+        newAction: "data-work-refresh",
+        status: "{{WorkStatus}}",
+        rowsBinding: "AdminTasks",
+        rowAction: "data-admin-task",
+        rowKey: "{{TaskId}}",
+        rowBody: TaskRowBody,
+        emptyClass: "{{TaskEmptyClass}}",
+        emptyText: "Choose a task to see everything about it.",
+        detailClass: "{{TaskDetailClass}}",
+        detailTitle: "{{TaskDetailTitle}}",
+        detailSubtitle: "{{TaskDetailSubtitle}}",
+        removeClass: "mgmt-remove hidden",
+        removeLabel: "",
+        fields: string.Concat(
+            Field("Scope", ChoiceControl("TaskScopeChoices", "data-task-scope"),
+                "Finished work is hidden by default: a board full of what is already done buries the two that are stuck."),
+            Field("State", ReadOnlyControl("{{TaskState}}"), "What it is doing now."),
+            Field("Holder", ReadOnlyControl("{{TaskAssignee}}"),
+                "The agent that claimed it, or was handed it by the delegator."),
+            Field("Lease", ReadOnlyControl("{{TaskLease}}"),
+                "Work whose holder goes quiet is swept back to open and offered to somebody else. This is how far away that is."),
+            Field("Room", ReadOnlyControl("{{TaskRoom}}"),
+                "Where it was posted, and where its result will be said."),
+            Field("Posted by", ReadOnlyControl("{{TaskPoster}}"), "Who asked for it."),
+            Field("Description", ReadOnlyControl("{{TaskBody}}"), "What was asked for, as it was written."),
+            Field("Timeline", ReadOnlyControl("{{TaskTimes}}"), "When it was posted, taken and finished."),
+            Field("Result", ReadOnlyControl("{{TaskResult}}"),
+                "What the agent reported back.", "{{TaskResultClass}}"),
+            Field("Id", ReadOnlyControl("{{TaskId}}"), "The identifier, for matching against a log.")),
+        dirtyClass: "mgmt-dirty hidden",
+        cancelClass: "mgmt-cancel-task",
+        saveClass: "mgmt-save-task hidden",
+        saveLabel: "",
+        // Nothing to save and nothing to cancel: a footer holding one dead button is worse than
+        // no footer. The X and clicking away are how this page is left.
+        footerClass: "mgmt-footer hidden");
+
+    private static readonly string TaskRowBody = """
+    <div class="mgmt-row-inner">
+      <span class="mgmt-pfp">{{Initials}}</span>
+      <span class="mgmt-row-main">
+        <span class="mgmt-row-name">{{Title}}</span>
+        <span class="mgmt-row-detail">{{Detail}}</span>
+        <span class="{{StateClass}}">{{State}}</span>
+      </span>
+    </div>
+    """;
+
     private static string UsersPage => ManagementPage(
         panelClass: "{{UsersPanelClass}}",
         closeAction: "data-users-close",
         listTitle: "Users",
         listSubtitle: "Who may sign in.",
-        newLabel: "New user",
+        newLabel: "+ New user",
         newAction: "data-user-new",
         status: "{{UsersStatus}}",
         rowsBinding: "AdminUsers",
@@ -771,6 +847,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .net-edge-up { left: 11px; top: 4px; width: 2px; height: 7px; }
         .net-edge-left { left: 3px; top: 14px; width: 11px; height: 2px; transform: rotate(-41deg); }
         .net-edge-right { left: 11px; top: 14px; width: 11px; height: 2px; transform: rotate(41deg); }
+
+        /* A clipboard: a board, the clip across its top, and two lines of writing on it. */
+        .icon-work { position: relative; width: 22px; height: 22px; }
+        .clip-board { position: absolute; left: 3px; top: 3px; width: 16px; height: 19px;
+                      border-radius: 3px; background: #bec5cf; }
+        .clip-tab { position: absolute; left: 7px; top: 0px; width: 8px; height: 5px;
+                    border-radius: 2px; background: #6b7482; }
+        .clip-line { position: absolute; left: 6px; height: 2px; border-radius: 1px;
+                     background: #1b2029; }
+        .clip-a { top: 10px; width: 10px; }
+        .clip-b { top: 15px; width: 7px; }
+        .rail-button:hover .clip-line { background: #242a34; }
 
         /* A cog: a ring with a hole, and three teeth spaced by rotation. Three rather than the
            usual six or eight because a tooth is 4px wide here and any more becomes a smudge. */
@@ -1144,6 +1232,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            no key cannot connect, and that is the thing an operator most needs to see. */
         .mgmt-state { font-size: 10px; color: #34d399; margin-top: 2px; }
         .mgmt-state.pending { color: #fbbf24; }
+        /* Finished work is still listed when asked for, but it is not what the page is for. */
+        .mgmt-state.muted { color: #6b7482; }
 
         .mgmt-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 18px; }
         .mgmt-empty { flex: 1; display: flex; align-items: center; justify-content: center;
@@ -1211,6 +1301,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                        text-align: center; }
         .mgmt-inline.hidden { display: none; }
 
+        .mgmt-footer.hidden { display: none; }
         .mgmt-footer { display: flex; flex-direction: row; align-items: center;
                        padding-top: 14px; border-top: 1px solid #1c222b; }
         .mgmt-dirty { flex: 1; min-width: 0; font-size: 11px; color: #fbbf24; }
@@ -1222,6 +1313,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                                                 background: #1b2029; color: #f3f5f7;
                                                 border: 1px solid #333a46; border-radius: 10px;
                                                 text-align: center; margin-left: 8px; }
+        .mgmt-cancel-task { min-width: 90px; padding: 8px 16px; font-size: 12px; background: #1b2029;
+                            color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
+                            text-align: center; margin-left: 8px; }
+        /* The work page is read-only, so its save is not a disabled button but no button. */
+        .mgmt-save-task.hidden { display: none; }
         .mgmt-save-agent, .mgmt-save-user { min-width: 120px; padding: 8px 16px; font-size: 12px;
                                             font-weight: bold; background: #2563eb; color: #ffffff;
                                             border: 1px solid #2563eb; border-radius: 10px;
@@ -1412,6 +1508,53 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _ = AgentsListAsync();
             doc.Refresh();
             return true;
+        });
+
+        doc.OnAction("data-work-open", _unused =>
+        {
+            ViewModel.ShowWorkPanel(true);
+            _ = WorkListAsync();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-work-close", _unused =>
+        {
+            ViewModel.ShowWorkPanel(false);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-work-refresh", _unused =>
+        {
+            _ = WorkListAsync();
+            return true;
+        });
+
+        doc.OnAction("data-admin-task", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.SelectTask(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-task-scope", e =>
+        {
+            ViewModel.ChooseTaskScope(e.Value ?? "live");
+            _ = WorkListAsync();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnClick(".mgmt-cancel-task", _unused =>
+        {
+            ViewModel.ClearTaskDetail();
+            doc.Refresh();
         });
 
         doc.OnAction("data-users-open", _unused =>

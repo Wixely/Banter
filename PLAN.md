@@ -161,6 +161,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ⬜ |
 | MCP tools executed server-side, agent tool loop (§8c) | ✅ | ✅ | ⬜ | – | – | – | ✅ |
 | Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
+| Work page: every room's tasks, operator view (§8b) | – | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
 | ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
 | **Phase 6 — hardening** |
 | Account management: users page, temp passwords, `/passwd` | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | – |
@@ -984,6 +985,20 @@ room-scoped server objects (like files, §5a) so "the main channel" doubles as a
   model as tools (`banter_task_claim`, `banter_task_done`, …) alongside its MCP tools; the
   delegator is just a DaggerAgent instance with a routing system prompt and `TASK_ASSIGN`
   permission — no new runtime.
+
+**Seeing the ledger.** Two views, because they answer different questions. The client's roster
+carries a **Work strip** — this room's tasks, title and state, glanceable while you talk, for
+somebody *in* the room. The **work page** (admin-only, on the rail) is the operator's view: every
+room at once, with the fields that say whether work is actually moving — who holds it, when it was
+taken, what the lease is doing, and what came back. Finished work is hidden until asked for,
+because a board full of what is already done buries the two that are stuck.
+
+It is deliberately **read-only**. Handing work out is the delegator's job; a page that let an admin
+claim on an agent's behalf would be a second way to decide the same thing, and the two would
+disagree. `TASK_LIST` with an empty room means "every room" and is admin-gated — a room name always
+starts with `#`, so an empty one cannot collide with a real request. It discloses nothing new: an
+admin is already added to every room an agent opens (§8a), so this is one screen instead of
+visiting each board in turn.
 
 ### 8c. Tools: executed by the server, granted per agent — ✅ shipped
 

@@ -245,6 +245,21 @@ public sealed class UserAccountTests(ITestOutputHelper output) : IAsyncLifetime
         await desk.PingAsync().WaitAsync(Patience);
     }
 
+    [Fact]
+    public async Task OnlyAnAdminSeesEveryRoomsWork()
+    {
+        await using var admin = await ConnectAsync("root", "pw");
+        await using var nell = await ConnectAsync("nell", "pw");
+
+        // Listing across rooms is the operator's view. It discloses nothing an admin could not
+        // already read one board at a time — they are in every room an agent opens — but an
+        // ordinary member has no business with rooms they are not in.
+        await AssertsRefusedAsync("NOT_ADMIN", () => nell.ListAllTasksAsync());
+
+        var everything = await admin.ListAllTasksAsync().WaitAsync(Patience);
+        Assert.Equal("", everything.Room);
+    }
+
     private static async Task AssertsRefusedAsync(string code, Func<Task> act)
     {
         var refusal = await Assert.ThrowsAsync<BanterErrorException>(act);

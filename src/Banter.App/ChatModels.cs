@@ -211,6 +211,24 @@ public sealed partial class RosterUserRow
     public string RowClass { get; set; } = "member";
 }
 
+/// <summary>One task on the work page, as the list shows it.</summary>
+[CupriBindable]
+public sealed partial class AdminTaskRow
+{
+    public string TaskId { get; set; } = "";
+    public string Title { get; set; } = "";
+
+    /// <summary>"#main · claimed by scribe" — where it lives and who has it.</summary>
+    public string Detail { get; set; } = "";
+
+    /// <summary>Two letters for whoever holds it, or a dash when nobody does.</summary>
+    public string Initials { get; set; } = "";
+
+    public string State { get; set; } = "";
+    public string StateClass { get; set; } = "mgmt-state";
+    public string RowClass { get; set; } = "mgmt-row";
+}
+
 /// <summary>
 /// One speaker and the voice they are heard in. A row per person or agent seen in a room, so the
 /// list is who you actually talk to rather than a directory of everyone who ever existed.
@@ -358,6 +376,8 @@ public sealed partial class ChatModel
     public string UsersButtonClass { get; set; } = "rail-button hidden";
     public string AgentsPanelClass { get; set; } = "mgmt hidden";
     public string UsersPanelClass { get; set; } = "mgmt hidden";
+    public string WorkButtonClass { get; set; } = "rail-button hidden";
+    public string WorkPanelClass { get; set; } = "mgmt hidden";
     public string SettingsButtonClass { get; set; } = "rail-button";
     public string SettingsPanelClass { get; set; } = "mgmt hidden";
 
@@ -390,6 +410,28 @@ public sealed partial class ChatModel
 
     public string AgentsStatus { get; set; } = "";
     public string UsersStatus { get; set; } = "";
+    public string WorkStatus { get; set; } = "";
+
+    // The work page: every room's tasks, for an operator rather than a participant. The roster's
+    // Work strip stays what it is — this room, title and state, glanceable — because the two
+    // answer different questions.
+    public List<AdminTaskRow> AdminTasks { get; set; } = [];
+    public string TaskSelected { get; set; } = "";
+    public string TaskDetailClass { get; set; } = "mgmt-detail hidden";
+    public string TaskEmptyClass { get; set; } = "mgmt-empty";
+    public string TaskDetailTitle { get; set; } = "";
+    public string TaskDetailSubtitle { get; set; } = "";
+    public string TaskRoom { get; set; } = "";
+    public string TaskState { get; set; } = "";
+    public string TaskPoster { get; set; } = "";
+    public string TaskAssignee { get; set; } = "";
+    public string TaskBody { get; set; } = "";
+    public string TaskResult { get; set; } = "";
+    public string TaskResultClass { get; set; } = "mgmt-field hidden";
+    public string TaskTimes { get; set; } = "";
+    public string TaskLease { get; set; } = "";
+    public string TaskId { get; set; } = "";
+    public List<ChoiceRow> TaskScopeChoices { get; set; } = [];
 
     /// <summary>The one-shot secret banner — an enrolment code or a temporary password. Shared
     /// because only one page is ever open, and because both secrets behave identically.</summary>

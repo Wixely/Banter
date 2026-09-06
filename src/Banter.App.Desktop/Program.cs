@@ -206,6 +206,7 @@ var app = new BanterChatApp(vm)
     AgentReissueAsync = session.ReissueAgentIdentityAsync,
     AgentRemoveAsync = session.RemoveAgentIdentityAsync,
     UsersListAsync = session.LoadUsersAsync,
+    WorkListAsync = session.LoadAllTasksAsync,
     UserCreateAsync = session.CreateUserAccountAsync,
     UserResetAsync = session.ResetUserPasswordAsync,
     UserSetAdminAsync = session.SetUserAdminAsync,

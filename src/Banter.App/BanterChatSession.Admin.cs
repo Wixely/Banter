@@ -88,6 +88,20 @@ public sealed partial class BanterChatSession
         }
     }
 
+    /// <summary>Every room's work, for the operator's page.</summary>
+    public async Task LoadAllTasksAsync()
+    {
+        try
+        {
+            var board = await _client.ListAllTasksAsync(_vm.IncludeFinished).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetTasks(board.Tasks));
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
     // ---- The users tab ----
 
     public async Task LoadUsersAsync()

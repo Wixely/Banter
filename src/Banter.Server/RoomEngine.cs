@@ -917,6 +917,30 @@ internal sealed class RoomEngine(
 
     private async ValueTask HandleTaskListAsync(ClientSession session, BanterEnvelope envelope, TaskListPayload request)
     {
+        // No room means every room. A room name always starts with '#', so an empty one cannot
+        // collide with a real request — and this is the operator's view (PLAN §8a: an admin is in
+        // every room an agent opens anyway, so it discloses nothing they could not already read
+        // one board at a time).
+        //
+        // Checked before the store, because "you are not an admin" is true whether or not this
+        // server keeps tasks, and answering NOT_IN_ROOM to a request that names no room would
+        // send somebody looking for the wrong problem.
+        if (request.Room.Length == 0)
+        {
+            if (!session.IsAdmin)
+            {
+                session.Send(new ErrorPayload("NOT_ADMIN", "Only an admin may list every room's work."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+
+            var all = _tasks is null
+                ? []
+                : await _tasks.ListAllAsync(request.IncludeFinished).ConfigureAwait(false);
+            session.Send(new TaskListPayload("", all, request.IncludeFinished), replyTo: envelope.MsgId);
+            return;
+        }
+
         if (_tasks is null || !_rooms.TryGetValue(request.Room, out var room) || !room.Members.Contains(session))
         {
             session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."), replyTo: envelope.MsgId);

@@ -71,6 +71,7 @@ public sealed partial class ChatViewModel
     {
         Model.AgentsButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
         Model.UsersButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
+        Model.WorkButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
     }
 
     // ── The one-shot secret banner ───────────────────────────────────────────────────────────

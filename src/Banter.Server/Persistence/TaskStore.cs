@@ -87,6 +87,22 @@ public sealed class TaskStore(BanterDatabase database)
         return rows.Select(r => r.ToPayload()).ToList();
     }
 
+    /// <summary>
+    /// Every room's tasks at once, for an operator looking at the whole server rather than at a
+    /// room. Ordered by room then age so the result reads as a set of boards rather than as an
+    /// interleaved stream of everything that has ever happened.
+    /// </summary>
+    public async Task<IReadOnlyList<TaskInfoPayload>> ListAllAsync(
+        bool includeFinished, CancellationToken cancellationToken = default)
+    {
+        await using var connection = database.CreateConnection();
+        var sql = Select +
+                  (includeFinished ? "" : "\nWHERE state IN (0, 1, 2)") +
+                  "\nORDER BY room, created_at DESC";
+        var rows = await connection.QueryAsync<TaskRow>(sql).ConfigureAwait(false);
+        return rows.Select(r => r.ToPayload()).ToList();
+    }
+
     /// <summary>How many live tasks an agent holds, for the concurrency cap.</summary>
     public async Task<int> HeldCountAsync(string nick, CancellationToken cancellationToken = default)
     {

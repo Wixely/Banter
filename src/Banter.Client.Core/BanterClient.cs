@@ -300,6 +300,14 @@ public sealed partial class BanterClient : IAsyncDisposable
         RequestAsync<OkPayload>(new TaskDonePayload(taskId, result, success), cancellationToken);
 
     /// <summary>Tasks in a room; terminal ones excluded unless asked for.</summary>
+    /// <summary>
+    /// Every room's work, not just one. Admin-only: it is the operator's view of what the server
+    /// is doing, which no single room's board can show.
+    /// </summary>
+    public Task<TaskListPayload> ListAllTasksAsync(
+        bool includeFinished = false, CancellationToken cancellationToken = default) =>
+        RequestAsync<TaskListPayload>(new TaskListPayload("", [], includeFinished), cancellationToken);
+
     public Task<TaskListPayload> ListTasksAsync(
         string room, bool includeFinished = false, CancellationToken cancellationToken = default) =>
         RequestAsync<TaskListPayload>(new TaskListPayload(room, [], includeFinished), cancellationToken);
