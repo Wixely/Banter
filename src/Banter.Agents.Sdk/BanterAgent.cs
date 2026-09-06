@@ -68,6 +68,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         _client.RoomModeChanged += OnRoomModeChanged;
         _client.MemberJoined += OnMemberJoined;
         _client.TaskChanged += OnTaskChanged;
+        _client.Reconnected += OnReconnected;
 
         // Announce before joining, so the attributes are already on file when the server runs
         // the election our arrival triggers.
@@ -102,6 +103,51 @@ public abstract partial class BanterAgent : IAsyncDisposable
             catch (Exception)
             {
                 // Best effort: a stale roster costs an unnecessary reply, not correctness.
+            }
+        });
+
+    /// <summary>
+    /// Redo what a fresh connection cannot carry over. The client already re-authenticated and
+    /// rejoined the rooms; but the announced attributes lived on the server session that died
+    /// with the old connection, so without re-announcing, a server restart silently demotes the
+    /// agent to Unknown locality and clearance — which the election treats as frontier and
+    /// uncleared. It would still be in its rooms and still answering, just no longer electable,
+    /// routable or cleared, and nothing would say so. Tool grants and rosters are re-read for
+    /// the same reason: both are snapshots taken at start.
+    ///
+    /// <para>Announcing after the rejoin is fine: the server re-applies an announcement to every
+    /// room the session is in and re-runs the election, so the order converges either way.</para>
+    /// </summary>
+    private void OnReconnected() =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Client.AnnounceAgentAsync(
+                    new AgentAnnouncePayload(
+                        Options.User, Options.Locality, Options.Clearance, Options.Skills,
+                        Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode),
+                    _stopping.Token).ConfigureAwait(false);
+
+                await RefreshToolsAsync(_stopping.Token).ConfigureAwait(false);
+
+                // Every room we hold state for, not just the configured ones — the agent may
+                // have been moved into sub-rooms since it started.
+                List<string> rooms;
+                lock (_roomStateLock)
+                {
+                    rooms = Options.Rooms.Union(_rosters.Keys, StringComparer.OrdinalIgnoreCase).ToList();
+                }
+
+                foreach (var room in rooms)
+                {
+                    await RefreshRosterAsync(room, _stopping.Token).ConfigureAwait(false);
+                }
+            }
+            catch (Exception)
+            {
+                // Best effort: if the connection dropped again mid-resync, the next
+                // reconnect runs this again from the top.
             }
         });
 
@@ -699,6 +745,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
             _client.RoomModeChanged -= OnRoomModeChanged;
             _client.MemberJoined -= OnMemberJoined;
             _client.TaskChanged -= OnTaskChanged;
+            _client.Reconnected -= OnReconnected;
             await _client.DisposeAsync().ConfigureAwait(false);
         }
 

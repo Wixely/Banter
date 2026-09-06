@@ -639,7 +639,12 @@ public sealed partial class BanterClient : IAsyncDisposable
             Reconnecting?.Invoke(attempt);
             try
             {
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                // Jittered to 50-100% of the nominal delay. One server restart drops every
+                // connected client at the same instant; without jitter they all redial in
+                // lockstep on the same schedule, and a fleet of agents becomes a synchronised
+                // thundering herd against a server that is still starting up.
+                var wait = TimeSpan.FromTicks((long)(delay.Ticks * (0.5 + Random.Shared.NextDouble() * 0.5)));
+                await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
                 return await DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
