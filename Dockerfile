@@ -42,7 +42,15 @@ COPY --from=build /app ./
 
 # Rooms, messages, tasks and uploaded files live here. Mount it, or a restart loses the lot.
 VOLUME ["/data"]
-ENV BANTER_DB=sqlite \
+# Every interface, because a container's loopback reaches nothing outside the container - not
+# even the host through -p. Exposure is controlled by the port mapping instead: -p 7770:7770
+# publishes it, and -p 127.0.0.1:7770:7770 keeps it on the host's loopback.
+#
+# An environment variable rather than the command line, so it can be changed by the same means
+# as everything else here. It used to be baked into CMD, which meant overriding it required
+# replacing the whole command - the only setting in this image that worked that way.
+ENV BANTER_ENDPOINT=tcp://0.0.0.0:7770 \
+    BANTER_DB=sqlite \
     BANTER_CONNECTION="Data Source=/data/banter.db" \
     BANTER_DATA=/data/files
 
@@ -53,4 +61,6 @@ RUN useradd --system --uid 10001 banter && mkdir -p /data && chown banter /data
 USER banter
 
 ENTRYPOINT ["dotnet", "Banter.Server.dll"]
-CMD ["--endpoint", "tcp://0.0.0.0:7770"]
+# No CMD: the defaults are the ENV block above, and arguments given to `docker run` are added
+# to the entrypoint rather than replacing them. A flag still beats its environment variable,
+# so `docker run <image> --endpoint tcp://0.0.0.0:7771` works and needs no --entrypoint.

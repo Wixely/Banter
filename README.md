@@ -105,6 +105,12 @@ of precedence:
 An unreadable secret file warns and falls back rather than refusing to start, so a mount typo
 does not turn into a crash loop.
 
+**Every setting takes either form.** `--endpoint` / `BANTER_ENDPOINT`, `--db` / `BANTER_DB`,
+`--connection` / `BANTER_CONNECTION`, `--admin-password` / `BANTER_ADMIN_PASSWORD`,
+`--seed-users` / `BANTER_SEED_USERS`, `--data` / `BANTER_DATA`, `--mcp` / `BANTER_MCP_CONFIG`.
+A flag beats its variable where both are given, and the two password-shaped ones also take a
+`_FILE` variant that reads the value from a mounted file.
+
 **No other account is created for you.** An empty database used to grow `alice` and `bob` with the
 password `banter` on first run, which is convenient on a laptop and indefensible anywhere else: the
 accounts arrive unannounced, the password is public knowledge, and the deployment that most needs
@@ -131,11 +137,15 @@ cannot see it — loopback is the whole reason, not a firewall. Bind every inter
 Banter.Server --endpoint tcp://0.0.0.0:7770 --admin-password <something real>
 ```
 
+or `BANTER_ENDPOINT=tcp://0.0.0.0:7770`, which is the same thing said the other way: every setting
+here takes a flag or a `BANTER_*` variable, and a flag wins where both are given.
+
 `0.0.0.0`, `*` and `+` all mean every interface. **Set the admin password in the same breath**: it
 defaults to `admin`, which on loopback is a nuisance and on every interface is the whole
 deployment. Add `--seed-users alice:secret` if the people connecting need accounts.
 
-The container already does this — its command line is `--endpoint tcp://0.0.0.0:7770` — so
+The container already does this — it sets `BANTER_ENDPOINT=tcp://0.0.0.0:7770`, because a
+container's loopback reaches nothing outside the container, not even the host — so
 `docker run -d -p 7770:7770 -v banter-data:/data -e BANTER_ADMIN_PASSWORD=<secret> ghcr.io/wixely/banter`
 needs no argument for it.
 

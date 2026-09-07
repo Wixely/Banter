@@ -4,10 +4,30 @@ using Banter.Server.Files;
 using Banter.Server.Persistence;
 using Banter.Server.Tools;
 
-var endpoint = new Uri(Arg("--endpoint") ?? "tcp://127.0.0.1:7770");
+// Where to listen. Loopback by default, so a server started with no arguments is reachable from
+// this machine and nowhere else; tcp://0.0.0.0:7770 binds every interface, which is what a
+// container wants and what a desktop needs before an agent elsewhere can enrol against it.
+//
+// The environment variable is here so this is configured the way everything else is. It was the
+// one setting with no BANTER_* form, which is why the container image had to bake a bind address
+// into its command line rather than reading one.
+var endpointText = Arg("--endpoint")
+    ?? Environment.GetEnvironmentVariable("BANTER_ENDPOINT")
+    ?? "tcp://127.0.0.1:7770";
+
+Uri endpoint;
 BanterStorageOptions storage;
 try
 {
+    // Parsed rather than constructed. `new Uri` on a typo throws out of a top-level statement,
+    // and what a container operator saw for a missing scheme was a stack trace rather than the
+    // line below telling them what the value should look like.
+    if (!Uri.TryCreate(endpointText, UriKind.Absolute, out var parsed))
+    {
+        throw new ArgumentException($"'{endpointText}' is not an endpoint. Expected tcp://host:port.");
+    }
+
+    endpoint = parsed;
     storage = BanterStorageOptions.Parse(
         Arg("--db") ?? Environment.GetEnvironmentVariable("BANTER_DB"),
         Arg("--connection") ?? Environment.GetEnvironmentVariable("BANTER_CONNECTION"));
@@ -17,6 +37,8 @@ catch (ArgumentException ex)
     Console.Error.WriteLine(ex.Message);
     Console.Error.WriteLine("usage: banter-server [--endpoint tcp://host:port | ws://host:port] [--db sqlite|postgres] [--connection <connection-string>]");
     Console.Error.WriteLine("                     [--admin-password <secret>] [--seed-users name:password,name:password]");
+    Console.Error.WriteLine("       every flag also has a BANTER_* environment variable: BANTER_ENDPOINT, BANTER_DB,");
+    Console.Error.WriteLine("       BANTER_CONNECTION, BANTER_ADMIN_PASSWORD, BANTER_SEED_USERS, BANTER_DATA, BANTER_MCP_CONFIG.");
     return 1;
 }
 

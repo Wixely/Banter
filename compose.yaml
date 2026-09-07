@@ -13,6 +13,12 @@ services:
       # Prefer a secret over a literal here - see the commented block below.
       BANTER_ADMIN_PASSWORD: ${BANTER_ADMIN_PASSWORD:-admin}
 
+      # Where it listens, inside the container. Every interface is the right answer there - a
+      # container's loopback reaches nothing outside it, including the host - and what to publish
+      # is decided by the ports mapping below. Change that, not this, to limit reach:
+      #   "127.0.0.1:7770:7770" keeps it on the host's loopback.
+      BANTER_ENDPOINT: tcp://0.0.0.0:7770
+
       # Accounts. The server creates nobody but 'admin' on its own, so people either get added
       # on the users page or are listed here as name:password. Left unset - which is the
       # default - a fresh container comes up with the admin account and no one else.
