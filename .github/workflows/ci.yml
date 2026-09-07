@@ -334,7 +334,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
-          # v0.3.0 gets 0.3.0, 0.3 and latest, so a compose file can pin as tightly as it wants.
+          # A tag gets the full version, the major.minor series and latest, so a compose file
+          # can pin as tightly as it wants. Written from the tag, so it never names a version.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

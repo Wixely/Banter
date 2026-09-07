@@ -226,7 +226,8 @@ them belongs where the others are.
 `framework-dependent`, which is roughly a fifth of the size and needs the .NET 10 runtime already
 there. Each zip holds a single executable at its root; unzip it and run it.
 
-The image is tagged `0.3.0`, `0.3` and `latest`, so a compose file can pin as tightly as it wants.
+Each release tags the image with its full version, its `major.minor` series and `latest`, so a
+compose file can pin as tightly as it wants.
 It is not a release asset on purpose: an image is pulled from a registry by tag or digest, and a
 copy of one on a release page goes stale the moment the tag is re-run.
 
