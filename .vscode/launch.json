@@ -40,6 +40,36 @@
       "stopAtEntry": false
     },
     {
+      // The same server, reachable from other machines - for enrolling an agent that runs
+      // somewhere else. 0.0.0.0 binds every interface; the default 127.0.0.1 above is why
+      // nothing outside this machine can reach the ordinary "Server" configuration.
+      //
+      // It asks for an admin password rather than defaulting to "admin" like the loopback one.
+      // On loopback that default is a nuisance; on every interface it is the whole deployment,
+      // and a prompt is cheap next to that.
+      //
+      // Two things this does NOT do, and cannot from here:
+      //   - open the Windows firewall. Once, elevated:
+      //       New-NetFirewallRule -DisplayName "Banter server" -Direction Inbound `
+      //         -Protocol TCP -LocalPort 7770 -Action Allow -Profile Private
+      //   - encrypt anything. tcp:// has no TLS: sign-in passwords and enrolment codes cross
+      //     the network in the clear, so this belongs on a LAN you trust and nowhere else.
+      //     See "Reaching it from another machine" in the README.
+      "name": "Server (LAN)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.Server/bin/Debug/net10.0/Banter.Server.dll",
+      "args": [
+        "--endpoint", "tcp://0.0.0.0:7770",
+        "--admin-password", "${input:adminPassword}",
+        "--seed-users", "alice:banter,bob:banter"
+      ],
+      "cwd": "${workspaceFolder}/.banter-dev",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
       "name": "Desktop app (alice)",
       "type": "coreclr",
       "request": "launch",
@@ -457,6 +487,12 @@
       "type": "promptString",
       "description": "Agent name (the key is written to .banter-dev/<name>.key)",
       "default": "dagger"
+    },
+    {
+      "id": "adminPassword",
+      "type": "promptString",
+      "description": "Admin password for the LAN-bound server (not stored)",
+      "password": true
     },
     {
       "id": "enrolCode",

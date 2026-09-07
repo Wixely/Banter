@@ -122,6 +122,53 @@ that already exists is left alone rather than having its password reset, so this
 in a compose file across restarts. Agents are never seeded — they have no passwords at all; see
 [docs/adding-an-agent.md](docs/adding-an-agent.md).
 
+## Reaching it from another machine
+
+The server binds `tcp://127.0.0.1:7770` by default, which is why an agent on a different machine
+cannot see it — loopback is the whole reason, not a firewall. Bind every interface instead:
+
+```
+Banter.Server --endpoint tcp://0.0.0.0:7770 --admin-password <something real>
+```
+
+`0.0.0.0`, `*` and `+` all mean every interface. **Set the admin password in the same breath**: it
+defaults to `admin`, which on loopback is a nuisance and on every interface is the whole
+deployment. Add `--seed-users alice:secret` if the people connecting need accounts.
+
+The container already does this — its command line is `--endpoint tcp://0.0.0.0:7770` — so
+`docker run -d -p 7770:7770 -v banter-data:/data -e BANTER_ADMIN_PASSWORD=<secret> ghcr.io/wixely/banter`
+needs no argument for it.
+
+On Windows the port also has to be opened, once, from an elevated shell:
+
+```powershell
+New-NetFirewallRule -DisplayName "Banter server" -Direction Inbound -Protocol TCP `
+  -LocalPort 7770 -Action Allow -Profile Private
+```
+
+`-Profile Private` matters. Without it the rule follows you onto every public network you join.
+
+Then enrol the agent against the server's **LAN address**, not loopback:
+
+```
+dagger banter --enrol <code> --server tcp://192.168.1.20:7770
+```
+
+`tcp://127.0.0.1:7770` appears throughout [docs/adding-an-agent.md](docs/adding-an-agent.md) because
+everything there runs on one machine. It is the value most likely to be copied by mistake, and it
+fails in a way that looks like a broken code rather than a wrong address.
+
+**`tcp://` has no TLS.** Sign-in sends the password as an ordinary field, and enrolment sends the
+one-time code the same way, so anyone who can watch that network can read both — and a captured
+code can be redeemed before the agent gets to it, since it only works once. Agent logins after
+enrolment are signature-based and unaffected; it is human sign-in and the enrolment moment that are
+exposed. A LAN you trust is a judgement call. Anything shared or routable is not: use
+`Banter.Server.Nodestar` and the Shrine transport, which is what they exist for — agents dial a
+mesh address and nothing is left listening on a port.
+
+**Run → "Server (LAN)"** in `.vscode/launch.json` is this, for debugging: it binds `0.0.0.0` and
+prompts for an admin password rather than defaulting to one.
+
 ## Running the client
 
 ```
