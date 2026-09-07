@@ -8,7 +8,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>uk.co.wixely.banter</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <!-- The version people see, from the one place the repository's version lives. It was
+         hardcoded 0.1.0 and had been wrong since the day the repo moved past it - the same
+         staleness that the CI package version had. CI overrides both this and ApplicationVersion
+         on a tag. -->
+    <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RootNamespace>Banter.App.Android</RootNamespace>
   </PropertyGroup>

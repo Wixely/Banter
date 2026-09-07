@@ -127,9 +127,11 @@ the other three behind it:
 | `Banter.Core` | accounts, agent identities, request classification |
 | `Banter.Protocol` | the wire: verbs, payloads, framing, transports, `AgentKeys` |
 
-Nothing else is published. The server, the CLI, the Warden and the app heads are applications, and
+Nothing else is packaged. The server, the CLI, the Warden and the app heads are applications, and
 the voice and transport libraries have no consumer outside this repository yet — all of them say so
-in their project files rather than relying on a filter in CI.
+in their project files rather than relying on a filter in CI. The two applications people actually
+want a copy of are published too, as [release](https://github.com/Wixely/Banter/releases) binaries
+rather than packages: see **Downloading the server and the client** below.
 
 ```
 dotnet nuget add source https://nuget.pkg.github.com/Wixely/index.json   --name GitHub-Wixely-Packages --username <your-github-username> --password <a-PAT-with-read:packages>
@@ -144,6 +146,54 @@ one surface is the failure this lockstep exists to prevent. Across versions, `ba
 negotiated through [CupriMark](https://github.com/Wixely/CupriMark) at HELLO, and new payload fields
 are added as trailing optional ones, so a client and a server on different releases agree on what
 they both speak rather than failing to decode.
+
+## Downloading the server and the client
+
+A `v*` tag ships both applications in three shapes each. Packages go to the feed, applications go
+to [releases](https://github.com/Wixely/Banter/releases), and the image goes to a registry; none of
+them belongs where the others are.
+
+**The server** — `Banter.Server`:
+
+| | |
+|---|---|
+| `Banter.Server-win-x64-<flavour>-<tag>.zip` | release asset |
+| `Banter.Server-linux-x64-<flavour>-<tag>.zip` | release asset |
+| `ghcr.io/wixely/banter:<version>` | GitHub Container Registry, `linux/amd64` and `linux/arm64` |
+
+**The client** — `Banter.Client`, the desktop head, whose executable is `banter`:
+
+| | |
+|---|---|
+| `Banter.Client-win-x64-<flavour>-<tag>.zip` | release asset |
+| `Banter.Client-linux-x64-<flavour>-<tag>.zip` | release asset |
+| `Banter.Client-android-<tag>.apk` | release asset |
+
+`<flavour>` is `self-contained`, which runs on a machine with no .NET on it, or
+`framework-dependent`, which is roughly a fifth of the size and needs the .NET 10 runtime already
+there. Each zip holds a single executable at its root; unzip it and run it.
+
+The image is tagged `0.3.0`, `0.3` and `latest`, so a compose file can pin as tightly as it wants.
+It is not a release asset on purpose: an image is pulled from a registry by tag or digest, and a
+copy of one on a release page goes stale the moment the tag is re-run.
+
+```
+docker run -d -p 7770:7770 -v banter-data:/data -e BANTER_ADMIN_PASSWORD=<not "admin"> ghcr.io/wixely/banter:latest
+```
+
+**On the APK.** It is the right way to try the Android head — which, per the table above, has not
+yet been run on a device at all, so treat the first install as the experiment it is. Until
+an `ANDROID_KEYSTORE_BASE64` secret (with `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` and
+`ANDROID_KEYSTORE_PASSWORD`) is set on the repository, CI signs it with a debug key it generates on
+the runner. No two builds agree on that key, so upgrading over a previously downloaded release
+fails on a signature mismatch — uninstall first — and Play would not accept it at all. That matches
+where PLAN §10 has the head: sideload and try, not a store presence. Set the secrets and the same
+build becomes releasable, with no workflow change.
+
+The web head is not released as a binary: it is served, not downloaded.
+
+The release notes are the tag's own annotation, so `git show <tag>` and the releases page say the
+same thing.
 
 ## Building
 

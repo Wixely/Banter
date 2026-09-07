@@ -120,6 +120,95 @@ jobs:
       - name: Build
         run: dotnet build src/Banter.App.Android/Banter.App.Android.csproj --configuration Release
 
+      # Everything below is the release APK, and only on a tag. The build above stays
+      # unconditional: it is the check that the head still compiles on every push.
+      - name: Determine version
+        id: ver
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        # ApplicationVersion is Android's versionCode: an integer that must increase for every
+        # build a device is asked to upgrade to, and it cannot be derived from a semver tag.
+        # The run number is monotonic for the life of the workflow, which is what it needs.
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: Unpack the signing keystore
+        id: keystore
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        # Optional, and its absence is not a failure. Without it the Android SDK signs with a
+        # debug key it generates on the runner, which produces an APK that installs but that no
+        # two runs agree on — so an upgrade over a previous release fails on signature mismatch,
+        # and Play will not take it at all. Good enough to sideload and try, which is the state
+        # PLAN §10 says the head is in. Set the secret and the same build becomes releasable.
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/banter.keystore"
+            echo "path=${RUNNER_TEMP}/banter.keystore" >> "$GITHUB_OUTPUT"
+            echo "Signing with the release keystore."
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set - the APK will carry a throwaway debug signature."
+          fi
+      - name: Publish the APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          KEYSTORE: ${{ steps.keystore.outputs.path }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          args=(
+            src/Banter.App.Android/Banter.App.Android.csproj
+            -c Release
+            -p:AndroidPackageFormat=apk
+            -p:ApplicationDisplayVersion=${{ steps.ver.outputs.version }}
+            -p:ApplicationVersion=${{ steps.ver.outputs.code }}
+            -o artifacts/android
+          )
+          if [ -n "${KEYSTORE}" ]; then
+            args+=(
+              -p:AndroidKeyStore=true
+              -p:AndroidSigningKeyStore="${KEYSTORE}"
+              -p:AndroidSigningKeyAlias="${KEY_ALIAS}"
+              -p:AndroidSigningKeyPass="${KEY_PASS}"
+              -p:AndroidSigningStorePass="${STORE_PASS}"
+            )
+          fi
+          dotnet publish "${args[@]}"
+      - name: Name the APK for the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        # Published as uk.co.wixely.banter-Signed.apk, which says the application id rather than
+        # what somebody downloading it is looking for. Renamed to match the desktop zips.
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # The build drops two: <applicationId>.apk and <applicationId>-Signed.apk. The signed
+          # one is the only one worth shipping, and matching it explicitly beats relying on
+          # which way a combined glob happens to sort.
+          apks=(artifacts/android/*-Signed.apk)
+          if (( ${#apks[@]} != 1 )); then
+            echo "Expected exactly one signed APK, found ${#apks[@]}:" >&2
+            for a in artifacts/android/*.apk; do echo "  ${a}" >&2; done
+            exit 1
+          fi
+          mv "${apks[0]}" "Banter.Client-android-${GITHUB_REF_NAME}.apk"
+          ls -la "Banter.Client-android-${GITHUB_REF_NAME}.apk"
+      - name: Upload workflow artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v7
+        with:
+          name: Banter.Client-android
+          path: Banter.Client-android-${{ github.ref_name }}.apk
+          if-no-files-found: error
+          retention-days: 1
+
   web:
     # Out of Banter.slnx for the same reason as the Android head: the `wasm-tools` workload would
     # otherwise be a requirement for anyone building the server or the desktop client.
@@ -136,3 +225,210 @@ jobs:
         run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password "${{ secrets.PACKAGES_TOKEN || github.token }}" --store-password-in-clear-text --configfile NuGet.config
       - name: Publish
         run: dotnet publish src/Banter.App.Web/Banter.App.Web.csproj --configuration Release
+
+  publish-apps:
+    # The two things a person downloads rather than references: the server they host, and the
+    # desktop client they run. Neither is a package — an application on a NuGet feed is a
+    # category error, and `IsPackable=false` in both project files already says so. They ship
+    # as release assets instead, which is what the `release` job below does with these.
+    #
+    # Tag-only. A branch build has nowhere to put these and no one to want them; `build` above
+    # already proves the tree compiles on every push.
+    name: Publish ${{ matrix.app.name }} ${{ matrix.rid }} ${{ matrix.kind }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - name: Banter.Server
+            project: src/Banter.Server/Banter.Server.csproj
+          # Banter.App.Desktop, but named for what it is to whoever downloads it. Its assembly
+          # is already `banter`, so the zip and the executable inside it agree.
+          - name: Banter.Client
+            project: src/Banter.App.Desktop/Banter.App.Desktop.csproj
+        rid: [win-x64, linux-x64]
+        # Both, because the two answers serve different people: a self-contained zip runs on a
+        # box with no .NET on it, and a framework-dependent one is a fifth of the size for
+        # somebody who already has the runtime. DaggerAgent ships both for the same reason.
+        kind: [framework-dependent, self-contained]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      # The client pulls CupriFace and Bantz.* and the server pulls MCPHub.Proxy, all from the
+      # Wixely feed, so this is needed here exactly as it is in every other job.
+      - name: Add Wixely feed credentials
+        run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password "${{ secrets.PACKAGES_TOKEN || github.token }}" --store-password-in-clear-text --configfile NuGet.config
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        # -p:Version so the binary reports the released version rather than whatever
+        # VersionPrefix happened to say when the tag was cut.
+        run: >
+          dotnet publish "${{ matrix.app.project }}"
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained ${{ matrix.kind == 'self-contained' }}
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=${{ matrix.kind == 'self-contained' }}
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:IncludeAllContentForSelfExtract=true
+          -p:DebugType=none
+          -p:DebugSymbols=false
+          -o "publish/${{ matrix.app.name }}-${{ matrix.rid }}-${{ matrix.kind }}"
+      - name: Package
+        shell: bash
+        # Zipped from inside the directory so the archive holds the executable at its root
+        # rather than a directory nobody asked for.
+        run: |
+          set -euo pipefail
+          name="${{ matrix.app.name }}-${{ matrix.rid }}-${{ matrix.kind }}-${GITHUB_REF_NAME}"
+          cd "publish/${{ matrix.app.name }}-${{ matrix.rid }}-${{ matrix.kind }}"
+          zip -r "../../${name}.zip" .
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.app.name }}-${{ matrix.rid }}-${{ matrix.kind }}
+          path: ${{ matrix.app.name }}-${{ matrix.rid }}-${{ matrix.kind }}-${{ github.ref_name }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  docker:
+    # The server's third shape, alongside the two zips: an image on GHCR. Deliberately not a
+    # release asset — an image is pulled by digest or tag from a registry, and a tarball of one
+    # on a release page is a copy that goes stale the moment anyone re-runs the tag.
+    #
+    # Tag-only for the push. Building on a branch would catch a broken Dockerfile earlier, but
+    # `build` above already compiles the server, and the only thing unique to this file is the
+    # in-image restore, which cannot break without the restore in every other job breaking too.
+    name: Publish the server image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write        # push ghcr.io/wixely/banter
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compute the image name
+        # Lowercased: the repository is Wixely/Banter and a registry rejects an upper-case path.
+        run: echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Derive the image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # v0.3.0 gets 0.3.0, 0.3 and latest, so a compose file can pin as tightly as it wants.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # arm64 as well as amd64: the server is the thing people put on a small box, and a
+          # Pi or an ARM VPS is exactly that box.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The in-image restore needs the Wixely feed (see Dockerfile). User as a build-arg,
+          # token as a BuildKit secret so it is never baked into a layer.
+          build-args: |
+            GITHUB_PACKAGES_USER=${{ github.actor }}
+          secrets: |
+            github_packages_token=${{ secrets.PACKAGES_TOKEN || github.token }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    # Both tags so far went out with a carefully written annotation and no GitHub release to put
+    # it on, so the only place that text existed was `git show`. This publishes it.
+    name: Publish the GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Everything a tag produces, not just the zips: `pack` puts the SDK on the feed, `android`
+    # builds the APK that ships here, and `docker` puts the image on GHCR. A release page
+    # announcing a version whose packages or image never arrived is a half-shipped tag.
+    needs: [publish-apps, android, docker, pack]
+    permissions:
+      contents: write      # create the release and upload its assets
+    steps:
+      - name: Download the packaged apps
+        uses: actions/download-artifact@v7
+        with:
+          path: release-assets
+          # Only the apps. Without a pattern this also pulls down the run's test results and
+          # the nupkgs, and the nupkgs are the one thing that must not end up on the release
+          # page — they belong on the feed, and a copy here would be a second source of truth
+          # for the same version.
+          pattern: Banter.*
+      - name: Create the release if it is missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The body is the tag's own annotation. --generate-notes lists merged PR titles, which
+        # say how the work arrived rather than what shipped, and this repository puts real
+        # release notes in the annotation already.
+        #
+        # Read over the API, never from a checkout: actions/checkout resolves the ref to a
+        # commit and force-updates refs/tags/<tag> to point at it, so the annotation is
+        # unreachable locally whatever fetch-depth says — which is why this job checks out
+        # nothing at all. That cost DaggerAgent two releases before it was understood.
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists; leaving its notes alone."
+            exit 0
+          fi
+
+          ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}")"
+          obj_type="$(jq -r '.object.type' <<<"${ref_json}")"
+          obj_sha="$(jq -r '.object.sha' <<<"${ref_json}")"
+
+          if [ "${obj_type}" = "tag" ]; then
+            notes="${RUNNER_TEMP}/release-notes.md"
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/${obj_sha}" --jq '.message' > "${notes}"
+            echo "Annotated tag: release body from its message ($(wc -c < "${notes}") bytes)."
+            gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --notes-file "${notes}"
+          else
+            echo "${GITHUB_REF_NAME} is a lightweight tag (object type '${obj_type}'); generating notes."
+            gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes
+          fi
+      - name: Upload the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        # --clobber so re-running a tag's workflow replaces the assets rather than failing,
+        # matching the pack job's --skip-duplicate.
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-assets/*/*.zip release-assets/*/*.apk)
+          # Nine: two applications x two platforms x two flavours, plus the APK. Anything less
+          # means a matrix leg failed quietly, and a release missing a platform is worse than a
+          # release that did not happen.
+          if (( ${#assets[@]} != 9 )); then
+            echo "Expected 9 release assets, found ${#assets[@]}:" >&2
+            for a in "${assets[@]}"; do echo "  ${a}" >&2; done
+            exit 1
+          fi
+          printf '%s\n' "${assets[@]}"
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
