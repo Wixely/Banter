@@ -110,6 +110,13 @@ public sealed class VoiceSettingsTests(ITestOutputHelper output)
         doc.Refresh();
         doc.BuildDisplayList(Width, Height);
 
+        // Voices live in their own section now - the card cannot scroll, so the settings are
+        // grouped and one group shows at a time. Reaching this control means choosing that
+        // section, which is what somebody looking for it does.
+        var (tabX, tabY) = PointOn(doc, "[data-settings-section=\"speaking\"]");
+        doc.DispatchClick(tabX, tabY, 1);
+        doc.BuildDisplayList(Width, Height);
+
         var (x, y) = PointOn(doc, "[data-voice-cycle=\"dagger\"]");
         doc.DispatchClick(x, y, 1);
 

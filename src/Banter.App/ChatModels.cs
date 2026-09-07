@@ -652,6 +652,26 @@ public sealed partial class ChatModel
     /// <summary>The wait before it does, in seconds, as typed.</summary>
     public string AutoSubmitDelay { get; set; } = "3";
 
+    /// <summary>Whether being named flashes the taskbar, on the settings page.</summary>
+    public List<ChoiceRow> FlashChoices { get; set; } = [];
+
+    /// <summary>
+    /// The settings page's sections, and which fields each shows.
+    ///
+    /// <para>Sections rather than one long list because the list cannot scroll — an overflow box
+    /// ignores the wheel in CupriFace 0.18.0, so the card's height is the hard limit on what can
+    /// be reached at all, and the settings had already grown past it.</para>
+    /// </summary>
+    public List<ChoiceRow> SettingsSections { get; set; } = [];
+
+    public string YouFieldsClass { get; set; } = "mgmt-field";
+
+    public string AlertFieldsClass { get; set; } = "mgmt-field hidden";
+
+    public string ListeningFieldsClass { get; set; } = "mgmt-field hidden";
+
+    public string TranscriptFieldsClass { get; set; } = "mgmt-field hidden";
+
     /// <summary>The attach control. Hidden on a head that cannot open a file dialog.</summary>
     public string AttachButtonClass { get; set; } = "attach-open hidden";
 

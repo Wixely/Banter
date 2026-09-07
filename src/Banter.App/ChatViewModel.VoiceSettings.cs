@@ -49,8 +49,10 @@ public sealed partial class ChatViewModel
 
         // Nothing on this machine speaks: leave the controls out rather than showing an empty
         // picker, which reads as a list that failed to load.
-        Model.VoiceSpeakersClass = pool.Count > 0 ? "mgmt-field" : "mgmt-field hidden";
         RefreshSpeakerVoices();
+
+        // Through ShowSettingsSection, so the pool and the chosen section are applied together.
+        ShowSettingsSection(SettingsSection);
     }
 
     /// <summary>Notes somebody worth being able to give a voice to.</summary>
@@ -184,6 +186,67 @@ public sealed partial class ChatViewModel
             AutoSubmitDelaySeconds.ToString("0.##", CultureInfo.InvariantCulture);
         return AutoSubmitDelaySeconds;
     }
+
+    /// <summary>Which group of settings is on screen. Only one is, because only one fits.</summary>
+    public string SettingsSection { get; private set; } = "you";
+
+    /// <summary>
+    /// Shows one section and hides the rest.
+    ///
+    /// <para>The speakers field is decided here too rather than by its own rule: it is hidden
+    /// when this machine can speak with nothing, and hidden when its section is not showing, and
+    /// two separate things setting one class is how a field ends up visible for one reason and
+    /// invisible for another.</para>
+    /// </summary>
+    public void ShowSettingsSection(string section)
+    {
+        SettingsSection = section;
+        Model.SettingsSections = SectionChoices(section);
+        Model.YouFieldsClass = FieldClass(section == "you");
+        Model.AlertFieldsClass = FieldClass(section == "alerts");
+        Model.ListeningFieldsClass = FieldClass(section == "listening");
+        Model.TranscriptFieldsClass = FieldClass(section == "transcripts");
+        Model.VoiceSpeakersClass = FieldClass(section == "speaking" && _voicePool.Count > 0);
+    }
+
+    private static string FieldClass(bool shown) => shown ? "mgmt-field" : "mgmt-field hidden";
+
+    /// <summary>
+    /// The tabs. Plain rows rather than the radio-style cards the rest of the page uses: these
+    /// choose what you are looking at, not what the application will do, and dressing a view
+    /// switch as a setting invites people to wonder what they just changed.
+    /// </summary>
+    private static List<ChoiceRow> SectionChoices(string selected) =>
+    [
+        .. new[]
+        {
+            ("you", "You"),
+            ("alerts", "Alerts"),
+            ("listening", "Listening"),
+            ("transcripts", "Transcripts"),
+            ("speaking", "Speaking"),
+        }.Select(o => new ChoiceRow
+        {
+            Value = o.Item1,
+            Label = o.Item2,
+            RowClass = o.Item1 == selected ? "settings-tab on" : "settings-tab",
+        }),
+    ];
+
+    /// <summary>Whether being named should ask for attention outside the window.</summary>
+    public bool FlashOnMention { get; private set; } = true;
+
+    public void SetFlashOnMention(bool flash)
+    {
+        FlashOnMention = flash;
+        Model.FlashChoices = FlashChoices(flash ? "flash" : "quiet");
+    }
+
+    public void ChooseFlash(string value) => SetFlashOnMention(value == "flash");
+
+    private static List<ChoiceRow> FlashChoices(string selected) => Choices(selected,
+        ("flash", "Flash the taskbar", "Only when the window is not already in front, and only for an explicit @name."),
+        ("quiet", "Nothing", "The message is still highlighted in the room."));
 
     private static List<ChoiceRow> AutoSubmitChoices(string selected) => Choices(selected,
         ("send", "Send it", "A finished transcript posts itself, after the wait below."),

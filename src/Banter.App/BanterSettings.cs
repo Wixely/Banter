@@ -51,6 +51,16 @@ public sealed record BanterSettings
     public float Zoom { get; init; } = 1f;
 
     /// <summary>
+    /// Flash the taskbar when somebody names you with an explicit <c>@nick</c> and the window is
+    /// not the one in front.
+    ///
+    /// <para>Only when it is not in front: a window flashing while you are looking at it is
+    /// noise. And only for an explicit mention — the whole value of an alert is that it is rare
+    /// enough to be worth turning to.</para>
+    /// </summary>
+    public bool FlashOnMention { get; init; } = true;
+
+    /// <summary>
     /// Speech settings (PLAN §6). The API key is absent for the same reason the password is:
     /// it comes from <c>BANTER_SPEECH_KEY</c>.
     /// </summary>

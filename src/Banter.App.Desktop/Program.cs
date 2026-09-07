@@ -108,6 +108,18 @@ var app = new BanterChatApp(vm)
     ConnectAsync = (server, user, password) => SignInAsync(server, user, password, persist: true),
     SignOutAsync = SignOutAsync,
 
+    // Flash the taskbar when named, unless the window is already in front - which
+    // TaskbarAttention decides, because it is the only thing here that knows. The count is
+    // ignored: one flashing button says "somebody wants you" whether it was one message or six,
+    // and there is no louder version of that to escalate to.
+    MentionedYou = _ =>
+    {
+        if (settings.FlashOnMention)
+        {
+            Banter.App.Desktop.TaskbarAttention.Raise();
+        }
+    },
+
     SendAsync = (room, text) => session?.SendAsync(room, text) ?? Task.CompletedTask,
     ReplyAsync = (room, text, replyTo) => session?.SendAsync(room, text, replyTo) ?? Task.CompletedTask,
     AnswerAsync = answer => session?.AnswerAsync(answer) ?? Task.CompletedTask,
@@ -168,6 +180,7 @@ var app = new BanterChatApp(vm)
     {
         settings = settings with
         {
+            FlashOnMention = vm.FlashOnMention,
             Voice = settings.Voice with
             {
                 Engine = vm.ChosenTranscribe,
@@ -204,6 +217,7 @@ if (filePicker.IsSupported)
 // ReviewBeforeSend is the old switch and still wins: a profile that asked never to send by
 // itself keeps that, whatever the new default says.
 vm.SetAutoSubmit(settings.Voice.AutoSubmit && !settings.Voice.ReviewBeforeSend, settings.Voice.AutoSubmitDelaySeconds);
+vm.SetFlashOnMention(settings.FlashOnMention);
 vm.SetVoiceSettings(
     settings.Voice.Engine,
     settings.Voice.Language,

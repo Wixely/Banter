@@ -216,9 +216,9 @@ public sealed partial class ChatViewModel
             Time = FormatTime(timestamp),
             // An egress announcement is the one message in a room that must never be skimmed
             // past, so it is styled apart from ordinary agent chatter.
-            RowClass = WithPresence(room, sender, text.StartsWith("[egress]", StringComparison.Ordinal)
+            RowClass = WithMention(sender, text, WithPresence(room, sender, text.StartsWith("[egress]", StringComparison.Ordinal)
                 ? "line egress"
-                : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass),
+                : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass)),
             FileId = fileId,
             // Metadata arrives on a separate round-trip, so show the row immediately with a
             // placeholder rather than withholding it until the name and size are known.
@@ -289,6 +289,63 @@ public sealed partial class ChatViewModel
     /// and your own messages are yours whether or not the room still lists you, so neither is ever
     /// marked.
     /// </summary>
+    /// <summary>
+    /// Marks a message that names this user with an explicit <c>@nick</c>.
+    ///
+    /// <para>Explicit, and not from this user: somebody saying a name in passing is not addressing
+    /// anybody, and highlighting every sentence a name appears in would make the highlight mean
+    /// nothing. Matching what an agent counts as being summoned, for the same reason — the room
+    /// should agree with itself about who was asked.</para>
+    /// </summary>
+    private string WithMention(string sender, string text, string rowClass)
+    {
+        if (Model.Nick.Length == 0
+            || rowClass.Contains("system", StringComparison.Ordinal)
+            || string.Equals(sender, Model.Nick, StringComparison.OrdinalIgnoreCase)
+            || !MentionsMe(text))
+        {
+            return rowClass;
+        }
+
+        MentionsSinceLooked++;
+        return rowClass + " tome";
+    }
+
+    /// <summary>Whether text carries an explicit <c>@nick</c> for this user, ending where the nick does.</summary>
+    public bool MentionsMe(string text)
+    {
+        var nick = Model.Nick;
+        if (nick.Length == 0)
+        {
+            return false;
+        }
+
+        var at = text.IndexOf('@' + nick, StringComparison.OrdinalIgnoreCase);
+        if (at < 0)
+        {
+            return false;
+        }
+
+        // "@adminstrator" is not admin, the same rule the agent SDK applies to its own nick.
+        var after = at + 1 + nick.Length;
+        return after >= text.Length || !char.IsLetterOrDigit(text[after]);
+    }
+
+    /// <summary>
+    /// How many messages have named this user since anything last looked. Counted rather than
+    /// signalled so a head can decide what to do about it — flash a taskbar, or nothing — and
+    /// read on its own frame rather than being called back on the receive thread.
+    /// </summary>
+    public int MentionsSinceLooked { get; private set; }
+
+    /// <summary>Takes the count, resetting it. Whoever asks is the one acting on it.</summary>
+    public int TakeMentions()
+    {
+        var n = MentionsSinceLooked;
+        MentionsSinceLooked = 0;
+        return n;
+    }
+
     private string WithPresence(string room, string sender, string rowClass)
     {
         var bare = rowClass.Replace(" away", "");

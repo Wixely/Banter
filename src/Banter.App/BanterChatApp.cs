@@ -148,6 +148,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public Func<Task> SignOutAsync { get; init; } = () => Task.CompletedTask;
 
+    /// <summary>
+    /// Somebody named this user with an explicit <c>@nick</c>. Called on the render thread with
+    /// how many arrived since the last frame that looked.
+    ///
+    /// <para>A seam rather than a call to a platform: asking for attention is a taskbar on
+    /// Windows, a dock bounce elsewhere and nothing at all on a phone, and the shared app has no
+    /// business knowing which. A head that leaves it alone simply gets the highlight in the
+    /// timeline, which every head gets.</para>
+    /// </summary>
+    public Action<int> MentionedYou { get; init; } = _ => { };
+
     /// <summary>Rewrites a message already sent. Only the author may; the server enforces it.</summary>
     public Func<string, string, string, Task> EditAsync { get; init; } = (_, _, _) => Task.CompletedTask;
 
@@ -429,8 +440,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   </div>
                   <cupri-button class="mgmt-remove settings-close">Close</cupri-button>
                 </div>
+                <!-- Sections, because the list below does not scroll: CupriFace 0.18.0 ignores the
+                     wheel on an overflow box (measured), so the card height is a hard ceiling and
+                     the settings had already grown about 340px past it. What was below the fold
+                     was unreachable rather than merely out of sight. -->
+                <div class="settings-tabs">
+                  <div class="{{RowClass}}" data-repeat="SettingsSections" data-settings-section="{{Value}}">{{Label}}</div>
+                </div>
                 <div class="mgmt-fields">
-                  <div class="mgmt-field">
+                  <div class="{{YouFieldsClass}}">
                     <div class="mgmt-label">Account</div>
                     <div class="mgmt-control">
                       <div class="account-row">
@@ -443,7 +461,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       <div class="mgmt-hint">Signing out forgets this password and returns to the sign-in screen, where a different server or account can be entered.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{ListeningFieldsClass}}">
                     <div class="mgmt-label">Hearing</div>
                     <div class="mgmt-control">
                       <div class="mgmt-choices">
@@ -458,7 +476,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       <div class="mgmt-hint">What turns speech into text. Nothing here leaves this machine unless you point it somewhere.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{AlertFieldsClass}}">
+                    <div class="mgmt-label">When you are named</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices">
+                        <div class="{{RowClass}}" data-repeat="FlashChoices" data-flash="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                            <div class="mgmt-choice-hint">{{Hint}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">A message that says @your-name is marked in the room either way. This is what happens when you are looking at something else.</div>
+                    </div>
+                  </div>
+                  <div class="{{TranscriptFieldsClass}}">
                     <div class="mgmt-label">Finished speech</div>
                     <div class="mgmt-control">
                       <div class="mgmt-choices">
@@ -473,35 +506,35 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       <div class="mgmt-hint">What happens when a transcript is ready.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{TranscriptFieldsClass}}">
                     <div class="mgmt-label">Wait before sending</div>
                     <div class="mgmt-control">
                       <cupri-textfield class="mgmt-input" value="{{AutoSubmitDelay}}" placeholder="0"></cupri-textfield>
                       <div class="mgmt-hint">Seconds the words sit in the composer first, with a Cancel beside them. 0, the default, sends the moment it is heard. Worth setting to 2 or 3 if you leave the microphone open, where a misheard sentence would otherwise post itself.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{ListeningFieldsClass}}">
                     <div class="mgmt-label">Language</div>
                     <div class="mgmt-control">
                       <cupri-textfield class="mgmt-input" value="{{VoiceLanguage}}" placeholder="detect"></cupri-textfield>
                       <div class="mgmt-hint">A hint like "en" or "de". Worth setting: detection on a short utterance is close to a coin flip.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{ListeningFieldsClass}}">
                     <div class="mgmt-label">Names</div>
                     <div class="mgmt-control">
                       <cupri-textfield class="mgmt-input" value="{{VoiceVocabulary}}" placeholder="dagger, webscribe, CupriNet"></cupri-textfield>
                       <div class="mgmt-hint">Words the engine has never seen and will otherwise replace with something plausible. Agent names belong here.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{ListeningFieldsClass}}">
                     <div class="mgmt-label">Speech server</div>
                     <div class="mgmt-control">
                       <cupri-textfield class="mgmt-input" value="{{VoiceWyomingTts}}" placeholder="localhost:10200"></cupri-textfield>
                       <div class="mgmt-hint">A Wyoming speaker — Piper, or faster-qwen-tts-aio, which serves both this and the OpenAI API. Takes precedence over the endpoint below.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{ListeningFieldsClass}}">
                     <div class="mgmt-label">Endpoint</div>
                     <div class="mgmt-control">
                       <cupri-textfield class="mgmt-input" value="{{VoiceEndpoint}}" placeholder="http://localhost:8080/v1"></cupri-textfield>
@@ -525,7 +558,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       <div class="mgmt-hint">Click a name to step through the voices your speech server offers, and once more to let it be dealt by name again. Two agents that sound alike are two agents you cannot tell apart with your back to the screen.</div>
                     </div>
                   </div>
-                  <div class="mgmt-field">
+                  <div class="{{YouFieldsClass}}">
                     <div class="mgmt-label">Zoom</div>
                     <div class="mgmt-control">
                       <div class="mgmt-choices wrap">
@@ -1081,6 +1114,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line.system .sender { color: #8d97a6; }
         .line.system .pfp { display: none; }
         .line.system .msg-main { padding-left: 0; }
+        /* Named with an explicit @nick. A left edge and a wash rather than a colour on the text:
+           the point is to be findable when scrolling back through a room that has been busy,
+           and a tinted word is not. */
+        .line.tome { background: #1a1d27; border-left: 3px solid #fbbf24; padding-left: 15px; }
         .line.streaming .body { color: #cdd3dc; }
 
         /* An agent has been asked and has not said anything yet. Shown only while the row is
@@ -1540,7 +1577,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            cupri-virtual actually scrolls. So this height is the real limit on how many settings
            can exist, not a starting point - adding two fields here pushed Zoom off the bottom
            where nothing could reach it, which is how this was found. */
-        .settings-card { flex: 0 0 720px; height: 700px; }
+        .settings-card { flex: 0 0 720px; height: 620px; }
+        .settings-tabs { display: flex; flex-direction: row; flex-wrap: wrap; padding-top: 12px; }
+        .settings-tab { padding: 5px 12px; margin-right: 6px; font-size: 12px; color: #8d97a6;
+                        background: #151920; border: 1px solid #262d38; border-radius: 8px; }
+        .settings-tab.on { color: #f3f5f7; background: #1f2530; border-color: #3b4453; }
         /* The voice list is the one thing here that grows with the room, so it scrolls rather
            than pushing the rest of the page off the bottom. Its own class rather than a modifier
            on .mgmt-rows: that rule carries flex:1, which in a column with no height of its own
@@ -2042,6 +2083,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             doc.Refresh();
         });
 
+        doc.OnAction("data-settings-section", e =>
+        {
+            ViewModel.ShowSettingsSection(e.Value ?? "you");
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-flash", e =>
+        {
+            ViewModel.ChooseFlash(e.Value ?? "flash");
+            VoiceSettingsChanged();
+            doc.Refresh();
+            return true;
+        });
+
         doc.OnAction("data-autosubmit", e =>
         {
             ViewModel.ChooseAutoSubmit(e.Value ?? "send");
@@ -2331,6 +2387,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         if (ViewModel.RefreshMentions())
         {
             _doc?.Refresh();
+        }
+
+        // Named in a message that arrived since the last frame. Read here rather than raised from
+        // the receive thread so the head is called somewhere it can touch a window.
+        if (ViewModel.MentionsSinceLooked > 0)
+        {
+            MentionedYou(ViewModel.TakeMentions());
         }
 
         // A transcript counting down to send itself. Checked here because this is the only thing

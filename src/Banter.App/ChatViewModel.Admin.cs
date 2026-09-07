@@ -636,6 +636,11 @@ public sealed partial class ChatViewModel
         {
             Model.AgentsPanelClass = "mgmt hidden";
             Model.UsersPanelClass = "mgmt hidden";
+
+            // Opening the page is what guarantees the sections exist: a head that never called
+            // SetVoiceSettings would otherwise show a card with no tabs and no way to reach
+            // anything but the first group.
+            ShowSettingsSection(SettingsSection);
         }
     }
 
