@@ -19,14 +19,26 @@ Uri endpoint;
 BanterStorageOptions storage;
 try
 {
-    // Parsed rather than constructed. `new Uri` on a typo throws out of a top-level statement,
-    // and what a container operator saw for a missing scheme was a stack trace rather than the
-    // line below telling them what the value should look like.
+    // Parsed rather than constructed, and checked in three ways, because every one of them was
+    // a stack trace out of a top-level statement before.
+    //
+    // The scheme first, and with a suggestion. `192.168.0.8:7770` is the obvious thing to type
+    // and the least obvious thing to debug: Uri reads it as a scheme of "192.168.0.8", or
+    // refuses it outright, and the message it produces mentions neither the value nor the fix.
+    if (!endpointText.Contains("://", StringComparison.Ordinal))
+    {
+        var guess = endpointText.Contains(':', StringComparison.Ordinal) ? endpointText : $"{endpointText}:7770";
+        throw new ArgumentException($"'{endpointText}' has no scheme. Did you mean tcp://{guess}?");
+    }
+
     if (!Uri.TryCreate(endpointText, UriKind.Absolute, out var parsed))
     {
         throw new ArgumentException($"'{endpointText}' is not an endpoint. Expected tcp://host:port.");
     }
 
+    // And that something here can actually listen on it. BanterTransports.Server throws a good
+    // message for an unknown scheme; it was simply thrown where nothing caught it.
+    BanterTransports.Server(parsed);
     endpoint = parsed;
     storage = BanterStorageOptions.Parse(
         Arg("--db") ?? Environment.GetEnvironmentVariable("BANTER_DB"),
@@ -161,7 +173,23 @@ await using var server = new BanterServer(
     // The users page's authority: humans created and reset by an admin at run time. Nothing else
     // creates an account except the admin account and an explicit --seed-users.
     accountAdmin: accounts);
-await server.StartAsync(endpoint);
+try
+{
+    await server.StartAsync(endpoint);
+}
+catch (System.Net.Sockets.SocketException ex)
+{
+    // Binding is the last thing that can fail and the one most likely to: an address that is not
+    // on this machine, or a port already held. Both arrived as an unhandled SocketException whose
+    // text ("The requested address is not valid in its context") names neither the address nor
+    // the port it was talking about.
+    Console.Error.WriteLine($"error: could not listen on {endpoint}: {ex.Message}");
+    Console.Error.WriteLine(
+        "       The host must be an address this machine actually has. Use 0.0.0.0 to bind every");
+    Console.Error.WriteLine(
+        "       interface, 127.0.0.1 for this machine only, or one of this machine's own addresses.");
+    return 1;
+}
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");
 Console.WriteLine("Press Ctrl+C to stop.");
 
