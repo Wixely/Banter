@@ -77,7 +77,9 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Voice: Wyoming adapter (faster-whisper ASR, Piper TTS) | implemented, tested against a fake service |
 | App: native file picker (`Attach`), `/upload` kept as the typed route | implemented, tested; dialog itself needs a click-test |
 | App: close-to-tray (`stayInTray`) | implemented, **off by default** — the icon could not be confirmed headlessly |
-| App: connect screen (server/name/password, no command line needed) | implemented, tested |
+| App: sign-in screen (server/name/password), on every head | implemented, tested |
+| App: stay signed in — password kept user-only, DPAPI-wrapped on Windows | implemented, tested |
+| App: sign out / switch server or account (Settings → Account) | implemented, tested |
 | `Banter.App.Android` (`CupriActivity` head, TCP) | implemented; builds a signed 26 MB APK, not yet run on a device |
 | Android voice: `AudioRecord` capture, `AudioTrack` playback, in-context mic permission | implemented; needs a device |
 
@@ -102,6 +104,57 @@ of precedence:
 
 An unreadable secret file warns and falls back rather than refusing to start, so a mount typo
 does not turn into a crash loop.
+
+**No other account is created for you.** An empty database used to grow `alice` and `bob` with the
+password `banter` on first run, which is convenient on a laptop and indefensible anywhere else: the
+accounts arrive unannounced, the password is public knowledge, and the deployment that most needs
+them absent is the one least likely to look. People are added on the users page, or asked for
+explicitly at startup:
+
+| Setting | Notes |
+|---|---|
+| `BANTER_SEED_USERS_FILE` | Path to a file holding the list. Same reasoning as the admin password. |
+| `--seed-users alice:secret,bob:secret` | Command line; what `.vscode/launch.json` uses for the development accounts. |
+| `BANTER_SEED_USERS` | Environment variable, for a container. |
+
+Each entry is `name:password`, split on the first colon so a password may contain them. An account
+that already exists is left alone rather than having its password reset, so this is safe to leave
+in a compose file across restarts. Agents are never seeded — they have no passwords at all; see
+[docs/adding-an-agent.md](docs/adding-an-agent.md).
+
+## Running the client
+
+```
+banter                        # or: dotnet run --project src/Banter.App.Desktop
+```
+
+It opens on a **sign-in screen**: server, name, password. That was not true before — given no
+arguments the client printed `no server/user configured` and exited, which on a windowed
+application started from a shortcut means a console nobody sees and a program that appears to do
+nothing at all.
+
+A successful sign-in is remembered, so the next launch goes straight to the rooms. **Settings →
+Account → Sign out** ends the session, forgets the password and returns to the sign-in screen,
+which is also how you move to a different server or account.
+
+Two files, kept apart because the rule for each is then one sentence long:
+
+| | |
+|---|---|
+| `%APPDATA%/Banter/settings.json` | Preferences — server, user, rooms, voice, zoom. Plain JSON, safe to read and copy. |
+| `%APPDATA%/Banter/credentials.dat` | The remembered password. Written user-only, and on Windows encrypted with DPAPI so it is worthless on another machine. |
+
+The honest limit: a user-scoped store protects the password from other accounts on the machine and
+from a stolen disk or backup, not from code already running as you — which can ask DPAPI to unwrap
+it just as the client does. That is the ceiling for "remember me" without a master password, and
+the sign-in screen says which of the two you are getting. On Linux it is file permissions only;
+wiring libsecret is the per-platform job `AgentKeyFile` already names, and `ISecretProtector` is
+the seam it plugs into.
+
+The command line still works and skips the screen entirely — `--server`, `--user`, `--pass`,
+`--rooms`, `--settings`, `--save`. A password given that way (or in `BANTER_PASS`) is never
+written to disk, which is what a scripted or debugger launch wants; `--forget` discards a
+remembered one before starting.
 
 ## Adding an agent
 

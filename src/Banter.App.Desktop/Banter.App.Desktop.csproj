@@ -32,5 +32,10 @@
     <!-- Global push-to-talk: keyboard chords, and gamepad and mouse buttons for free. Replaces
          the hand-rolled RegisterHotKey work the plan originally carried (PLAN §6a). -->
     <PackageReference Include="Bantz.Input" Version="0.2.3" />
+    <!-- DPAPI, so a remembered password is wrapped to this Windows account rather than sitting
+         in a file anything running as this user could read. This is the per-platform half of
+         Banter.App's ISecretProtector seam; Linux has no equivalent wired yet and falls back to
+         file permissions, which the sign-in screen says out loud. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
   </ItemGroup>
 </Project>

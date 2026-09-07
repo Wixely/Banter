@@ -3,9 +3,11 @@ namespace Banter.App;
 /// <summary>
 /// The connect screen's state.
 ///
-/// <para>A desktop head is given its server and account on the command line and never shows this.
-/// A phone has no command line, so this is where an account is entered — which is why it lives in
-/// the shared app rather than in the Android head.</para>
+/// <para>Every head shows this now. It began as the Android answer to having no command line, and
+/// the desktop head kept exiting to a terminal nobody was looking at — a windowed application
+/// launched from a shortcut printed "no server/user configured" to a console that did not exist
+/// and vanished. A sign-in screen is the answer to that on any platform, so it lives in the
+/// shared app and the command line became a way to skip it rather than the only way in.</para>
 /// </summary>
 public sealed partial class ChatViewModel
 {
@@ -14,9 +16,11 @@ public sealed partial class ChatViewModel
 
     /// <summary>
     /// Shows the connect screen, pre-filled with whatever was remembered. The password is never
-    /// among that — it is not stored, so it is asked for every time.
+    /// pre-filled: a stored one is used to connect without showing this screen at all, so
+    /// arriving here means there is nothing usable to fill in — either nothing was kept, or what
+    /// was kept has just been refused.
     /// </summary>
-    public void ShowConnect(string server, string user)
+    public void ShowConnect(string server, string user, string? hint = null)
     {
         Model.ConnectServer = server;
         Model.ConnectUser = user;
@@ -24,6 +28,11 @@ public sealed partial class ChatViewModel
         Model.ConnectStatus = "";
         Model.ConnectButtonText = "Connect";
         Model.ConnectClass = "connect";
+
+        if (hint is not null)
+        {
+            Model.ConnectHint = hint;
+        }
     }
 
     /// <summary>
@@ -60,12 +69,52 @@ public sealed partial class ChatViewModel
         Model.ConnectButtonText = "Connect";
     }
 
-    /// <summary>Connected: the screen goes away and the secret goes with it.</summary>
-    public void Connected()
+    /// <summary>
+    /// Connected: the screen goes away and the secret goes with it. The account is recorded for
+    /// the settings page, which is the only place it is visible once the screen is down — and
+    /// the only place to leave it from.
+    /// </summary>
+    public void Connected(string server = "", string user = "")
     {
         Model.ConnectPassword = "";
         Model.ConnectStatus = "";
         Model.ConnectClass = "connect hidden";
+
+        if (server.Length > 0)
+        {
+            Model.AccountServer = server;
+            Model.AccountUser = user;
+            Model.SignOutClass = "mgmt-remove sign-out";
+        }
+    }
+
+    /// <summary>
+    /// Back to the sign-in screen, having ended the session. Rooms and their backlogs go with it:
+    /// leaving the previous account's conversation on screen behind the sign-in card, waiting for
+    /// whoever signs in next, is not a thing a client should do.
+    /// </summary>
+    public void SignedOut(string server, string user, string reason = "")
+    {
+        // The private caches as well as what is on screen. Clearing only Model.Messages would
+        // leave the previous account's backlog in _rooms, ready to reappear the moment the next
+        // one joined a room with the same name.
+        _rooms.Clear();
+        _cursors.Clear();
+        _streams.Clear();
+        _prepended = 0;
+
+        Model.Rooms.Clear();
+        Model.Messages.Clear();
+        Model.Browse.Clear();
+        Model.ActiveRoom = "";
+        Model.Topic = "";
+        SetNick("");
+        Model.SignOutClass = "mgmt-remove sign-out hidden";
+        Model.SettingsPanelClass = "mgmt hidden";
+
+        SetStatus("Not connected", connected: false);
+        ShowConnect(server, user);
+        Model.ConnectStatus = reason;
     }
 
     /// <summary>

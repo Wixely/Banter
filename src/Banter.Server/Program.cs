@@ -16,6 +16,7 @@ catch (ArgumentException ex)
 {
     Console.Error.WriteLine(ex.Message);
     Console.Error.WriteLine("usage: banter-server [--endpoint tcp://host:port | ws://host:port] [--db sqlite|postgres] [--connection <connection-string>]");
+    Console.Error.WriteLine("                     [--admin-password <secret>] [--seed-users name:password,name:password]");
     return 1;
 }
 
@@ -54,18 +55,55 @@ if (adminPassword == "admin")
     Console.WriteLine();
 }
 
-if (await accounts.CountAsync() <= 1)
+// Accounts are only ever created because somebody asked for them. An empty database used to
+// grow alice and bob with the password "banter" on its own, which is a fine thing on a laptop
+// and an indefensible one anywhere else: the accounts arrive unannounced, the password is
+// public knowledge, and the deployment that most needs them absent is the one least likely to
+// look. So it is configuration now — --seed-users, or BANTER_SEED_USERS in a container.
+//
+// Only humans, and only ones that do not already exist. Agents are never seeded: an agent is
+// created on the admin UI's agents page (or /agent add in Banter.Cli), enrols with the one-time
+// code that hands back, and authenticates with the key it made — the server never holds an
+// agent password because the agent never has one.
+var seedSpec = ReadSecretFile(Environment.GetEnvironmentVariable("BANTER_SEED_USERS_FILE"))
+    ?? Arg("--seed-users")
+    ?? Environment.GetEnvironmentVariable("BANTER_SEED_USERS");
+
+if (seedSpec is { Length: > 0 })
 {
-    // First run against an empty database: seed development HUMANS so the suite is usable
-    // immediately. Only humans. Agents used to be seeded here too (dagger/scout, password
-    // "banter"), and that was the config-level agent provisioning this suite decided against:
-    // an agent is created on the admin UI's agents page (or /agent add in Banter.Cli), enrols
-    // with the one-time code that hands back, and authenticates with the key it made — the
-    // server never holds an agent password because the agent never has one.
-    Console.WriteLine("No user accounts found - seeding development users alice/bob (password: banter).");
-    Console.WriteLine("Agents are not seeded: create them as admin on the agents page, then enrol with the code.");
-    await accounts.CreateUserAsync("alice", "banter");
-    await accounts.CreateUserAsync("bob", "banter");
+    foreach (var entry in seedSpec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        // name:password. A colon rather than '=' so a password containing '=' (base64 padding,
+        // most obviously) needs no escaping; the split is on the first colon only, so a password
+        // may contain them freely.
+        var colon = entry.IndexOf(':');
+        if (colon <= 0 || colon == entry.Length - 1)
+        {
+            Console.Error.WriteLine($"error: --seed-users entry '{entry}' is not name:password.");
+            return 2;
+        }
+
+        var name = entry[..colon].Trim();
+        var secret = entry[(colon + 1)..];
+
+        if (await accounts.ExistsAsync(name))
+        {
+            // Not an error, and not a password reset either: re-running a container with the
+            // same configuration must not silently change a password somebody has since set.
+            Console.WriteLine($"Account '{name}' already exists - left alone.");
+            continue;
+        }
+
+        await accounts.CreateUserAsync(name, secret);
+        Console.WriteLine($"Created the '{name}' account.");
+    }
+}
+else if (await accounts.CountAsync() <= 1)
+{
+    // Said out loud, because an empty server that silently accepts no one looks broken. The
+    // admin account exists, so this is a working server rather than a stuck one.
+    Console.WriteLine("No user accounts besides 'admin'. Add them as admin on the users page,");
+    Console.WriteLine("or start with --seed-users alice:secret,bob:secret (BANTER_SEED_USERS in a container).");
 }
 
 var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA") ?? "banter-data";
@@ -98,8 +136,8 @@ await using var server = new BanterServer(
     // effect on the next thing the agent tries. The server is the authority, so none of this needs
     // a credential in the wild that has to be waited out.
     identities: new AgentIdentityStore(database),
-    // The users page's authority: humans created and reset by an admin at run time, so the seeds
-    // above are the last accounts that ever come from anywhere but here.
+    // The users page's authority: humans created and reset by an admin at run time. Nothing else
+    // creates an account except the admin account and an explicit --seed-users.
     accountAdmin: accounts);
 await server.StartAsync(endpoint);
 Console.WriteLine($"Banter.Server listening on {server.Endpoint} ({storage.Provider} storage)");

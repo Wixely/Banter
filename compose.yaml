@@ -13,6 +13,16 @@ services:
       # Prefer a secret over a literal here - see the commented block below.
       BANTER_ADMIN_PASSWORD: ${BANTER_ADMIN_PASSWORD:-admin}
 
+      # Accounts. The server creates nobody but 'admin' on its own, so people either get added
+      # on the users page or are listed here as name:password. Left unset - which is the
+      # default - a fresh container comes up with the admin account and no one else.
+      #
+      # BANTER_SEED_USERS: "alice:secret,bob:secret"
+      #
+      # Existing accounts are never touched, so this is safe to leave in place across restarts:
+      # it will not reset a password somebody has since changed. BANTER_SEED_USERS_FILE reads
+      # the same list from a mounted file, for the same reason the admin password can be.
+
       # SQLite by default. For hosted PostgreSQL:
       #   BANTER_DB: postgres
       #   BANTER_CONNECTION: "Host=db;Database=banter;Username=banter;Password=..."

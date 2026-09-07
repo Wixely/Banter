@@ -1,10 +1,11 @@
 {
   // Debug configurations for the Banter suite.
   //
-  // HUMANS sign in with passwords. alice / bob (password "banter") are the development accounts
-  // Banter.Server seeds into an empty database on first run, and admin / admin is the operator
-  // account it creates when BANTER_ADMIN_PASSWORD is unset. None of these are secrets, which is
-  // why they can live in a committed file.
+  // HUMANS sign in with passwords. alice / bob (password "banter") are the development accounts,
+  // created because the "Server" configuration below passes --seed-users; the server creates no
+  // accounts of its own accord. admin / admin is the operator account it does create, when
+  // BANTER_ADMIN_PASSWORD is unset. None of these are secrets, which is why they can live in a
+  // committed file.
   //
   // AGENTS have no passwords, here or anywhere - they authenticate with a key that never leaves
   // the machine it was made on. One key per AGENT, not per machine: dagger and scout both enrol
@@ -27,7 +28,13 @@
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/src/Banter.Server/bin/Debug/net10.0/Banter.Server.dll",
-      "args": ["--endpoint", "tcp://127.0.0.1:7770"],
+      "args": [
+        "--endpoint", "tcp://127.0.0.1:7770",
+        // Asked for explicitly. The server no longer grows accounts on its own, so this is the
+        // one place the development humans come from - which also means a real deployment
+        // cannot inherit them by forgetting to look.
+        "--seed-users", "alice:banter,bob:banter"
+      ],
       "cwd": "${workspaceFolder}/.banter-dev",
       "console": "integratedTerminal",
       "stopAtEntry": false

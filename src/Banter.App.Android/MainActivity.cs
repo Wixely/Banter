@@ -48,6 +48,7 @@ public sealed class MainActivity : CupriActivity
         return new BanterChatApp(_viewModel)
         {
             ConnectAsync = ConnectAsync,
+            SignOutAsync = SignOutAsync,
             SendAsync = (room, text) => _session?.SendAsync(room, text) ?? Task.CompletedTask,
             ReplyAsync = (room, text, replyTo) => _session?.SendAsync(room, text, replyTo) ?? Task.CompletedTask,
             AnswerAsync = answer => _session?.AnswerAsync(answer) ?? Task.CompletedTask,
@@ -164,7 +165,7 @@ public sealed class MainActivity : CupriActivity
             {
                 _viewModel.SetNick(_client.Nick);
                 _viewModel.SetStatus("Connected", connected: true);
-                _viewModel.Connected();
+                _viewModel.Connected(server, user);
             });
 
             // Remembered only once it worked, and without the password — the settings file is
@@ -195,6 +196,32 @@ public sealed class MainActivity : CupriActivity
         {
             _viewModel.Post(() => _viewModel.ConnectFailed(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// Ends the session and returns to the connect screen, filled in with what was just used.
+    ///
+    /// <para>Nothing to forget here: this head has never stored a password, so signing out is the
+    /// disconnect and nothing else. The control is shared with the desktop head, and one that did
+    /// nothing on a phone would be worse than one that is absent.</para>
+    /// </summary>
+    private async Task SignOutAsync()
+    {
+        var session = _session;
+        var client = _client;
+        _session = null;
+        _client = null;
+
+        await (_voice?.DisposeAsync() ?? ValueTask.CompletedTask).ConfigureAwait(false);
+        _voice = null;
+
+        session?.Dispose();
+        if (client is not null)
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+        }
+
+        _viewModel.Post(() => _viewModel.SignedOut(_settings.Server, _settings.User));
     }
 
     /// <summary>

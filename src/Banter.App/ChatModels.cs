@@ -660,4 +660,26 @@ public sealed partial class ChatModel
     public string ConnectStatus { get; set; } = "";
 
     public string ConnectButtonText { get; set; } = "Connect";
+
+    /// <summary>
+    /// How this head will hold the password once the sign-in works — supplied by the head,
+    /// because the answer is DPAPI on Windows and file permissions elsewhere. On screen rather
+    /// than in a log, so staying signed in is a decision made knowing what it means.
+    /// </summary>
+    public string ConnectHint { get; set; } = "";
+
+    /// <summary>
+    /// Who this client is signed in as, shown on the settings page above the sign-out control.
+    /// Kept apart from <see cref="Nick"/>, which is what the server calls this session: these two
+    /// answer "which account on which server" rather than "who am I in this room".
+    /// </summary>
+    public string AccountServer { get; set; } = "";
+
+    public string AccountUser { get; set; } = "";
+
+    /// <summary>
+    /// The sign-out control. Hidden on a head with nothing to sign out of — one given its
+    /// account on the command line every time has no session to end, only a process to close.
+    /// </summary>
+    public string SignOutClass { get; set; } = "mgmt-remove sign-out hidden";
 }

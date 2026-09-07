@@ -141,6 +141,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public Func<string, string, string, Task> ConnectAsync { get; init; } = (_, _, _) => Task.CompletedTask;
 
+    /// <summary>
+    /// Ends the session, forgets the stored credential and shows the sign-in screen again. A head
+    /// that leaves this alone keeps the sign-out control hidden, which is what
+    /// <see cref="ChatModel.SignOutClass"/> defaults to.
+    /// </summary>
+    public Func<Task> SignOutAsync { get; init; } = () => Task.CompletedTask;
+
     /// <summary>Rewrites a message already sent. Only the author may; the server enforces it.</summary>
     public Func<string, string, string, Task> EditAsync { get; init; } = (_, _, _) => Task.CompletedTask;
 
@@ -409,6 +416,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 </div>
                 <div class="mgmt-fields">
                   <div class="mgmt-field">
+                    <div class="mgmt-label">Account</div>
+                    <div class="mgmt-control">
+                      <div class="account-row">
+                        <div class="account-who">
+                          <div class="account-user">{{AccountUser}}</div>
+                          <div class="account-server">{{AccountServer}}</div>
+                        </div>
+                        <cupri-button class="{{SignOutClass}}">Sign out</cupri-button>
+                      </div>
+                      <div class="mgmt-hint">Signing out forgets this password and returns to the sign-in screen, where a different server or account can be entered.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
                     <div class="mgmt-label">Hearing</div>
                     <div class="mgmt-control">
                       <div class="mgmt-choices">
@@ -510,6 +530,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-password class="connect-field" value="{{ConnectPassword}}"></cupri-password>
               <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
               <div class="connect-status">{{ConnectStatus}}</div>
+              <div class="connect-hint">{{ConnectHint}}</div>
             </div>
           </div>
         </div>
@@ -1500,6 +1521,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       background: #ef4444; color: #ffffff; border: 1px solid #ef4444;
                       border-radius: 10px; font-weight: bold; }
         .connect-status { font-size: 12px; color: #fb7185; padding-top: 10px; }
+        .connect-hint { font-size: 11px; color: #8d97a6; padding-top: 8px; }
+        .account-row { display: flex; align-items: center; }
+        .account-who { flex: 1; }
+        .account-user { font-size: 13px; color: #f3f5f7; }
+        .account-server { font-size: 11px; color: #8d97a6; padding-top: 2px; }
+        .sign-out.hidden { display: none; }
         """;
 
     public override void Configure(CupriDocument doc)
@@ -1526,6 +1553,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".readback", _ => CycleReadback());
         doc.OnClick(".attach-open", _ => PickAttachment());
         doc.OnClick(".connect-go", _ => Connect());
+        doc.OnClick(".sign-out", _ => SignOut());
 
         // Enter sends and Shift+Enter writes a newline, which is what people expect of a chat
         // composer and what they type without being told.
@@ -1811,6 +1839,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         doc.OnClick(".confirm-go", _unused =>
         {
+            // Asked first: it is the one pending act with no subject to name, so it cannot be
+            // recognised by the removal path below.
+            if (ViewModel.TakeConfirmedSignOut())
+            {
+                _ = SignOutAsync();
+                doc.Refresh();
+                return;
+            }
+
             // Taking it clears the dialog, so a second click cannot run the same removal twice.
             if (ViewModel.TakeConfirmed() is not { } confirmed || confirmed.Subject.Length == 0)
             {
@@ -2353,6 +2390,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _ = ConnectAsync(server, user, password);
         });
     }
+
+    /// <summary>
+    /// End the session and go back to the sign-in screen.
+    ///
+    /// <para>Behind a confirmation, because it discards a stored password: the cost of an
+    /// accidental tap is typing a password again, which is exactly the thing this feature exists
+    /// to avoid. The head does the forgetting — where the credential lives is its business.</para>
+    /// </summary>
+    public void SignOut() => ViewModel.Post(ViewModel.ConfirmSignOut);
 
     /// <summary>Cycle the readback policy and tell the head, which owns the speaking side.</summary>
     public void CycleReadback()

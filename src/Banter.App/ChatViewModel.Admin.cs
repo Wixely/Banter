@@ -526,6 +526,7 @@ public sealed partial class ChatViewModel
         None,
         RemoveAgent,
         RemoveUser,
+        SignOut,
     }
 
     private PendingAct _pendingAct = PendingAct.None;
@@ -563,6 +564,38 @@ public sealed partial class ChatViewModel
             + "The account cannot be restored — it would have to be created again.";
         Model.ConfirmAction = "Remove user";
         Model.ConfirmClass = "confirm";
+    }
+
+    /// <summary>
+    /// Asks before signing out. The other two acts here are irreversible on the server; this one
+    /// only costs typing a password again — but that is precisely what a remembered password
+    /// exists to save, and the control sits on a settings page next to preferences that are all
+    /// one click and harmless.
+    /// </summary>
+    public void ConfirmSignOut()
+    {
+        _pendingAct = PendingAct.SignOut;
+        Model.ConfirmTitle = $"Sign out of {Model.AccountServer}?";
+        Model.ConfirmBody = "The saved password for this account is forgotten and the rooms close. "
+            + "Signing back in - as this account or another - needs it again.";
+        Model.ConfirmAction = "Sign out";
+        Model.ConfirmClass = "confirm";
+    }
+
+    /// <summary>
+    /// Whether the pending question was the sign-out one, clearing it if so. Separate from
+    /// <see cref="TakeConfirmed"/>, and asked first, because that one answers "which subject was
+    /// removed" and a sign-out has no subject to name. Leaves a pending removal untouched.
+    /// </summary>
+    public bool TakeConfirmedSignOut()
+    {
+        if (_pendingAct != PendingAct.SignOut)
+        {
+            return false;
+        }
+
+        CancelConfirm();
+        return true;
     }
 
     public void CancelConfirm()
