@@ -1186,9 +1186,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            shorthand, and a field written with no border grew 4px on hover and lifted the
            composer, its buttons and the hint with it (CupriFace#93). The padding is 2px lighter
            than it would otherwise be, to pay for the border. */
+        /* pre-wrap, for the same reason the timeline body has it: without it a space typed at
+           the end of the line is collapsed by the ordinary whitespace rules, takes no width, and
+           the caret does not move - so a space stays invisible until the next character makes it
+           interior, and then both appear at once. Measured: typing a space changes zero pixels
+           under the default and 324 under pre-wrap. An HTML <textarea> gets this behaviour by
+           default and cupri-textarea does not, so it has to be asked for. */
         .composer { flex: 1; min-width: 0; min-height: 18px; max-height: 110px; background: #11151b;
                     color: #f3f5f7; border: 2px solid transparent; padding: 3px 0;
-                    caret-color: #fb7185; }
+                    white-space: pre-wrap; caret-color: #fb7185; }
         /* The component's own focus ring is amber, which on this palette reads as a warning
            rather than as "you are typing here". Colour only — the width is already reserved. */
         .composer:focus { border-color: #fb7185; }
