@@ -129,7 +129,28 @@ public sealed class VoiceSettingsTests(ITestOutputHelper output)
         Assert.Equal("wyoming", vm.ChosenTranscribe);
     }
 
+    /// <summary>
+    /// Finds a control, scrolling the settings list to reach it if it is below the fold - which
+    /// is what somebody looking for it does. The list is a fixed-height card with a scrolling
+    /// body, so "not on screen right now" and "not reachable" are different answers, and only the
+    /// second is a failure.
+    /// </summary>
     private static (float X, float Y) PointOn(CupriDocument doc, string selector)
+    {
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            if (TryPointOn(doc, selector) is { } found)
+            {
+                return found;
+            }
+
+            doc.DispatchWheel(Width / 2f, Height / 2f, -120);
+        }
+
+        throw new Xunit.Sdk.XunitException($"nothing painted matches {selector}, even after scrolling");
+    }
+
+    private static (float X, float Y)? TryPointOn(CupriDocument doc, string selector)
     {
         float minX = float.MaxValue, minY = float.MaxValue, maxX = -1, maxY = -1;
         for (var y = 0f; y < Height; y += 2)
@@ -150,7 +171,7 @@ public sealed class VoiceSettingsTests(ITestOutputHelper output)
 
         if (maxX < 0)
         {
-            throw new Xunit.Sdk.XunitException($"nothing painted matches {selector}");
+            return null;
         }
 
         return ((minX + maxX) / 2, (minY + maxY) / 2);

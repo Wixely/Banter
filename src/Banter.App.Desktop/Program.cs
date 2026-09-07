@@ -175,6 +175,11 @@ var app = new BanterChatApp(vm)
                 Vocabulary = vm.Model.VoiceVocabulary.Trim(),
                 Endpoint = vm.Model.VoiceEndpoint.Trim(),
                 WyomingTts = vm.Model.VoiceWyomingTts.Trim(),
+                AutoSubmit = vm.ChosenAutoSubmit,
+                // Read rather than taken: the box is free text, and a delay that cannot be parsed
+                // keeps the value it had rather than becoming zero, which is the one direction of
+                // this setting that sends something before anybody can stop it.
+                AutoSubmitDelaySeconds = vm.ReadAutoSubmitDelay(),
             },
         };
 
@@ -196,6 +201,9 @@ if (filePicker.IsSupported)
 }
 
 // Fill the settings page with what was loaded and what this machine can actually speak with.
+// ReviewBeforeSend is the old switch and still wins: a profile that asked never to send by
+// itself keeps that, whatever the new default says.
+vm.SetAutoSubmit(settings.Voice.AutoSubmit && !settings.Voice.ReviewBeforeSend, settings.Voice.AutoSubmitDelaySeconds);
 vm.SetVoiceSettings(
     settings.Voice.Engine,
     settings.Voice.Language,

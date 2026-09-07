@@ -202,8 +202,33 @@ public sealed record VoiceSettings
     /// <summary>
     /// Whether a transcript waits in the composer instead of sending itself. Off suits
     /// push-to-talk, which is deliberate; on suits leaving a microphone open.
+    ///
+    /// <para>Superseded by <see cref="AutoSubmit"/>, and kept because it is in profiles that
+    /// already exist: an old settings file with this on still means "do not send by itself".</para>
     /// </summary>
     public bool ReviewBeforeSend { get; init; }
+
+    /// <summary>
+    /// Whether a finished transcript sends itself — Bantz calls this pressing Enter for you.
+    /// Off leaves it in the composer to be read, edited and sent by hand.
+    /// </summary>
+    public bool AutoSubmit { get; init; } = true;
+
+    /// <summary>
+    /// How long a transcript sits in the composer before it sends itself, in seconds. Zero sends
+    /// it the moment it arrives.
+    ///
+    /// <para>The point of a non-zero delay is that speech recognition is wrong often enough to
+    /// want a look first, and a countdown you can stop is the difference between a tool that
+    /// helps and one that posts your half-finished sentence to a room full of people. Three
+    /// seconds is long enough to read a line and reach the cancel, short enough not to be a
+    /// second confirmation step on every utterance.</para>
+    ///
+    /// <para>Zero by default, which is what this did before the setting existed: push-to-talk is
+    /// deliberate enough to send, and turning a pause on for everybody would be changing a
+    /// behaviour nobody asked to change. The wait is a thing to turn on.</para>
+    /// </summary>
+    public double AutoSubmitDelaySeconds { get; init; }
 
     /// <summary>Whose messages are read aloud: <c>off</c>, <c>agents</c>, or <c>everyone</c>.</summary>
     public string Readback { get; init; } = "agents";

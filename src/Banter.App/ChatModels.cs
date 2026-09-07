@@ -638,6 +638,20 @@ public sealed partial class ChatModel
     /// </summary>
     public string VoiceRowClass { get; set; } = "voice-row hidden";
 
+    /// <summary>
+    /// The countdown on a transcript that is about to send itself, and the control that stops it.
+    /// Hidden unless one is actually waiting.
+    /// </summary>
+    public string PendingSubmitClass { get; set; } = "pending-submit hidden";
+
+    public string PendingSubmitText { get; set; } = "";
+
+    /// <summary>Whether a finished transcript sends itself, on the settings page.</summary>
+    public List<ChoiceRow> AutoSubmitChoices { get; set; } = [];
+
+    /// <summary>The wait before it does, in seconds, as typed.</summary>
+    public string AutoSubmitDelay { get; set; } = "3";
+
     /// <summary>The attach control. Hidden on a head that cannot open a file dialog.</summary>
     public string AttachButtonClass { get; set; } = "attach-open hidden";
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 namespace Banter.App;
 
 /// <summary>
@@ -136,6 +137,58 @@ public sealed partial class ChatViewModel
     /// What listens. On this machine is private and needs no server at all, which is why it is the
     /// default; the other two are for a machine that would rather not run a model itself.
     /// </summary>
+    /// <summary>
+    /// Fills the auto-submit controls. Separate from <see cref="SetVoiceSettings"/> because it is
+    /// about what happens to a transcript rather than about how one is made, and a head can have
+    /// an opinion on one without the other.
+    /// </summary>
+    public void SetAutoSubmit(bool autoSubmit, double delaySeconds)
+    {
+        AutoSubmit = autoSubmit;
+        AutoSubmitDelaySeconds = delaySeconds;
+        Model.AutoSubmitChoices = AutoSubmitChoices(autoSubmit ? "send" : "hold");
+        Model.AutoSubmitDelay = delaySeconds.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Whether the settings page currently says a transcript should send itself.</summary>
+    public bool ChosenAutoSubmit => Chosen(Model.AutoSubmitChoices) == "send";
+
+    public void ChooseAutoSubmit(string value)
+    {
+        AutoSubmit = value == "send";
+        Model.AutoSubmitChoices = AutoSubmitChoices(AutoSubmit ? "send" : "hold");
+
+        // A countdown already running belongs to the old setting.
+        if (!AutoSubmit)
+        {
+            CancelPendingSubmit();
+        }
+    }
+
+    /// <summary>
+    /// Reads the delay box. Anything unparseable is left at what it was rather than becoming
+    /// zero: a typo in a text field must not turn "wait three seconds" into "send immediately",
+    /// which is the one direction of this setting that cannot be undone.
+    /// </summary>
+    public double ReadAutoSubmitDelay()
+    {
+        var typed = Model.AutoSubmitDelay.Trim();
+        if (double.TryParse(typed, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out var seconds)
+            && seconds >= 0 && seconds <= 60)
+        {
+            AutoSubmitDelaySeconds = seconds;
+        }
+
+        Model.AutoSubmitDelay =
+            AutoSubmitDelaySeconds.ToString("0.##", CultureInfo.InvariantCulture);
+        return AutoSubmitDelaySeconds;
+    }
+
+    private static List<ChoiceRow> AutoSubmitChoices(string selected) => Choices(selected,
+        ("send", "Send it", "A finished transcript posts itself, after the wait below."),
+        ("hold", "Leave it in the composer", "Nothing is sent until you press Enter."));
+
     private static List<ChoiceRow> TranscribeChoices(string selected) => Choices(selected.ToLowerInvariant(),
         ("local", "On this machine", "Whisper, running here. Nothing spoken leaves this machine."),
         ("wyoming", "Wyoming", "A speech service you host, over the Wyoming protocol."),

@@ -12,8 +12,33 @@ public sealed partial class ChatViewModel
     /// <summary>
     /// What a finished transcript does. Review is the safe default for always-listening, where a
     /// misheard sentence would otherwise post itself; push-to-talk is deliberate enough to send.
+    ///
+    /// <para>Superseded by <see cref="AutoSubmit"/>. Setting it is still honoured, as "never send
+    /// by itself", because it is in settings files that already exist.</para>
     /// </summary>
     public bool ReviewBeforeSend { get; set; }
+
+    /// <summary>Whether a finished transcript sends itself, rather than waiting to be sent.</summary>
+    public bool AutoSubmit { get; set; } = true;
+
+    /// <summary>
+    /// How long a transcript waits in the composer before sending itself. Zero, the default,
+    /// sends at once - which is what this did before the wait was configurable.
+    /// </summary>
+    public double AutoSubmitDelaySeconds { get; set; }
+
+    /// <summary>
+    /// When the waiting transcript is due to send, or null when nothing is waiting. Held as an
+    /// absolute instant rather than a countdown so nothing has to tick it: the frame loop asks
+    /// whether it is due yet, and a dropped frame cannot make it late.
+    /// </summary>
+    private DateTimeOffset? _submitDue;
+
+    /// <summary>What the composer held when the countdown started, so edits can cancel it.</summary>
+    private string _submitText = "";
+
+    /// <summary>Whether a transcript is counting down to send itself.</summary>
+    public bool SubmitPending => _submitDue is not null;
 
     /// <summary>Whether this client has a microphone wired at all.</summary>
     public bool VoiceAvailable { get; private set; }
@@ -95,16 +120,121 @@ public sealed partial class ChatViewModel
             return "";
         }
 
-        if (!ReviewBeforeSend)
-        {
-            return draft;
-        }
-
         // Appended rather than replacing: a half-typed message is not worth losing to a
         // transcript that arrived while it was being written.
         Model.Composer = Model.Composer.Length == 0 ? draft : $"{Model.Composer} {draft}";
+
+        // ReviewBeforeSend is the old switch and still means "never by itself".
+        if (ReviewBeforeSend || !AutoSubmit)
+        {
+            CancelPendingSubmit();
+            return "";
+        }
+
+        if (AutoSubmitDelaySeconds <= 0)
+        {
+            // Straight out, which is what this did before there was a delay to configure. The
+            // composer is cleared here rather than by the caller, because from here on the text
+            // exists only in the message being sent.
+            var send = Model.Composer;
+            Model.Composer = "";
+            CancelPendingSubmit();
+            return send;
+        }
+
+        StartPendingSubmit();
         return "";
     }
+
+    /// <summary>
+    /// Puts the composer on a countdown. Shown, and cancellable: recognition is wrong often
+    /// enough that sending without a chance to stop it posts misheard sentences to a room.
+    /// </summary>
+    private void StartPendingSubmit()
+    {
+        _submitDue = Now() + TimeSpan.FromSeconds(AutoSubmitDelaySeconds);
+        _submitText = Model.Composer;
+        RefreshPendingSubmit();
+    }
+
+    /// <summary>
+    /// Stops a pending send. Called by the cancel control, by typing into the composer, and by
+    /// anything that sends or clears it — a countdown that outlives the text it was counting
+    /// down for would send whatever happened to be in the box instead.
+    /// </summary>
+    public void CancelPendingSubmit()
+    {
+        _submitDue = null;
+        _submitText = "";
+        Model.PendingSubmitClass = "pending-submit hidden";
+        Model.PendingSubmitText = "";
+    }
+
+    /// <summary>
+    /// The text to send now, or empty. Asked once a frame by the head, which owns the clock.
+    ///
+    /// <para>Also the place a countdown is abandoned: if the composer no longer holds what the
+    /// transcript put there, somebody has started editing, and editing means they intend to look
+    /// at it rather than let it go.</para>
+    /// </summary>
+    public string TakeDueSubmission()
+    {
+        if (_submitDue is not { } due)
+        {
+            return "";
+        }
+
+        if (!string.Equals(Model.Composer, _submitText, StringComparison.Ordinal))
+        {
+            CancelPendingSubmit();
+            return "";
+        }
+
+        if (Now() < due)
+        {
+            RefreshPendingSubmit();
+            return "";
+        }
+
+        var send = Model.Composer;
+        Model.Composer = "";
+        CancelPendingSubmit();
+        return send;
+    }
+
+    /// <summary>Sends the waiting transcript now rather than waiting the rest of the delay.</summary>
+    public string TakePendingNow()
+    {
+        if (_submitDue is null)
+        {
+            return "";
+        }
+
+        var send = Model.Composer;
+        Model.Composer = "";
+        CancelPendingSubmit();
+        return send;
+    }
+
+    private void RefreshPendingSubmit()
+    {
+        if (_submitDue is not { } due)
+        {
+            return;
+        }
+
+        // Rounded up, so a countdown never shows a zero it then sits on for most of a second.
+        var left = Math.Max(0, (int)Math.Ceiling((due - Now()).TotalSeconds));
+        Model.PendingSubmitClass = "pending-submit";
+        Model.PendingSubmitText = $"Sending in {left}s";
+    }
+
+    /// <summary>
+    /// The clock. Replaceable so the countdown can be tested without waiting real seconds for it,
+    /// which is the difference between a test suite that covers this and one that skips it.
+    /// Nothing else in the view model reads the time.
+    /// </summary>
+    public Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
 
     /// <summary>Something in the voice pipeline failed. Said in the timeline, where it is visible.</summary>
     public void VoiceFailed(string message) => System(Model.ActiveRoom, $"[voice] {message}");

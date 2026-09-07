@@ -344,7 +344,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="composer-row">
                 <span class="prompt">&gt;</span>
                 <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message" data-composer="1" submit-on-enter></cupri-textarea>
-                <cupri-button class="{{MicClass}}">{{MicText}}</cupri-button>
+                <cupri-button class="{{MicClass}}" data-mic="1">{{MicText}}</cupri-button>
                 <cupri-button class="{{AttachButtonClass}}">Attach</cupri-button>
                 <cupri-button class="send">Send</cupri-button>
               </div>
@@ -352,6 +352,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </div>
             <div class="{{VoiceRowClass}}">
               <span class="voice-status">{{VoiceStatus}}</span>
+              <!-- A transcript about to send itself, and the way to stop it. In the voice row
+                   rather than over the composer: it belongs to the microphone, and the composer
+                   is where the words themselves are, still editable. -->
+              <span class="{{PendingSubmitClass}}">
+                <span class="pending-text">{{PendingSubmitText}}</span>
+                <cupri-button class="pending-cancel">Cancel</cupri-button>
+                <cupri-button class="pending-now">Send now</cupri-button>
+              </span>
               <cupri-button class="{{ReadbackClass}}">{{ReadbackText}}</cupri-button>
             </div>
           </div>
@@ -448,6 +456,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         </div>
                       </div>
                       <div class="mgmt-hint">What turns speech into text. Nothing here leaves this machine unless you point it somewhere.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Finished speech</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices">
+                        <div class="{{RowClass}}" data-repeat="AutoSubmitChoices" data-autosubmit="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                            <div class="mgmt-choice-hint">{{Hint}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">What happens when a transcript is ready.</div>
+                    </div>
+                  </div>
+                  <div class="mgmt-field">
+                    <div class="mgmt-label">Wait before sending</div>
+                    <div class="mgmt-control">
+                      <cupri-textfield class="mgmt-input" value="{{AutoSubmitDelay}}" placeholder="0"></cupri-textfield>
+                      <div class="mgmt-hint">Seconds the words sit in the composer first, with a Cancel beside them. 0, the default, sends the moment it is heard. Worth setting to 2 or 3 if you leave the microphone open, where a misheard sentence would otherwise post itself.</div>
                     </div>
                   </div>
                   <div class="mgmt-field">
@@ -1246,9 +1276,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .send { min-width: 62px; padding: 6px 14px; font-size: 13px; margin-left: 8px; background: #ef4444; color: #ffffff;
                 border: 1px solid #ef4444; border-radius: 10px; font-weight: bold; text-align: center; }
 
-        .voice-row { display: flex; flex-direction: row; align-items: center; padding: 0 18px 10px 18px; }
+        /* The height is reserved whether or not there is anything to say in it. The status text
+           is empty at rest and a line of words while the microphone is open, and without a
+           minimum the row grew by a line the moment somebody pressed Talk - taking the composer
+           and the whole timeline up with it. Only visible with no speaker configured: with the
+           readback button in the row, that button was holding the height open by accident. */
+        .voice-row { display: flex; flex-direction: row; align-items: center;
+                     min-height: 25px; padding: 0 18px 10px 18px; }
         .voice-row.hidden { display: none; }
         .voice-status { flex: 1; color: #8d97a6; font-size: 12px; }
+        .pending-submit { display: flex; flex-direction: row; align-items: center; }
+        .pending-submit.hidden { display: none; }
+        .pending-text { color: #fbbf24; font-size: 12px; padding-right: 8px; }
+        .pending-cancel, .pending-now { padding: 4px 10px; margin-left: 6px; font-size: 11px;
+                                        background: #1b2029; color: #cdd3dc;
+                                        border: 1px solid #333a46; border-radius: 8px;
+                                        text-align: center; }
         .readback { padding: 5px 12px; background: #1b2029; color: #8d97a6; border: 1px solid #333a46;
                     border-radius: 10px; font-size: 12px; text-align: center; }
         .readback.hidden { display: none; }
@@ -1491,7 +1534,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* Centred by the overlay rather than by auto margins: CupriFace's flex resolves an auto
            margin on the main axis only, so `margin: auto` alone left this pinned to the top. */
         .settings-overlay { align-items: center; justify-content: center; }
-        .settings-card { flex: 0 0 720px; height: 620px; }
+        /* Tall enough to hold every field, because the list below it does not scroll however
+           much its CSS says overflow: scroll. Measured in isolation on CupriFace 0.18.0: a plain
+           overflow:scroll box with content past its height ignores the wheel entirely, and only
+           cupri-virtual actually scrolls. So this height is the real limit on how many settings
+           can exist, not a starting point - adding two fields here pushed Zoom off the bottom
+           where nothing could reach it, which is how this was found. */
+        .settings-card { flex: 0 0 720px; height: 700px; }
         /* The voice list is the one thing here that grows with the room, so it scrolls rather
            than pushing the rest of the page off the bottom. Its own class rather than a modifier
            on .mgmt-rows: that rule carries flex:1, which in a column with no height of its own
@@ -1597,7 +1646,41 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         };
 
         doc.OnClick(".send", _ => Send());
-        doc.OnClick(".mic", _ => ToggleVoice());
+        // Held, not clicked. A click is only delivered once the button is released, so a
+        // click-to-toggle microphone cannot tell "still talking" from "finished" - and the
+        // release, which is the moment somebody stops speaking, is not an event it can see.
+        // Down opens and Up closes, which is what push-to-talk means everywhere else and what
+        // the global hotkey already did.
+        //
+        // Cancel closes too. Pressing the button and dragging off it, or the window losing the
+        // pointer, otherwise leaves the microphone open with nothing on screen holding it.
+        doc.OnPointer("data-mic", e =>
+        {
+            switch (e.Phase)
+            {
+                case PointerPhase.Down:
+                    HoldVoice(true);
+                    return true;
+                case PointerPhase.Up or PointerPhase.Cancel:
+                    HoldVoice(false);
+                    return true;
+                default:
+                    return false;                       // Move, while held: nothing to decide
+            }
+        });
+
+        // The two ways out of a countdown. Cancel leaves the words in the composer to be edited
+        // or discarded by hand; Send now is for when it is already right and the wait is just a
+        // wait. Named `_unused` because the inner discard would otherwise be this parameter.
+        doc.OnClick(".pending-cancel", _unused => ViewModel.Post(ViewModel.CancelPendingSubmit));
+        doc.OnClick(".pending-now", _unused => ViewModel.Post(() =>
+        {
+            var text = ViewModel.TakePendingNow();
+            if (text.Length > 0)
+            {
+                _ = SendAsync(ViewModel.Model.ActiveRoom, text);
+            }
+        }));
         doc.OnClick(".readback", _ => CycleReadback());
         doc.OnClick(".attach-open", _ => PickAttachment());
         doc.OnClick(".connect-go", _ => Connect());
@@ -1959,6 +2042,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             doc.Refresh();
         });
 
+        doc.OnAction("data-autosubmit", e =>
+        {
+            ViewModel.ChooseAutoSubmit(e.Value ?? "send");
+            VoiceSettingsChanged();
+            doc.Refresh();
+            return true;
+        });
+
         doc.OnAction("data-transcribe", e =>
         {
             ViewModel.ChooseTranscribe(e.Value ?? "local");
@@ -2242,6 +2333,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _doc?.Refresh();
         }
 
+        // A transcript counting down to send itself. Checked here because this is the only thing
+        // that runs every frame, and a countdown nothing looks at is a countdown that never ends.
+        if (ViewModel.SubmitPending)
+        {
+            var due = ViewModel.TakeDueSubmission();
+            if (due.Length > 0)
+            {
+                _ = SendAsync(ViewModel.Model.ActiveRoom, due);
+            }
+
+            _doc?.Refresh();
+        }
+
         PollWork();
 
         return Presentation(width, height, _doc?.Zoom ?? 1f);
@@ -2387,6 +2491,23 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         _ = VoiceToggleAsync(!ViewModel.Listening);
+    }
+
+    /// <summary>
+    /// The Talk button being held down or let go.
+    ///
+    /// <para>Idempotent on purpose: a pointer can report Up twice, or Cancel after Up, and asking
+    /// the session to close a microphone that is already closed would stop a recording somebody
+    /// has since started with the hotkey.</para>
+    /// </summary>
+    public void HoldVoice(bool holding)
+    {
+        if (!ViewModel.VoiceAvailable || holding == ViewModel.Listening)
+        {
+            return;
+        }
+
+        _ = VoiceToggleAsync(holding);
     }
 
     /// <summary>

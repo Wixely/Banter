@@ -248,6 +248,9 @@ public sealed class MainActivity : CupriActivity
         _viewModel.Post(() =>
         {
             _viewModel.ReviewBeforeSend = _settings.Voice.ReviewBeforeSend;
+            _viewModel.SetAutoSubmit(
+                _settings.Voice.AutoSubmit && !_settings.Voice.ReviewBeforeSend,
+                _settings.Voice.AutoSubmitDelaySeconds);
             _viewModel.SetReadback(_voice.Policy);
         });
 
