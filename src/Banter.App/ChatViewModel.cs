@@ -522,17 +522,36 @@ public sealed partial class ChatViewModel
 
     // ── Streaming: START opens an empty row, deltas grow it, END replaces it authoritatively ──
 
+    /// <summary>
+    /// Opens the row an agent's reply will grow into.
+    ///
+    /// <para>It starts <c>working</c>: the row exists the moment the agent is asked, and until
+    /// the first token arrives it has nothing in it. That gap is not short — a delegated job
+    /// spends it picking a model, waiting on a tool, or handing off to another agent — and an
+    /// empty bubble with a name and a timestamp on it reads as a message that failed to arrive
+    /// rather than as one being written. So the row says it is working until it has words.</para>
+    /// </summary>
     public void StreamStart(string room, string sender, string streamId)
     {
-        var row = Append(room, sender, "", 0, "line streaming");
+        var row = Append(room, sender, "", 0, "line streaming working");
         _streams[streamId] = row;
     }
 
     public void StreamDelta(string streamId, string delta)
     {
-        if (_streams.TryGetValue(streamId, out var row))
+        if (!_streams.TryGetValue(streamId, out var row))
         {
-            row.Text += delta;
+            return;
+        }
+
+        row.Text += delta;
+
+        // The first token that is actually a token. A delta can be empty, or whitespace that
+        // renders as nothing, and dropping the indicator for one of those would blank the row
+        // rather than replace the animation with text.
+        if (row.Text.Trim().Length > 0)
+        {
+            row.RowClass = StoppedWorking(row.RowClass);
         }
     }
 
@@ -549,8 +568,15 @@ public sealed partial class ChatViewModel
 
         row.Text = finalText;
         row.Time = FormatTime(timestamp);
-        row.RowClass = row.RowClass.Replace(" streaming", "");
+        row.RowClass = StoppedWorking(row.RowClass).Replace(" streaming", "");
     }
+
+    /// <summary>
+    /// Drops the working marker. A reply that ends without ever producing a token — a refusal,
+    /// a tool that failed, an agent that dropped — must stop animating too, or the room shows
+    /// something working away at nothing for as long as it is left open.
+    /// </summary>
+    private static string StoppedWorking(string rowClass) => rowClass.Replace(" working", "");
 
     // ── Room list ────────────────────────────────────────────────────────────────────────────
 

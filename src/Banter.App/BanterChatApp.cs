@@ -301,7 +301,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <span class="msg-main">
                     <span class="{{ReplyClass}}" data-goto-reply="{{ReplyTo}}">{{ReplyText}}</span>
                     <span class="msg-head"><span class="sender">{{Sender}}</span><span class="sender-away">left the room</span><span class="time">{{Time}}</span><span class="edited">{{EditedMark}}</span></span>
-                    <span class="text"><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
+                    <span class="text"><span class="work-dots"><span class="wdot wdot-a"></span><span class="wdot wdot-b"></span><span class="wdot wdot-c"></span></span><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
                     <span class="{{AskClass}}">
                       <span class="{{AskTabsClass}}">
                         <span class="{{TabClass}}" data-repeat="AskTabs" data-ask-tab="{{TabKey}}">{{Label}}</span>
@@ -1052,6 +1052,26 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .line.system .pfp { display: none; }
         .line.system .msg-main { padding-left: 0; }
         .line.streaming .body { color: #cdd3dc; }
+
+        /* An agent has been asked and has not said anything yet. Shown only while the row is
+           working, which ends on the first token or on a reply that produced none at all.
+           Three dots rather than a word: the gap covers picking a model, waiting on a tool and
+           handing off to another agent, and naming any one of those would be a guess. */
+        /* work-dots, not working: the row itself carries `working`, so a bare `.working` rule
+           here matched the row and display:none hid the whole message. Caught by a test that
+           counted rendered rows rather than by looking at a screenshot of the thing it hid. */
+        .work-dots { display: none; }
+        .line.working .work-dots { display: flex; flex-direction: row; align-items: center;
+                                   padding: 5px 0; }
+        .wdot { width: 6px; height: 6px; border-radius: 3px; margin-right: 5px;
+                background: #8d97a6; animation: workpulse 1.2s infinite; }
+        .wdot-b { animation-delay: 0.2s; }
+        .wdot-c { animation-delay: 0.4s; }
+        @keyframes workpulse {
+          0% { opacity: 0.25; }
+          50% { opacity: 1; }
+          100% { opacity: 0.25; }
+        }
 
         .attach { color: #fb7185; background: #1f2530; border-radius: 5px; padding: 1px 6px;
                   margin-top: 4px; cursor: pointer; }
