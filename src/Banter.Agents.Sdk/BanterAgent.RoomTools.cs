@@ -168,6 +168,40 @@ public abstract partial class BanterAgent
     /// <summary>What any agent may do, delegator or not.</summary>
     protected virtual IReadOnlyList<LocalTool> EveryoneTools =>
     [
+        new("who_is_here",
+            "List the other agents in this room, with what each is for. Use it before answering "
+            + "anything about who is present, who could help, or who to hand work to - the room "
+            + "has a roster and guessing from what has been said in the channel will miss anyone "
+            + "who has not spoken yet.",
+            """{"type":"object","properties":{}}""",
+            async (room, _, ct) =>
+            {
+                // Re-read rather than trust the cached copy: the interesting case for this
+                // question is an agent that joined after this one did, which is exactly the
+                // roster the cache would be stale for.
+                await RefreshRosterAsync(room, ct).ConfigureAwait(false);
+
+                var others = RosterFor(room)
+                    .Where(a => !string.Equals(a.Nick, Nick, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (others.Count == 0)
+                {
+                    return "No other agents are in this room - only you. Anyone else here is a person.";
+                }
+
+                var lines = others.Select(a =>
+                {
+                    var skills = a.Skills.Count > 0 ? string.Join(", ", a.Skills) : "no skills declared";
+                    // Local or frontier is worth saying: it is what decides whether handing work
+                    // to this agent sends anything out of the building.
+                    var where = a.Locality == AgentLocality.Local ? "local" : "frontier";
+                    return $"- {a.Nick} ({where}): {skills}";
+                });
+
+                return $"Agents in {room} besides you:\n{string.Join("\n", lines)}";
+            }),
+
         new("ask_operator",
             "Ask the people in this room a question and WAIT for the answer, when something needs "
             + "a human decision - adding an agent that is not here, spending money, choosing "

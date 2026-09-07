@@ -452,8 +452,12 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 return Addressed(m);
             }
 
+            // The delegator acts on human traffic - but not on a message a human addressed to
+            // somebody else by name. "@dev who are you?" is a question for dev, and a delegator
+            // that answers it too produces two replies to one question, one of them from an agent
+            // that was not asked and cannot speak for the one that was.
             return IsDelegatorFor(m.Room)
-                ? !IsAgentSender(m)          // the delegator acts on human traffic
+                ? !IsAgentSender(m) && !NamesAnotherAgentIn(m)
                 : string.Equals(m.Sender, delegatorNick, StringComparison.OrdinalIgnoreCase)
                   && Addressed(m);           // everyone else waits to be handed work
         }
@@ -472,19 +476,35 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// the room, and treating it as a summons would have every agent answering every sentence its
     /// name appeared in.
     /// </summary>
-    private bool Mentioned(MsgPayload m)
+    private bool Mentioned(MsgPayload m) => MentionsNick(m.Text, Nick);
+
+    /// <summary>Whether <paramref name="text"/> carries an explicit <c>@nick</c> for that nick.</summary>
+    private static bool MentionsNick(string text, string nick)
     {
-        var text = m.Text;
-        var at = text.IndexOf('@' + Nick, StringComparison.OrdinalIgnoreCase);
+        var at = text.IndexOf('@' + nick, StringComparison.OrdinalIgnoreCase);
         if (at < 0)
         {
             return false;
         }
 
         // "@scouting the area" is not scout. The mention has to end where the nick does.
-        var after = at + 1 + Nick.Length;
+        var after = at + 1 + nick.Length;
         return after >= text.Length || !char.IsLetterOrDigit(text[after]);
     }
+
+    /// <summary>
+    /// Whether the message names, with an explicit <c>@</c>, some other agent that is actually in
+    /// this room.
+    ///
+    /// <para>In this room is the point. Naming an agent who is here means that agent will answer,
+    /// so the delegator has nothing to add. Naming one who is not - a typo, or somebody who has
+    /// left, or an agent the room has never had - is a request the delegator should still take,
+    /// because it is the only thing here that can explain or act on it.</para>
+    /// </summary>
+    private bool NamesAnotherAgentIn(MsgPayload m) =>
+        RosterFor(m.Room).Any(a =>
+            !string.Equals(a.Nick, Nick, StringComparison.OrdinalIgnoreCase)
+            && MentionsNick(m.Text, a.Nick));
 
     /// <summary>
     /// Open a child room, bring the chosen agents into it, and put the request there. Returns

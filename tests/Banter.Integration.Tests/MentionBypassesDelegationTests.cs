@@ -122,6 +122,55 @@ public sealed class MentionBypassesDelegationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheDelegatorStaysOutOfAQuestionAddressedToAnotherAgent()
+    {
+        // Reported from a real room: "@dev who are you?" was answered by dev AND by the
+        // delegator, which said dev would have to answer for itself - a second reply to a
+        // question nobody had asked it, from the one agent that could not answer it.
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
+        await human.JoinAsync("#main");
+
+        await using var delegator = new EchoAgent(Options("local-a", AgentLocality.Local), "from-the-delegator");
+        await delegator.StartAsync(_transport);
+        await using var other = new EchoAgent(Options("scout", AgentLocality.Local), "from-scout");
+        await other.StartAsync(_transport);
+
+        await WaitForDelegatorAsync(human, "local-a");
+
+        await human.SendMessageAsync("#main", "@scout who are you?");
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "from-scout"));
+
+        // Settle: the delegator answering late is the same bug arriving slowly.
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        Assert.Empty(delegator.Answered);
+        Assert.Null(await WaitForAsync(
+            human, m => m.Text == "from-the-delegator", TimeSpan.FromMilliseconds(200)));
+    }
+
+    [Fact]
+    public async Task NamingSomebodyWhoIsNotHereStillReachesTheDelegator()
+    {
+        // The other half, and why this checks the roster rather than just looking for an "@".
+        // A name that belongs to nobody in the room - a typo, or an agent that has left - is a
+        // request only the delegator can do anything about, so it must not silence it.
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
+        await human.JoinAsync("#main");
+
+        await using var delegator = new EchoAgent(Options("local-a", AgentLocality.Local), "from-the-delegator");
+        await delegator.StartAsync(_transport);
+        await using var other = new EchoAgent(Options("scout", AgentLocality.Local), "from-scout");
+        await other.StartAsync(_transport);
+
+        await WaitForDelegatorAsync(human, "local-a");
+
+        await human.SendMessageAsync("#main", "@nobody are you there?");
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "from-the-delegator"));
+        Assert.Empty(other.Answered);
+    }
+
+    [Fact]
     public async Task OnlyTheDelegatorMayHandWorkToAnotherAgent()
     {
         await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
