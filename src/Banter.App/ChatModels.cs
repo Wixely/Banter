@@ -647,6 +647,18 @@ public sealed partial class ChatModel
     /// </summary>
     public string ConnectClass { get; set; } = "connect hidden";
 
+    /// <summary>
+    /// The chat pane, taken out of the document while the sign-in screen is up.
+    ///
+    /// <para>Not cosmetic, and not only tidiness. It holds the composer and Send — the only
+    /// focusables outside the sign-in form — and Tab reaching the composer of a session nobody
+    /// is signed in to is wrong on its own. It also holds the timeline's
+    /// <c>cupri-context-menu</c>, and one of those containing menu items disables Tab focus
+    /// traversal for the <i>entire</i> document in CupriFace 0.18.0 and 0.19.0 (measured), which
+    /// is why Tab moved nothing anywhere in this application before this existed.</para>
+    /// </summary>
+    public string MainClass { get; set; } = "main";
+
     public string ConnectServer { get; set; } = "";
     public string ConnectUser { get; set; } = "";
 

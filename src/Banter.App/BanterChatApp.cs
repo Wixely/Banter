@@ -278,7 +278,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="identity"><span class="nick">{{Nick}}</span><span class="identity-sub">{{Dispatch}}</span></div>
             </div>
           </div>
-          <div class="main">
+          <!-- Bound, so the whole chat pane can be taken out while the sign-in screen is up.
+               Two reasons, and the second is the one that bites. Nothing behind a full-screen
+               sign-in card should be reachable by Tab, and this pane holds the only other
+               focusables there are - the composer and Send. And the cupri-context-menu in here
+               disables Tab traversal for the WHOLE document while it is on screen (CupriFace
+               0.18.0 and 0.19.0, measured), so with the pane up Tab moves nothing anywhere,
+               including between the three fields of the sign-in form itself. -->
+          <div class="{{MainClass}}">
             <div class="header">
               <div class="header-title">
                 <span class="room-name">{{ActiveRoom}}</span>
@@ -520,10 +527,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </div>
           </div>
           <div class="{{ConnectClass}}">
-            <div class="connect-card">
+            <!-- A cupri-form, not a div: it is what makes Tab walk the three fields in order and
+                 Enter submit from any of them, rather than each field being an island. The
+                 handler is bound to data-connect on the form itself. -->
+            <cupri-form class="connect-card" data-connect="1">
               <div class="connect-title">Banter</div>
               <div class="connect-label">Server</div>
-              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770"></cupri-textfield>
+              <!-- Focused on arrival, so the first thing typed lands somewhere. -->
+              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770" data-autofocus="1"></cupri-textfield>
               <div class="connect-label">Name</div>
               <cupri-textfield class="connect-field" value="{{ConnectUser}}" placeholder="your nick"></cupri-textfield>
               <div class="connect-label">Password</div>
@@ -531,7 +542,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
               <div class="connect-status">{{ConnectStatus}}</div>
               <div class="connect-hint">{{ConnectHint}}</div>
-            </div>
+            </cupri-form>
           </div>
         </div>
         """;
@@ -989,6 +1000,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .nick { font-size: 12px; font-weight: bold; }
         .identity-sub { font-size: 10px; color: #8d97a6; }
 
+        .main.hidden { display: none; }
         .main { display: flex; flex-direction: column; flex: 1; background: #111419; }
         .header { height: 66px; display: flex; flex-direction: row; align-items: center;
                   padding: 0 18px; border-bottom: 1px solid #20262f; }
@@ -1504,19 +1516,29 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            the same shape — this is `width: 100%`, and padding adds to a width unless the box is
            told otherwise. Padding here once put the card's centre 60px right of the viewport's. */
         .connect { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-                   display: flex; justify-content: center; background: #0b0d10; }
+                   display: flex; justify-content: center; align-items: flex-start;
+                   background: #0b0d10; }
         .connect.hidden { display: none; }
         /* Centred by the container rather than by auto margins on the card — one lone child is
            what justify-content is for. Top-aligned on purpose: a short viewport must not push the
            card off-screen. */
+        /* No fixed height: the card holds a status line and a storage note that are empty on a
+           first visit and two lines on a bad one, and a fixed height clipped whichever it was
+           not sized for.
+           The parent's align-items: flex-start is what replaces it. That parent is a flex row,
+           so the default stretch made the card full-height the moment the height came off - a
+           card whose shadow reaches the bottom of the window, which is not obviously a layout
+           bug when you are looking at a dark screen. Caught by the pixel test, not by eye.
+           On the container rather than align-self on the card: the self form is not honoured
+           here, measured. */
         .connect-card { width: 360px; margin-top: 60px;
                         display: flex; flex-direction: column; background: #151920;
-                        border-radius: 14px; padding: 20px; height: 252px;
+                        border-radius: 14px; padding: 24px;
                         box-shadow: 0 18px 55px #00000052; }
         .connect-title { font-weight: bold; font-size: 20px; padding-bottom: 12px; }
-        .connect-label { font-size: 11px; color: #8d97a6; padding-bottom: 4px; padding-top: 8px; }
+        .connect-label { font-size: 11px; color: #8d97a6; padding-bottom: 5px; padding-top: 12px; }
         .connect-field { background: #0d1014; color: #f3f5f7; border: 1px solid #252b35;
-                         border-radius: 10px; padding: 7px 10px; }
+                         border-radius: 10px; padding: 11px 13px; }
         .connect-go { margin-top: 16px; padding: 9px 0; font-size: 13px; text-align: center;
                       background: #ef4444; color: #ffffff; border: 1px solid #ef4444;
                       border-radius: 10px; font-weight: bold; }
@@ -1553,6 +1575,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".readback", _ => CycleReadback());
         doc.OnClick(".attach-open", _ => PickAttachment());
         doc.OnClick(".connect-go", _ => Connect());
+
+        // Enter anywhere in the sign-in form. Distinct from the button click above, and worth
+        // both: filling in a password and reaching for the mouse is not how anyone signs in.
+        doc.OnSubmit("data-connect", _ =>
+        {
+            Connect();
+            return true;
+        });
         doc.OnClick(".sign-out", _ => SignOut());
 
         // Enter sends and Shift+Enter writes a newline, which is what people expect of a chat

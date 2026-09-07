@@ -28,6 +28,9 @@ public sealed partial class ChatViewModel
         Model.ConnectStatus = "";
         Model.ConnectButtonText = "Connect";
         Model.ConnectClass = "connect";
+        // See ChatModel.MainClass: with the chat pane on screen Tab cannot move between these
+        // fields at all, and would reach the composer if it could.
+        Model.MainClass = "main hidden";
 
         if (hint is not null)
         {
@@ -79,6 +82,7 @@ public sealed partial class ChatViewModel
         Model.ConnectPassword = "";
         Model.ConnectStatus = "";
         Model.ConnectClass = "connect hidden";
+        Model.MainClass = "main";
 
         if (server.Length > 0)
         {
