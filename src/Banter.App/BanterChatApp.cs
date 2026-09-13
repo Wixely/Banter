@@ -2411,7 +2411,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         PollWork();
 
-        return Presentation(width, height, _doc?.Zoom ?? 1f);
+        return Presentation(width, height);
     }
 
     /// <summary>
@@ -2452,29 +2452,42 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>
     /// The size Banter lays itself out at, and the scale it is painted with.
     ///
-    /// <para><b>Hybrid</b> (CupriFace 0.18.0) rather than responsive: it picks the largest scale at
-    /// which <see cref="DesignWidth"/> x <see cref="DesignHeight"/> still fits the window, then
-    /// reflows whatever is left over. Responsive layout alone treats a 27-inch monitor as
-    /// "room for more" and paints everything at the same physical size it had on a laptop, which
-    /// is why a chat window on a big screen ends up a wall of tiny text; fixed scaling would go the
-    /// other way and letterbox. Hybrid does both: on a 2560x1440 window the design fits 1.8 times
-    /// over, so everything is painted 1.8x and the surplus width becomes a wider timeline rather
-    /// than empty margin.</para>
+    /// <para><b>Adaptive</b> (CupriFace 0.24.0): Hybrid above the design size, plain responsive
+    /// below it. Above, it picks the largest scale at which <see cref="DesignWidth"/> x
+    /// <see cref="DesignHeight"/> still fits the window and reflows whatever is left over.
+    /// Responsive layout alone treats a 27-inch monitor as "room for more" and paints everything at
+    /// the same physical size it had on a laptop, which is why a chat window on a big screen ends
+    /// up a wall of tiny text; fixed scaling would go the other way and letterbox. So on a
+    /// 2560x1440 window the design fits 1.8 times over, everything is painted 1.8x, and the surplus
+    /// width becomes a wider timeline rather than empty margin.</para>
     ///
-    /// <para>The user's zoom multiplies that base rather than replacing it, so 100% means "what
-    /// this screen deserves" instead of "one CSS pixel per device pixel" — which on a 4K panel is
-    /// not a setting anybody wants.</para>
+    /// <para><b>Why not Hybrid, which this used to be.</b> Hybrid scales down as readily as up, and
+    /// the logical viewport is <c>window / scale</c> — so below the design size the viewport comes
+    /// out WIDER than the design. A 412dp phone laid this app out at 1280 logical and painted it at
+    /// 0.32x: 14px text at about 4.5dp. Worse, the layout had no way to answer, because
+    /// <c>@media</c> is evaluated against that logical width, so no breakpoint under 1280 could
+    /// match on any device. Clamping at 1 hands the phone back its own width, which is what every
+    /// responsive rule below is written against.</para>
+    ///
+    /// <para><b>Zoom is not here.</b> It lives on <c>doc.Zoom</c>, which lays out at
+    /// <c>viewport / zoom</c> and paints scaled to match — so the user's preference reflows the
+    /// page and <c>@media</c> sees the narrower width, exactly as a browser's page zoom behaves.
+    /// Multiplying it into this scale as well applied it twice (150% painted at 2.25x), which is
+    /// the shape the zoom preference had until 0.24.0.</para>
     /// </summary>
-    public static PresentInfo Presentation(float width, float height, float zoom)
-    {
-        var hybrid = PresentInfo.Hybrid(width, height, DesignWidth, DesignHeight);
-        return PresentInfo.Zoom(width, height, hybrid.Scale * zoom);
-    }
+    public static PresentInfo Presentation(float width, float height) =>
+        PresentInfo.Adaptive(width, height, DesignWidth, DesignHeight);
 
     /// <summary>
-    /// The window Banter is drawn for. Not a minimum and not a maximum — the size whose scale is
-    /// called 100%, chosen because it is the smallest window the four-column layout (rail,
-    /// sidebar, timeline, roster) still reads well in.
+    /// The window Banter is drawn for: the size whose scale is called 100%, chosen because it is
+    /// the smallest window the four-column layout (rail, sidebar, timeline, roster) still reads
+    /// well in.
+    ///
+    /// <para>Not a maximum — above it the surplus is spent on scale. But since
+    /// <see cref="Presentation"/> became Adaptive it IS the hinge: below this width the app is laid
+    /// out at the window's own pixels, which is the range the responsive rules in
+    /// <see cref="Css"/> are written for. Changing it moves that hinge, so the breakpoints and this
+    /// number have to be read together.</para>
     /// </summary>
     public const float DesignWidth = 1280f;
 

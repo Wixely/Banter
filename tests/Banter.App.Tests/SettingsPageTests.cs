@@ -27,16 +27,16 @@ public sealed class SettingsPageTests(ITestOutputHelper output)
     }
 
     [Theory]
-    // A laptop, a 1440p monitor, and a 4K one. The scale is the point of Hybrid: the same window
-    // full of chat should be readable on all three, which responsive layout alone does not give —
-    // it treats a bigger screen as room for more rather than as a reason to draw larger.
+    // A laptop, a 1440p monitor, and a 4K one. Scale is the point above the design size: the same
+    // window full of chat should be readable on all three, which responsive layout alone does not
+    // give — it treats a bigger screen as room for more rather than as a reason to draw larger.
     [InlineData(1280, 800, 1.0f)]
     [InlineData(1920, 1080, 1.35f)]
     [InlineData(2560, 1440, 1.8f)]
     [InlineData(3840, 2160, 2.7f)]
-    public void HybridScalesToTheScreenRatherThanJustFillingIt(int w, int h, float expected)
+    public void AboveTheDesignSizeTheSurplusIsSpentOnScale(int w, int h, float expected)
     {
-        var p = BanterChatApp.Presentation(w, h, zoom: 1f);
+        var p = BanterChatApp.Presentation(w, h);
         output.WriteLine($"{w}x{h} -> logical {p.LogicalWidth:F0}x{p.LogicalHeight:F0} scale {p.Scale:F2}");
 
         Assert.Equal(expected, p.Scale, 2);
@@ -47,17 +47,55 @@ public sealed class SettingsPageTests(ITestOutputHelper output)
         Assert.True(p.LogicalHeight >= BanterChatApp.DesignHeight - 0.5f, "the design height stopped fitting");
     }
 
-    [Fact]
-    public void TheZoomPreferenceMultipliesTheHybridBase()
+    [Theory]
+    // A phone portrait and landscape, a small tablet, and a half-width desktop window. Density-
+    // independent pixels, which is what the Android host hands Present after dividing by density.
+    [InlineData(412, 915)]
+    [InlineData(915, 412)]
+    [InlineData(800, 1280)]
+    [InlineData(640, 800)]
+    public void BelowTheDesignSizeTheWindowKeepsItsOwnPixels(int w, int h)
     {
-        // 100% means "what this screen deserves", not "one pixel per pixel" — which on a 4K panel
-        // is not a setting anybody wants. So the preference scales the base rather than replacing it.
-        var baseline = BanterChatApp.Presentation(2560, 1440, zoom: 1f);
-        var zoomed = BanterChatApp.Presentation(2560, 1440, zoom: 1.5f);
+        var p = BanterChatApp.Presentation(w, h);
+        output.WriteLine($"{w}x{h} -> logical {p.LogicalWidth:F0}x{p.LogicalHeight:F0} scale {p.Scale:F2}");
 
-        Assert.Equal(baseline.Scale * 1.5f, zoomed.Scale, 3);
-        Assert.True(zoomed.LogicalWidth < baseline.LogicalWidth,
-            "zooming in should leave less logical room, not more");
+        // Scale 1 and the window's own size, rather than Hybrid's shrink-to-fit. Under Hybrid a
+        // 412x915 phone laid out at 1280 logical and painted at 0.32x, so @media saw 1280 on every
+        // device and no max-width breakpoint under the design width could ever match.
+        Assert.Equal(1f, p.Scale, 3);
+        Assert.Equal(w, p.LogicalWidth, 1);
+        Assert.Equal(h, p.LogicalHeight, 1);
+    }
+
+    [Fact]
+    public void TheZoomPreferenceIsAppliedOnceNotTwice()
+    {
+        // Zoom belongs to the document, which lays out at viewport/zoom and paints to match.
+        // Presentation must NOT also fold it into the present scale: it used to, and the two
+        // compounded — 150% painted at 2.25x and laid out at a viewport a third narrower than the
+        // preference asked for. Measured through a real document rather than asserted of the
+        // arithmetic, because the doubling lived in the gap between the two.
+        var app = new BanterChatApp(Room());
+        using var doc = app.CreateDocument();
+        doc.Zoom = 1.5f;
+
+        var p = BanterChatApp.Presentation(2560, 1440);
+
+        // BuildFrame, not BuildDisplayList: the latter lays out at the size it is handed and
+        // returns, so it divides by no zoom and re-resolves no @media. Only the frame path does
+        // what a host does, which is the whole subject here.
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        // What the cascade was evaluated against: the present scale's logical size, divided by the
+        // zoom exactly once.
+        Assert.Equal(p.LogicalWidth / 1.5f, doc.ViewportWidth, 1);
+        Assert.Equal(p.LogicalHeight / 1.5f, doc.ViewportHeight, 1);
+
+        // And the present scale itself is the screen's alone: 1.8 for this monitor whatever the
+        // preference says. 100% still means "what this screen deserves" rather than one pixel per
+        // pixel, which on a 4K panel is not a setting anybody wants — it just no longer carries the
+        // preference as well. At 1.5x zoom the old shape gave 2.7 here.
+        Assert.Equal(1.8f, p.Scale, 2);
     }
 
     [Fact]
