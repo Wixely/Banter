@@ -1738,6 +1738,37 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
           .timeline { padding: 6px 0; }
           .pfp { width: 30px; height: 30px; border-radius: 9px; }
+
+          /* ── The management pages ───────────────────────────────────────────────────────────
+             Agents, users, work and settings are four pages over one shell, and all four broke
+             here the way the chat did — a fixed column beside a flexible one, in a window with
+             room for neither. `.mgmt-list` is 320px and the card is inset 40px a side, so of a
+             412 screen the detail pane was left 12px or nothing at all. Measured: agents, users
+             and work each reported `.mgmt-empty` laid out 0 wide, and settings ran 195px past
+             the right edge because its card is a hard 720.
+
+             A card with a margin around it says "this is a thing on top of the page". On a screen
+             this size it is not on top of the page, it IS the page — so it takes the whole of it,
+             and the two panes stack instead of standing side by side. */
+          .mgmt-card { margin: 0; border-radius: 0; border: 0; flex-direction: column; }
+          .settings-card { flex: 1; width: 100%; height: 100%; }
+
+          /* A picker above what it picks. Capped rather than free so a long list cannot push the
+             detail off the bottom: the list scrolls inside its own share, which is a shorter
+             journey than scrolling the page to find out whether there is a detail pane at all. */
+          .mgmt-list { width: auto; height: 38%; border-right: 0; padding: 12px 10px; }
+          .mgmt-pane { padding: 12px; }
+
+          /* Label above field rather than beside it. 116px of label out of 412 is most of a
+             line, and every value here is longer than its name. */
+          .mgmt-field { flex-direction: column; }
+          .mgmt-label { width: auto; padding-bottom: 5px; }
+          .mgmt-choices { flex-wrap: wrap; }
+          /* Turning the row into a column turns `flex: 1` from a width into a HEIGHT, and the
+             field it is in has no height to divide, so the control resolved to zero and every
+             settings input vanished. Measured as CF0071 at 412, 800 and 915 — a box 372 wide and
+             0 tall. Stacked, it wants to be as tall as what is in it and no taller. */
+          .mgmt-control { flex: 0 0 auto; }
         }
 
         /* Explicit beats the media rule, in both directions. Without the first of these, choosing
