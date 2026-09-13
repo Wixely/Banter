@@ -75,7 +75,10 @@ public sealed class RailIconTests(ITestOutputHelper output)
         // every other test here would happily pass.
         var html = new BanterChatApp(Room()).Html;
         var start = html.IndexOf("<div class=\"rail\">", StringComparison.Ordinal);
-        var rail = html[start..html.IndexOf("class=\"sidebar\"", StringComparison.Ordinal)];
+        // Ends where the room list begins. That class is BOUND ({{SidebarClass}}) rather than
+        // literal, because the list is hidden by a media rule on a narrow window and forced open
+        // or shut over the top of it — so this looks for the binding, not for "sidebar".
+        var rail = html[start..html.IndexOf("class=\"{{SidebarClass}}\"", StringComparison.Ordinal)];
         output.WriteLine(rail);
 
         // Any element whose entire content is a single letter is a leftover placeholder.

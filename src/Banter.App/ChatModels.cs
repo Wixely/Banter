@@ -693,6 +693,17 @@ public sealed partial class ChatModel
     /// </summary>
     public string MainClass { get; set; } = "main";
 
+    /// <summary>
+    /// The room list: <c>sidebar</c>, <c>sidebar open</c> or <c>sidebar shut</c>.
+    ///
+    /// <para>Three states rather than a bool, because below the narrow breakpoint the stylesheet
+    /// hides this column on its own — so an explicit choice has to be able to override the
+    /// responsive default in BOTH directions. With two states, "open" would be indistinguishable
+    /// from "the default, which happens to be open here", and the toggle would do nothing on
+    /// whichever side of the breakpoint the flag already agreed with.</para>
+    /// </summary>
+    public string SidebarClass { get; set; } = "sidebar";
+
     public string ConnectServer { get; set; } = "";
     public string ConnectUser { get; set; } = "";
 

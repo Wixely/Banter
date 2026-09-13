@@ -110,4 +110,100 @@ public sealed class ResponsiveLayoutTests(ITestOutputHelper output)
         Assert.Equal(412f, doc.ViewportWidth, 1);
         Assert.Equal(915f, doc.ViewportHeight, 1);
     }
+
+    [Theory]
+    [InlineData(412, 915)]
+    [InlineData(915, 412)]
+    [InlineData(640, 800)]
+    public void OnANarrowScreenTheChatGetsTheWindow(int w, int h)
+    {
+        var vm = Furnished();
+        using var doc = Laid(vm, w, h);
+
+        var main = Find(doc, "main").Node;
+        var rail = Find(doc, "rail").Node;
+        output.WriteLine($"{w}x{h} -> rail {rail.Width:F0}, main {main.Width:F0}");
+
+        // It used to be 0. The three columns of chrome shrank rather than overflowing, in
+        // proportion, and the chat was what the proportion left over — which was nothing.
+        Assert.True(main.Width >= doc.ViewportWidth - rail.Width - 1f,
+            $"the chat got {main.Width:F0} of {doc.ViewportWidth:F0}, with only the rail beside it");
+
+        // And the two columns that are references rather than the conversation are gone.
+        Assert.DoesNotContain(Walk(doc.Root), n =>
+            n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("roster") == true
+            && n.Node.Width > 0);
+    }
+
+    [Fact]
+    public void AWideWindowStillGetsAllFourColumns()
+    {
+        // The control. Everything above is about one shape of window, and none of it is allowed to
+        // reach the shape the app was designed for.
+        var vm = Furnished();
+        using var doc = Laid(vm, 1280, 800);
+
+        Assert.Equal(248f, Find(doc, "sidebar").Node.Width, 1);
+        Assert.True(Find(doc, "roster").Node.Width > 200f, "the roster lost its column");
+        Assert.True(Find(doc, "main").Node.Width > 600f, "the chat lost its width");
+    }
+
+    [Theory]
+    // Narrow: hidden by the media rule, so the first toggle must OPEN it. Wide: shown by default,
+    // so the same toggle must PUT IT AWAY. One flag cannot express that, which is the whole reason
+    // the model carries three states.
+    [InlineData(412, 915, true)]
+    [InlineData(1280, 800, false)]
+    public void TheRoomsToggleFollowsTheBreakpoint(int w, int h, bool hiddenToStart)
+    {
+        var vm = Furnished();
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+
+        float Width()
+        {
+            var p = BanterChatApp.Presentation(w, h);
+            doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+            return Walk(doc.Root)
+                .Where(n => n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("sidebar") == true)
+                .Select(n => n.Node.Width)
+                .FirstOrDefault();
+        }
+
+        var before = Width();
+        Assert.Equal(hiddenToStart, before <= 0f);
+
+        // Driven through the view model with the breakpoint the app itself uses, then measured
+        // through the cascade — so this fails if the constant and the @media rule drift apart.
+        vm.ToggleRooms(narrow: w <= BanterChatApp.NarrowWidth);
+        doc.Refresh();
+        var after = Width();
+        output.WriteLine($"{w}x{h} sidebar {before:F0} -> {after:F0}");
+
+        Assert.NotEqual(before > 0f, after > 0f);
+    }
+
+    [Fact]
+    public void AnOpenedSidebarDoesNotStealTheChatsWidth()
+    {
+        // The reason it is an overlay and not a column. As a flex item with a width it would be
+        // shrinking `.main` again — the exact fault the breakpoint exists to fix, reintroduced by
+        // the control that is supposed to help.
+        var vm = Furnished();
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+        var p = BanterChatApp.Presentation(412, 915);
+
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+        var shut = Find(doc, "main").Node.Width;
+
+        vm.ToggleRooms(narrow: true);
+        doc.Refresh();
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+        var open = Find(doc, "main").Node.Width;
+
+        output.WriteLine($"main {shut:F0} with the rooms away, {open:F0} with them open");
+        Assert.Equal(shut, open, 1);
+        Assert.True(open > 0f, "the chat has no width either way");
+    }
 }

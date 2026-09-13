@@ -14,6 +14,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 {
     private CupriDocument? _doc;
 
+    /// <summary>Which side of <see cref="NarrowWidth"/> the last frame was laid out on. Null until
+    /// there has been one, so the first frame records a side rather than counting as a crossing.</summary>
+    private bool? _wasNarrow;
+
     public ChatViewModel ViewModel { get; } = viewModel;
 
     /// <summary>
@@ -216,7 +220,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public override string Html => $$$"""
         <div class="app">
           <div class="rail">
-            <div class="logo">
+            <!-- Also the rooms toggle. On a narrow window the room list is an overlay rather than
+                 a column, and this is what opens it; on a wide one it puts the column away. The
+                 speech bubble is the app's mark AND the thing the list is a list of, so it carries
+                 both without needing a sixth icon in a rail that is already five deep. -->
+            <div class="logo" data-rooms-toggle="1">
               <div class="icon-chat">
                 <div class="chat-body"></div>
                 <div class="chat-tail"></div>
@@ -265,7 +273,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               </div>
             </div>
           </div>
-          <div class="sidebar">
+          <div class="{{SidebarClass}}">
             <div class="workspace">
               <div class="workspace-name">Banter</div>
               <div class="{{StatusClass}}">{{Status}}</div>
@@ -1669,6 +1677,72 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .account-user { font-size: 13px; color: #f3f5f7; }
         .account-server { font-size: 11px; color: #8d97a6; padding-top: 2px; }
         .sign-out.hidden { display: none; }
+
+        /* ── Narrow windows ───────────────────────────────────────────────────────────────────
+           A phone either way up, a split-screen tablet, a desktop window dragged small.
+
+           960 rather than something phone-shaped, for two reasons. A phone in LANDSCAPE is 915
+           wide — wide but short — and a breakpoint drawn under it would leave the one device this
+           work is for reading four columns through a letterbox; the engine's media conditions do
+           take a height, but they cannot be OR-ed, so catching that case by height would mean
+           writing this entire block twice. And the number is defensible on its own without any
+           phone in it: below about 960 the four columns leave the chat under 300px, which is too
+           narrow to be worth the two references beside it whatever is running. The default window
+           is 1100x760, so a desktop that never touches its size never sees this.
+
+           What went wrong without any of this is worth writing down, because it is not what a
+           desktop layout usually does on a phone. The columns did not overflow and run off the side —
+           `.app` is a flex row, so they SHRANK, all four of them, in proportion. Measured at
+           412x915: rail 64, sidebar 171, roster 177, and `.main` — the chat, the entire point of
+           the application — laid out 0 pixels wide. Not clipped, not scrolled past: zero. The
+           three pieces of chrome ate the window and the content got what was left, which was
+           nothing. (CupriDoctor says so as CF0071, and the test that gates this reads it.)
+
+           So the answer is not to make things smaller. It is to admit that a screen this size
+           holds one column, and to decide which. */
+        @media (max-width: 960px) {
+          /* Who is in the room is a reference, and referring to it is not why a phone is out of
+             a pocket. It comes back with the window. */
+          .roster { display: none; }
+
+          /* An overlay, not a column: a column here would be taking the width from the only
+             thing that needs it. Absolute so it lifts out of the flex row entirely — left as a
+             flex item with a width it would still be shrinking `.main`, which is the bug this
+             whole block exists to fix. */
+          .sidebar { display: none; }
+          .sidebar.open { display: flex; position: absolute; left: 56px; top: 0;
+                          width: 232px; height: 100%; z-index: 20;
+                          box-shadow: 0 0 40px #000000a8; }
+
+          /* The rail stays. It is the only way to reach tools, agents, users, work and settings,
+             and at 56px it costs less than any of them would cost as a menu. */
+          .rail { width: 56px; padding: 10px 6px; }
+          .logo { width: 38px; height: 38px; border-radius: 12px; }
+          .rail-button { width: 38px; height: 38px; margin-top: 8px; }
+
+          /* The room is named in the header; the topic and the dispatch mode are both second
+             sentences, and there is no room here for a second sentence. */
+          .topic { display: none; }
+          .dispatch { display: none; }
+          .header { height: 52px; }
+
+          /* Enter/Shift+Enter/slash-commands/@names — four hints on a soft keyboard that has no
+             Shift+Enter, above a composer that needs the height more. */
+          .composer-hint { display: none; }
+          .composer-wrap { padding: 6px 10px 8px 10px; }
+          .composer-row { padding: 0; }
+
+          /* 320px is wider than this whole column. Aspect is preserved by the component, so a
+             max-width is all that is needed to bring a photo back inside the bubble. */
+          .inline-image { width: 100%; }
+
+          .timeline { padding: 6px 0; }
+          .pfp { width: 30px; height: 30px; border-radius: 9px; }
+        }
+
+        /* Explicit beats the media rule, in both directions. Without the first of these, choosing
+           to put the room list away on a wide window would do nothing at all. */
+        .sidebar.shut { display: none; }
         """;
 
     public override void Configure(CupriDocument doc)
@@ -1689,6 +1763,24 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             ViewModel.SetZoom(zoom);
             ZoomChanged(zoom);
         };
+
+        // The room list. OnAction, like every other button in the rail — NOT OnClick. A selector-registered click
+        // handler makes what it matches focusable, and the rail is on screen during sign-in: the
+        // connect card is only reachable by Tab because the chat pane is taken out of the document
+        // and the three fields are then the only focusables there are (see ChatModel.MainClass).
+        // Wiring this with OnClick put a tab stop back in the rail, and Tab stopped walking the
+        // sign-in form — measured, four tests.
+        //
+        // The answer depends on what is on SCREEN, not on what the model last recorded: below
+        // NarrowWidth the stylesheet hides the column on its own, so "open" and "the default" look
+        // identical to a flag and opposite to the eye. doc.ViewportWidth is the size the cascade
+        // was evaluated against — post-zoom — so the two can never disagree about which side of
+        // the line we are on, which a width shadowed from Present() could.
+        doc.OnAction("data-rooms-toggle", _ =>
+        {
+            ViewModel.ToggleRooms(doc.ViewportWidth <= NarrowWidth);
+            return true;
+        });
 
         doc.OnClick(".send", _ => Send());
         // Held, not clicked. A click is only delivered once the button is released, so a
@@ -2415,6 +2507,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         PollWork();
 
+        // Crossing the breakpoint hands the room list back to the stylesheet. A choice made for
+        // one shape of window should not survive into the other: a sidebar forced open on a narrow
+        // window is an overlay lying over the chat, and widening the window would otherwise leave
+        // it there as a column the user never asked for — or, the other way, a column put away on
+        // a wide window would still be "shut" after a resize that would have hidden it anyway,
+        // so the first tap of the toggle would appear to do nothing.
+        //
+        // Read off the document rather than from `width`: what the cascade answered to is
+        // width/scale/zoom, and only the document knows all three. Zero until the first layout, so
+        // the first frame records the side without acting on it.
+        if (_doc is { ViewportWidth: > 0f } sized)
+        {
+            var narrow = sized.ViewportWidth <= NarrowWidth;
+            if (_wasNarrow is { } before && before != narrow)
+            {
+                ViewModel.ResetRooms();
+                sized.Refresh();
+            }
+
+            _wasNarrow = narrow;
+        }
+
         return Presentation(width, height);
     }
 
@@ -2496,6 +2610,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public const float DesignWidth = 1280f;
 
     public const float DesignHeight = 800f;
+
+    /// <summary>
+    /// At or below this width the layout is one column: the roster goes, and the room list becomes
+    /// an overlay the rail opens rather than a column of its own.
+    ///
+    /// <para>Must match the <c>@media (max-width: …)</c> in <see cref="Css"/>. Two places rather
+    /// than one because the engine's media conditions take a length, not a variable — so the
+    /// stylesheet cannot read this and this cannot read the stylesheet. The pair is what
+    /// <c>RoomsToggleFollowsTheBreakpoint</c> tests: it drives the toggle from this constant and
+    /// then checks what the CASCADE did, which fails if the two ever drift apart.</para>
+    /// </summary>
+    public const float NarrowWidth = 960f;
 
     /// <summary>
     /// Copy the current selection. Falls back to the newest message when nothing is selected,

@@ -648,6 +648,30 @@ public sealed partial class ChatViewModel
 
     /// <summary>Reflects the zoom actually in force. Called after the document has been told, so
     /// the page shows what happened rather than what was asked for.</summary>
+    /// <summary>
+    /// Shows or hides the room list, given whether the window is currently narrow enough for the
+    /// stylesheet to be hiding it on its own.
+    ///
+    /// <para>The argument is what makes this correct on both sides of the breakpoint. A toggle
+    /// means "the opposite of what I can currently SEE", and below the breakpoint what is on
+    /// screen is not what an open/shut flag would say — the column is hidden by a media rule while
+    /// a bool still reads "open". So the caller passes the rendered width (from
+    /// <c>doc.ViewportWidth</c>, which is the size the cascade was evaluated against), and the
+    /// state written here is always the one that changes what is visible.</para>
+    /// </summary>
+    public void ToggleRooms(bool narrow)
+    {
+        var showing = Model.SidebarClass.Contains("open", StringComparison.Ordinal)
+                      || (!narrow && !Model.SidebarClass.Contains("shut", StringComparison.Ordinal));
+        Model.SidebarClass = showing ? "sidebar shut" : "sidebar open";
+    }
+
+    /// <summary>Puts the room list back under the stylesheet's control, whichever way it was
+    /// forced. Called when the window crosses the breakpoint, so a choice made for one shape does
+    /// not survive into the other — a sidebar forced open on a phone would otherwise still be
+    /// covering the chat after the window was made wide again.</summary>
+    public void ResetRooms() => Model.SidebarClass = "sidebar";
+
     public void SetZoom(float zoom)
     {
         Model.ZoomLabel = $"{Math.Round(zoom * 100)}%";
