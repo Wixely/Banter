@@ -1774,6 +1774,43 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* Explicit beats the media rule, in both directions. Without the first of these, choosing
            to put the room list away on a wide window would do nothing at all. */
         .sidebar.shut { display: none; }
+
+        /* ── Fingers ──────────────────────────────────────────────────────────────────────────
+           `cupri-coarse` is put on the body by the HOST, from the input it is actually being
+           driven by — the Android and web hosts both declare InputProfile.Touch. So this is keyed
+           on the pointer and not on the window, which is the whole point: a touch laptop at 1920
+           is a finger too, and every width breakpoint in the world would call it a mouse. It is a
+           class rather than a media feature on purpose (CupriFace's own note on InputProfile), so
+           it costs nothing to respond to.
+
+           44 rather than 48. Android says 48dp and Apple says 44pt; 44 is the number both agree
+           is enough, and the rail is five buttons in a column that 48 would push past the height
+           of a small phone lying down.
+
+           These are sizes, not paddings-on-a-guess: every one was measured, and a test walks the
+           whole render tree for anything the engine will show a pointer over (plus every
+           cupri-button, whose own stylesheet sets no cursor) and fails on anything under 44. */
+        body.cupri-coarse .rail-button { width: 44px; height: 44px; }
+        body.cupri-coarse .logo { width: 44px; height: 44px; }
+        body.cupri-coarse .tab { height: 44px; }
+        body.cupri-coarse .browse-row { height: 44px; }
+        body.cupri-coarse .mgmt-row { padding: 12px 8px; }
+        body.cupri-coarse .mgmt-choice.compact { height: 44px; }
+        body.cupri-coarse .settings-tab { padding: 12px 12px; }
+        body.cupri-coarse .ask-option { padding: 8px 0; }
+        body.cupri-coarse .loadmore { padding: 13px 18px; }
+
+        /* One rule for every button the engine draws, because they differ only in their font size
+           and all of them were 30 to 36 tall. Padding rather than min-height: a cupri-button is an
+           inline-block, so a minimum would have left the label sitting against the top of a box
+           that had grown underneath it. */
+        body.cupri-coarse cupri-button { padding-top: 14px; padding-bottom: 14px; }
+
+        /* The close X is drawn from two rotated bars at fixed offsets inside a 30px box, so its
+           box cannot grow without them being re-centred: (44-16)/2 across, (44-2)/2 down. Miss
+           this and the button gets bigger while the cross it draws slides into a corner. */
+        body.cupri-coarse .mgmt-x { width: 44px; height: 44px; }
+        body.cupri-coarse .x-bar { left: 14px; top: 21px; }
         """;
 
     public override void Configure(CupriDocument doc)
