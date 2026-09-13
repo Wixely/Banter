@@ -306,7 +306,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </div>
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-context-menu class="timeline-menu">
-              <cupri-virtual class="timeline" height="620" item-height="52" anchor="bottom">
+              <!-- height="auto" (CupriFace 0.24.0), so `.timeline { flex: 1 }` is what decides.
+                   A number here is written as an INLINE height, which beat that rule and every
+                   other one: the scrollback was 620px whatever the window was, and on anything
+                   but an 800-tall design the composer sat away from the bottom edge. -->
+              <cupri-virtual class="timeline" height="auto" item-height="52" anchor="bottom">
                 <div class="{{RowClass}}" data-repeat="Messages" data-msg="{{Id}}">
                   <span class="pfp">{{Initials}}</span>
                   <span class="msg-main">
@@ -417,7 +421,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                     <div class="tool-agent-count">{{Summary}}</div>
                   </div>
                 </div>
-                <cupri-virtual class="tool-list" height="440" item-height="46">
+                <cupri-virtual class="tool-list" height="auto" item-height="46">
                   <div class="{{RowClass}}" data-tool="{{Name}}" data-repeat="ToolCatalog">
                     <div class="tool-line"><span class="tool-mark">{{Mark}}</span><span class="tool-name">{{Name}}</span><span class="tool-server">{{Server}}</span></div>
                     <div class="tool-desc">{{Description}}</div>
