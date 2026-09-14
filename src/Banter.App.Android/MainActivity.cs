@@ -38,12 +38,22 @@ public sealed class MainActivity : CupriActivity
 
     private const int MicRequestCode = 4101;
 
+    /// <summary>The file pick in flight, completed by <see cref="OnActivityResult"/>.</summary>
+    private TaskCompletionSource<string?>? _pickRequest;
+
+    private const int PickRequestCode = 4102;
+
     protected override CupriApp CreateApp()
     {
         _settings = BanterSettings.Load(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
 
         _viewModel.SetStatus("Not connected", connected: false);
         _viewModel.ShowConnect(_settings.Server, _settings.User);
+
+        // Shows the attach control. Direct rather than posted, like the two calls above: this runs
+        // on the UI thread before there is a document to refresh, so the first frame already has
+        // it rather than gaining it a frame later.
+        _viewModel.EnableAttach();
 
         return new BanterChatApp(_viewModel)
         {
@@ -58,6 +68,13 @@ public sealed class MainActivity : CupriActivity
             JoinRoomAsync = room => _session?.JoinAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = agent => _session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
+            // The phone is the device with the camera and the photo library on it, and until now
+            // it was the one head that could not send either: EnableAttach was called from the
+            // desktop head alone, so the control never appeared here.
+            FilePicker = new AndroidFilePicker(this),
+            // Quoted, because the picker's copy is named after what the user knows the file as
+            // and that name can contain spaces.
+            AttachAsync = (room, path) => _session?.UploadAsync(room, $"\"{path}\"") ?? Task.CompletedTask,
             VoiceToggleAsync = SetVoiceOpenAsync,
             ReadbackChangedAsync = policy => _session?.SetReadbackAsync(policy) ?? Task.CompletedTask,
 
@@ -128,6 +145,75 @@ public sealed class MainActivity : CupriActivity
         }
 
         base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    /// <summary>
+    /// Opens the system picker and waits for it. One at a time: a second request while one is in
+    /// flight cancels the first rather than leaving a task nothing will ever complete — the
+    /// picker is a separate activity, and the only way to ask twice is to have got back here,
+    /// which means the first answer is never coming.
+    /// </summary>
+    internal Task<string?> PickFileAsync(global::Android.Content.Intent chooser, CancellationToken cancellationToken)
+    {
+        _pickRequest?.TrySetResult(null);
+
+        var request = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pickRequest = request;
+        cancellationToken.Register(() => request.TrySetResult(null));
+
+        try
+        {
+            StartActivityForResult(chooser, PickRequestCode);
+        }
+        catch (global::Android.Content.ActivityNotFoundException)
+        {
+            // No document provider on the device at all. Rare, but a bare phone image can be like
+            // this, and it is a cancel rather than a crash.
+            _pickRequest = null;
+            return Task.FromResult<string?>(null);
+        }
+
+        return request.Task;
+    }
+
+    protected override void OnActivityResult(
+        int requestCode,
+        global::Android.App.Result resultCode,
+        global::Android.Content.Intent? data)
+    {
+        if (requestCode == PickRequestCode)
+        {
+            var pending = _pickRequest;
+            _pickRequest = null;
+
+            // Cancelled is the ordinary outcome and says nothing; only a chosen item has a URI.
+            if (resultCode != global::Android.App.Result.Ok || data?.Data is not { } uri)
+            {
+                pending?.TrySetResult(null);
+                return;
+            }
+
+            string? path = null;
+            try
+            {
+                path = AndroidFilePicker.Materialise(this, uri);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                           or global::Java.Lang.SecurityException)
+            {
+                // Copying is the step that can fail for reasons the user can do nothing about:
+                // a revoked grant, a provider that died, a full cache. Say so in the room rather
+                // than taking the app down over an attachment.
+                global::Android.Util.Log.Warn(LogTag, $"attach: {ex.Message}");
+                _viewModel.Post(() => _viewModel.System(
+                    _viewModel.Model.ActiveRoom, "could not read that file."));
+            }
+
+            pending?.TrySetResult(path);
+            return;
+        }
+
+        base.OnActivityResult(requestCode, resultCode, data);
     }
 
     /// <summary>
