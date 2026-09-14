@@ -1730,7 +1730,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
              Shift+Enter, above a composer that needs the height more. */
           .composer-hint { display: none; }
           .composer-wrap { padding: 6px 10px 8px 10px; }
-          .composer-row { padding: 0; }
+
+          /* The composer is a message box and three buttons on one line, and at this width the
+             buttons win it outright: Mic, Attach and Send carry their own min-widths, and what
+             was left for the box you type in measured ZERO. Not narrow — gone, on the screen
+             where typing is the only thing anyone came to do.
+
+             So the box takes a line of its own (`1 0 100%` — grow, never shrink, start at full
+             width) and the three buttons wrap under it, against the right where the send button
+             belongs. The prompt goes: it is a decoration, and it was costing more than it says. */
+          .composer-row { padding: 0; flex-wrap: wrap; justify-content: flex-end; }
+          .composer { flex: 1 0 100%; }
+          .prompt { display: none; }
+          .mic { margin-top: 8px; }
+          .attach-open { margin-top: 8px; }
+          .send { margin-top: 8px; }
 
           /* 320px is wider than this whole column. Aspect is preserved by the component, so a
              max-width is all that is needed to bring a photo back inside the bubble. */

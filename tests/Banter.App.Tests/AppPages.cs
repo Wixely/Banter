@@ -66,6 +66,13 @@ public static class AppPages
         vm.Connected("tcp://host:7770", "alice");
         vm.SetIsAdmin(true);
         vm.Append("#main", "dagger", "hello", 0);
+
+        // A head that wired capture and a file picker — which is what a phone is. Both controls
+        // stay hidden until a head says it has them, so without these two calls the composer row
+        // is a textarea and one button, and the most crowded row in the application is the one
+        // every check here would never have looked at.
+        vm.EnableVoice(readbackAvailable: true);
+        vm.EnableAttach();
         return vm;
     }
 
