@@ -15,32 +15,11 @@
     <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RootNamespace>Banter.App.Android</RootNamespace>
-    <!--
-      CoreCLR, and this is load-bearing rather than a preference: the Mono runtime pack in .NET 10
-      (10.0.11) has a code-generation defect that kills a CupriFace app during startup. It is a
-      native SIGSEGV inside Mono-compiled CoreLib where string CONTENT is dereferenced as a string
-      REFERENCE, and it reproduces on arm64 hardware and x64 emulators alike, AOT and JIT alike
-      (they share the code generator), trimmed or not. CupriFace's own forensics are in
-      samples/AndroidProbe/MONO-CRASH.md.
-
-      Set HERE and not left to the CupriFace.Android package, which does try: its buildTransitive
-      targets carry `UseMonoRuntime Condition="'$(UseMonoRuntime)' == ''"`, and for an Android app
-      that condition is never true — the Android SDK has already set it to `true` by the time a
-      NuGet .targets file is imported, so the default cannot fire and the pin silently does
-      nothing. Measured on 0.24.1: `-getProperty:UseMonoRuntime` answered `true` and the APK
-      shipped libmonosgen-2.0.so. The first build that ever reached a device crashed in OnCreate.
-
-      It costs size, and more than the per-ABI figures suggest: this APK went from 26 MB to 49 MB,
-      because it carries arm64-v8a AND x86_64 and both runtimes doubled. Dropping the emulator ABI
-      would halve it, which is worth doing when this is something people download rather than
-      something we sideload. Re-evaluate the whole pin when the Mono pack moves past 10.0.11.
-    -->
-    <UseMonoRuntime>false</UseMonoRuntime>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
-    <PackageReference Include="CupriFace.Android" Version="0.24.1" />
+    <PackageReference Include="CupriFace.Android" Version="0.25.0" />
   </ItemGroup>
 </Project>

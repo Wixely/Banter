@@ -143,7 +143,12 @@ public sealed class ResponsiveLayoutTests(ITestOutputHelper output)
         var vm = Furnished();
         using var doc = Laid(vm, 1280, 800);
 
-        Assert.Equal(248f, Find(doc, "sidebar").Node.Width, 1);
+        // 249, not the declared 248: `.sidebar` carries `border-right: 1px`, and since CupriFace
+        // 0.25.0 a per-side border is parsed and therefore OCCUPIES WIDTH. It was thrown away
+        // before, so eleven declarations in this app drew nothing and cost nothing; now they draw
+        // and cost a pixel apiece. Kept exact rather than loosened — this number moving again is
+        // worth being told about.
+        Assert.Equal(249f, Find(doc, "sidebar").Node.Width, 1);
         Assert.True(Find(doc, "roster").Node.Width > 200f, "the roster lost its column");
         Assert.True(Find(doc, "main").Node.Width > 600f, "the chat lost its width");
     }
