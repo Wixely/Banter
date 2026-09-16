@@ -189,6 +189,30 @@ public sealed class ResponsiveLayoutTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AHeadCanAskToOpenPhoneShaped()
+    {
+        // What `banter --phone` reaches. The window a host opens comes from the app, so this is
+        // the seam the flag drives — and the size it asks for has to be the size the layout then
+        // treats as the whole screen, or the window and the breakpoints disagree.
+        var desktop = new BanterChatApp(Furnished());
+        Assert.Equal(1100, desktop.Width);
+        Assert.Equal(760, desktop.Height);
+
+        var phone = new BanterChatApp(Furnished()) { WindowWidth = 412, WindowHeight = 915 };
+        Assert.Equal(412, phone.Width);
+        Assert.Equal(915, phone.Height);
+
+        using var doc = phone.CreateDocument();
+        var p = BanterChatApp.Presentation(phone.Width, phone.Height);
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        // Scale 1 below the design size, so the window IS the viewport the cascade answered to.
+        Assert.Equal(phone.Width, doc.ViewportWidth, 1);
+        Assert.Equal(phone.Height, doc.ViewportHeight, 1);
+        Assert.True(doc.ViewportWidth <= BanterChatApp.NarrowWidth, "a phone window is not narrow");
+    }
+
+    [Fact]
     public void OpeningTheRoomsAlsoBringsBackWhoIsInThem()
     {
         // The roster is hidden on a narrow screen, and for a while it was hidden with no way back

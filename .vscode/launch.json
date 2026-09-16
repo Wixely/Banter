@@ -109,6 +109,58 @@
       "stopAtEntry": false
     },
     {
+      // The mobile interface, on this machine. Not a simulation and not a preview: below the
+      // design width the app lays out at the window's OWN pixels, so a 412x915 window is a
+      // 412x915 phone — the same breakpoints, the same one-column layout, the same overlay for
+      // rooms and people behind the mark at the top of the rail. --phone also turns on touch
+      // sizing, which a width alone cannot: those rules key off the pointer the host reports,
+      // and a desktop host always says mouse.
+      //
+      // What this canNOT show you, and still wants a device: the soft keyboard shrinking the
+      // surface, real fling momentum, density conversion, and the file picker handing back a
+      // content:// URI.
+      "name": "Desktop app (alice, phone portrait)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.App.Desktop/bin/Debug/net10.0/banter.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "alice",
+        "--pass", "banter",
+        "--room", "#main",
+        "--phone", "412x915",
+        // Its own settings file, so looking at the phone layout does not leave the desktop
+        // client remembering it was a phone.
+        "--settings", "${workspaceFolder}/.banter-dev/alice-phone.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      // Landscape is a different shape with different problems: wide enough that a width-only
+      // breakpoint would call it a desktop, and short enough that the header, composer and voice
+      // row together take about half the screen. It crosses the same breakpoint as portrait
+      // because the breakpoint is 960 — see NarrowWidth in BanterChatApp.
+      "name": "Desktop app (alice, phone landscape)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Banter.App.Desktop/bin/Debug/net10.0/banter.dll",
+      "args": [
+        "--server", "tcp://127.0.0.1:7770",
+        "--user", "alice",
+        "--pass", "banter",
+        "--room", "#main",
+        "--phone", "915x412",
+        "--settings", "${workspaceFolder}/.banter-dev/alice-phone.json"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
       "name": "Desktop app (bob)",
       "type": "coreclr",
       "request": "launch",
@@ -390,6 +442,25 @@
         "Desktop app (alice)",
         "Agent (dagger, local)",
         "Agent (scout, via DaggerAgent + CLIs)"
+      ],
+      "stopAll": true
+    },
+    {
+      // The mobile smoke test: a server and the app in a phone-shaped window. The quickest way
+      // to see the responsive work, and the one that needs no device.
+      "name": "Server + alice (phone)",
+      "configurations": ["Server", "Desktop app (alice, phone portrait)"],
+      "stopAll": true
+    },
+    {
+      // The phone beside a desktop window, signed in as two different people in the same room.
+      // Worth it for the things only a comparison shows: that a message sent from one arrives
+      // looking right in the other, and how much less of the conversation the phone holds.
+      "name": "Server + alice (phone) + bob (desktop)",
+      "configurations": [
+        "Server",
+        "Desktop app (alice, phone portrait)",
+        "Desktop app (bob)"
       ],
       "stopAll": true
     },

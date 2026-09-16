@@ -20,7 +20,7 @@ if (cli is null)
         banter - Banter desktop client
 
           banter [--server <uri>] [--user <name>] [--pass <secret>] [--room #main] [--rooms #a,#b]
-                 [--settings <path>] [--save] [--forget]
+                 [--settings <path>] [--save] [--forget] [--phone [WxH]]
 
         With no arguments it opens on the sign-in screen, or signs straight in if it was told to
         stay signed in last time. Anything given here overrides what is stored and skips that
@@ -36,6 +36,11 @@ if (cli is null)
         A password may also come from --pass or the BANTER_PASS environment variable, which is
         what a scripted or debugger launch should use - neither is ever written to disk.
 
+        --phone opens a phone-shaped window sized for a finger (412x915, or the WxH given -
+        915x412 for landscape). Below the design width the layout is at the window's own pixels,
+        so this is the mobile interface itself rather than a picture of one: the same breakpoints
+        and the same touch targets, on whatever machine is in front of you.
+
         Transport is chosen by URI scheme:
           tcp://host:port           plain TCP
           cupri://<intonation-uri>  CupriNet mesh (paste the mesh-magnet link)
@@ -43,7 +48,16 @@ if (cli is null)
     return 0;
 }
 
-var (argServer, argUser, argPass, argRooms, settingsPath, save, forget) = cli.Value;
+var (argServer, argUser, argPass, argRooms, settingsPath, save, forget, phone) = cli.Value;
+
+// "412x915" -> a window that shape, with touch sizing on. Anything unparseable falls back to the
+// portrait default rather than failing the launch: this is a way of looking at the app, and
+// refusing to start over a typo in it would be out of proportion.
+var phoneSize = phone?.Split('x', 2) is [var pw, var ph]
+                && int.TryParse(pw, out var phoneW) && int.TryParse(ph, out var phoneH)
+                && phoneW > 0 && phoneH > 0
+    ? (W: phoneW, H: phoneH)
+    : (W: 412, H: 915);
 
 void Warn(string message) => Console.Error.WriteLine($"warning: {message}");
 
@@ -149,7 +163,12 @@ var app = new BanterChatApp(vm)
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
     StayInTray = settings.StayInTray,
     InitialZoom = settings.Zoom,
-    InitialTouchLayout = settings.TouchLayout,
+    // --phone means a finger whatever the saved preference says: asking for the mobile interface
+    // and getting desktop-sized controls in a phone-shaped window would be the preview being
+    // wrong in exactly the way the flag exists to prevent.
+    InitialTouchLayout = settings.TouchLayout || phone is not null,
+    WindowWidth = phone is not null ? phoneSize.W : 1100,
+    WindowHeight = phone is not null ? phoneSize.H : 760,
     Voices = [.. (voice?.Voices ?? []).Select(v => (v.Id, v.DisplayName))],
     FilePicker = filePicker,
     // The picker hands back a path; quoting it is what lets a chosen file have spaces in its name.
@@ -461,10 +480,11 @@ async Task<BanterClient> ConnectWithRetryAsync(
 
 static bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-static (string? Server, string? User, string? Pass, string[]? Rooms, string? SettingsPath, bool Save, bool Forget)?
+static (string? Server, string? User, string? Pass, string[]? Rooms, string? SettingsPath, bool Save, bool Forget,
+        string? Phone)?
     ParseArgs(string[] argv)
 {
-    string? server = null, user = null, pass = null, settingsPath = null;
+    string? server = null, user = null, pass = null, settingsPath = null, phone = null;
     var rooms = new List<string>();
     var save = false;
     var forget = false;
@@ -484,8 +504,19 @@ static (string? Server, string? User, string? Pass, string[]? Rooms, string? Set
             case "--rooms" when i + 1 < argv.Length:
                 rooms.AddRange(argv[++i].Split(',', StringSplitOptions.RemoveEmptyEntries));
                 break;
+
+            // Open phone-shaped, and sized for a finger. Below the design width the layout is at
+            // the window's own pixels, so this IS the mobile interface rather than a picture of
+            // it — the same breakpoints, the same touch targets, on whatever machine is here.
+            // An optional WxH because landscape (915x412) is a different shape with different
+            // problems, and it is the one a phone is usually held in one-handed.
+            case "--phone":
+                phone = i + 1 < argv.Length && argv[i + 1].Contains('x', StringComparison.Ordinal)
+                    ? argv[++i]
+                    : "412x915";
+                break;
         }
     }
 
-    return (server, user, pass, rooms.Count > 0 ? rooms.ToArray() : null, settingsPath, save, forget);
+    return (server, user, pass, rooms.Count > 0 ? rooms.ToArray() : null, settingsPath, save, forget, phone);
 }

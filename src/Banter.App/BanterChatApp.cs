@@ -191,8 +191,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
     public override string Title => "Banter";
     public override object Model => ViewModel.Model;
-    public override int Width => 1100;
-    public override int Height => 760;
+    public override int Width => WindowWidth;
+    public override int Height => WindowHeight;
+
+    /// <summary>
+    /// The window this app asks its host to open at. The default is a desktop window; a head can
+    /// ask for a phone-shaped one instead, which — with <see cref="InitialTouchLayout"/> — is the
+    /// mobile interface on a machine that has no phone attached to it. Below
+    /// <see cref="DesignWidth"/> the layout is at the window's own pixels, so a 412x915 window is
+    /// a 412x915 phone and every breakpoint fires exactly as it would there.
+    /// </summary>
+    public int WindowWidth { get; init; } = 1100;
+
+    public int WindowHeight { get; init; } = 760;
 
     /// <summary>
     /// A dark title bar. Without it Windows gives the window its default light chrome, which on a
