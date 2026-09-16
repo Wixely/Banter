@@ -656,6 +656,22 @@ public sealed partial class ChatModel
     public List<ChoiceRow> FlashChoices { get; set; } = [];
 
     /// <summary>
+    /// Mouse or finger. The engine puts <c>cupri-coarse</c> / <c>cupri-fine</c> on the body from
+    /// whatever the HOST says it is being driven by, and every touch-target rule in
+    /// <see cref="BanterChatApp.Css"/> keys off that class rather than off a width.
+    ///
+    /// <para>Which leaves the desktop unable to show its own phone layout. Shrinking the window
+    /// gets the narrow rules, because those ARE width rules — but not the touch sizes, so the
+    /// preview is systematically roomier than the real thing: a 38px rail button instead of 44,
+    /// a 36px room tab instead of 44, buttons ten pixels shorter apiece. On the screen where
+    /// vertical space is already the scarce thing, that understates the crowding.</para>
+    ///
+    /// <para>So it is settable. Not only a preview either — a touch laptop or a Steam Deck is a
+    /// coarse pointer on a large screen, which no width breakpoint can detect.</para>
+    /// </summary>
+    public List<ChoiceRow> PointerChoices { get; set; } = [];
+
+    /// <summary>
     /// The settings page's sections, and which fields each shows.
     ///
     /// <para>Sections rather than one long list because the list cannot scroll — an overflow box

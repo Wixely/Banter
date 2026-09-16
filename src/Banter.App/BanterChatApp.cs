@@ -105,6 +105,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Told when the interface scale changes, so the head can remember it.</summary>
     public Action<float> ZoomChanged { get; init; } = _ => { };
 
+    /// <summary>Told when the pointer kind changes, so the head can remember it. A head whose
+    /// platform answers this for itself — Android, the web — never wires it.</summary>
+    public Action<bool> PointerChanged { get; init; } = _ => { };
+
+    /// <summary>The pointer kind to start at, as the head last saved it. False on a desktop that
+    /// has never been told otherwise; a touch head sets its own profile and ignores this.</summary>
+    public bool InitialTouchLayout { get; init; }
+
     /// <summary>
     /// The voices this machine's speech backend offers, as (id, label). Empty when nothing here
     /// speaks — the settings page then says so rather than offering an empty picker.
@@ -568,6 +576,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         </div>
                       </div>
                       <div class="mgmt-hint">Click a name to step through the voices your speech server offers, and once more to let it be dealt by name again. Two agents that sound alike are two agents you cannot tell apart with your back to the screen.</div>
+                    </div>
+                  </div>
+                  <div class="{{YouFieldsClass}}">
+                    <div class="mgmt-label">Pointer</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices">
+                        <div class="{{RowClass}}" data-repeat="PointerChoices" data-pointer="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                            <div class="mgmt-choice-hint">{{Hint}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">A phone and the web answer this for themselves; a desktop window cannot, so it asks. Narrow the window as well and this is the whole of the phone layout, on a machine that has one.</div>
                     </div>
                   </div>
                   <div class="{{YouFieldsClass}}">
@@ -1854,6 +1877,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.Zoom = InitialZoom;
         ViewModel.SetZoom(doc.Zoom);
 
+        // Before the first frame, so a remembered choice is what the window opens as rather than
+        // something it changes into. A touch head has already set its own profile by now and the
+        // model is only being told what is already true of it.
+        ViewModel.SetTouchLayout(InitialTouchLayout || doc.InputProfile.CoarsePointer);
+        if (ViewModel.TouchLayout)
+        {
+            doc.InputProfile = InputProfile.Touch;
+        }
+
         // The wheel and the keyboard reach zoom without this page, so the page has to follow
         // them rather than be the only thing that knows.
         doc.ZoomChanged += zoom =>
@@ -2280,6 +2312,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-settings-section", e =>
         {
             ViewModel.ShowSettingsSection(e.Value ?? "you");
+            doc.Refresh();
+            return true;
+        });
+
+        // The only setting here that reaches the ENGINE rather than the model: InputProfile is what
+        // puts cupri-coarse on the body, and every touch-target rule keys off that class. A head
+        // that knows its own pointer (Android, the web) sets this itself and never shows the
+        // control as anything but a description of what is already true.
+        doc.OnAction("data-pointer", e =>
+        {
+            ViewModel.ChoosePointer(e.Value ?? "mouse");
+            doc.InputProfile = ViewModel.TouchLayout ? InputProfile.Touch : InputProfile.Desktop;
+            PointerChanged(ViewModel.TouchLayout);
             doc.Refresh();
             return true;
         });

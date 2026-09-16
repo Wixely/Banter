@@ -61,6 +61,18 @@ public sealed record BanterSettings
     public bool FlashOnMention { get; init; } = true;
 
     /// <summary>
+    /// Size the interface for a finger rather than a cursor. Off by default and only meaningful on
+    /// the desktop: Android and the web are told what they are by the host and never read this.
+    ///
+    /// <para>It exists because a width cannot answer the question. The touch-target rules key off
+    /// the engine's pointer class, so narrowing a desktop window produces the phone LAYOUT without
+    /// the phone SIZES — a preview that is quietly roomier than the thing it previews. Turning
+    /// this on with a narrow window is the whole mobile interface, on a machine that has one. It is
+    /// also simply correct on a touchscreen laptop.</para>
+    /// </summary>
+    public bool TouchLayout { get; init; }
+
+    /// <summary>
     /// Speech settings (PLAN §6). The API key is absent for the same reason the password is:
     /// it comes from <c>BANTER_SPEECH_KEY</c>.
     /// </summary>

@@ -244,6 +244,22 @@ public sealed partial class ChatViewModel
 
     public void ChooseFlash(string value) => SetFlashOnMention(value == "flash");
 
+    /// <summary>True when the interface should be sized for a finger. See ChatModel.PointerChoices
+    /// for why this is a setting and not something the window width can answer.</summary>
+    public bool TouchLayout { get; private set; }
+
+    public void SetTouchLayout(bool touch)
+    {
+        TouchLayout = touch;
+        Model.PointerChoices = PointerChoices(touch ? "touch" : "mouse");
+    }
+
+    public void ChoosePointer(string value) => SetTouchLayout(value == "touch");
+
+    private static List<ChoiceRow> PointerChoices(string selected) => Choices(selected,
+        ("mouse", "Mouse or trackpad", "Controls sized for a cursor."),
+        ("touch", "Touch", "Everything you can tap becomes at least 44 across. What a phone gets, and what a touchscreen laptop wants."));
+
     private static List<ChoiceRow> FlashChoices(string selected) => Choices(selected,
         ("flash", "Flash the taskbar", "Only when the window is not already in front, and only for an explicit @name."),
         ("quiet", "Nothing", "The message is still highlighted in the room."));

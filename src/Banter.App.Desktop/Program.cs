@@ -149,6 +149,7 @@ var app = new BanterChatApp(vm)
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
     StayInTray = settings.StayInTray,
     InitialZoom = settings.Zoom,
+    InitialTouchLayout = settings.TouchLayout,
     Voices = [.. (voice?.Voices ?? []).Select(v => (v.Id, v.DisplayName))],
     FilePicker = filePicker,
     // The picker hands back a path; quoting it is what lets a chosen file have spaces in its name.
@@ -204,6 +205,14 @@ var app = new BanterChatApp(vm)
     ZoomChanged = zoom =>
     {
         settings = settings with { Zoom = zoom };
+        settings.TrySave(settingsPath, Warn);
+    },
+
+    // Same reasoning as zoom: a preference about the machine in front of you, saved when it is
+    // made. Wired only here — Android and the web are told what their pointer is by the host.
+    PointerChanged = touch =>
+    {
+        settings = settings with { TouchLayout = touch };
         settings.TrySave(settingsPath, Warn);
     },
 };

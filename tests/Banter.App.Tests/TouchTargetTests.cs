@@ -110,6 +110,42 @@ public sealed class TouchTargetTests(ITestOutputHelper output)
         Assert.True(small.Count == 0, $"{small.Distinct().Count()} tap target(s) under {MinTap}dp on '{page}' at {w}x{h}");
     }
 
+    [Fact]
+    public void TheDesktopCanAskForTheSizesAPhoneGets()
+    {
+        // A desktop window narrowed to a phone's width gets the phone LAYOUT, because those are
+        // width rules — but not the phone SIZES, because those key off the engine's pointer class
+        // and a desktop host always says "mouse". The preview was therefore systematically roomier
+        // than the thing it previewed, on the axis where a phone has least to spare. This is the
+        // setting that closes that, and the point of it is that it moves real pixels.
+        var app = AppPages.Showing("chat");
+        using var doc = app.CreateDocument();
+        doc.Refresh();
+
+        var p = BanterChatApp.Presentation(412, 915);
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        // Height > 0: several rail buttons are `hidden` for a non-admin and stay in the tree at
+        // no size, and the first one in document order is one of them.
+        float RailButton() => TapTargets(doc.Root)
+            .First(n => n.Element?.GetAttribute("class")?.Split(' ').Contains("rail-button") == true
+                        && n.Height > 0)
+            .Height;
+
+        var withAMouse = RailButton();
+
+        app.ViewModel.SetTouchLayout(true);
+        doc.InputProfile = InputProfile.Touch;
+        doc.Refresh();
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+        var withAFinger = RailButton();
+
+        output.WriteLine($"rail button: {withAMouse:F0} with a mouse, {withAFinger:F0} with a finger");
+
+        Assert.True(withAMouse < MinTap, "the mouse layout is already finger-sized, so this proves nothing");
+        Assert.True(withAFinger >= MinTap, "asking for touch did not resize anything");
+    }
+
     [Theory]
     [MemberData(nameof(AppPages.OnAnySize), MemberType = typeof(AppPages))]
     public void NoTapTargetIsPushedOffTheEdgeByItsOwnSize(string page, int w, int h)
