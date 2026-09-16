@@ -1713,7 +1713,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           /* border-box, because this one has padding of its own and the room list above it does
              not: at content-box the same `width: 232px` made the two halves 233 and 252 wide and
              the overlay came out stepped. */
-          .roster.open { display: flex; flex-direction: column; position: absolute;
+          .roster.open { display: flex; flex-direction: column; position: fixed;
                          box-sizing: border-box;
                          left: 56px; top: 56%; width: 233px; height: 44%; z-index: 20;
                          border-left: 0; border-top: 1px solid #20262f;
@@ -1726,7 +1726,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           .sidebar { display: none; }
           /* 56% rather than the whole height, because the roster takes the rest of the column —
              see the note on .roster above. */
-          .sidebar.open { display: flex; position: absolute; left: 56px; top: 0;
+          .sidebar.open { display: flex; position: fixed; left: 56px; top: 0;
                           width: 232px; height: 56%; z-index: 20;
                           box-shadow: 0 0 40px #000000a8; }
 
