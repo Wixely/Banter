@@ -189,6 +189,60 @@ public sealed class ResponsiveLayoutTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void OpeningTheRoomsAlsoBringsBackWhoIsInThem()
+    {
+        // The roster is hidden on a narrow screen, and for a while it was hidden with no way back
+        // at all — so a phone could not tell you who was in the room or what work was open, which
+        // a desktop window could. It shares the overlay with the room list now, under the one
+        // toggle: rooms in the top half, people in the bottom.
+        var vm = Furnished();
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+        var p = BanterChatApp.Presentation(412, 915);
+
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+        Assert.Equal(0f, Find(doc, "roster").Node.Width, 1);
+
+        vm.ToggleRooms(narrow: true);
+        doc.Refresh();
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        var rooms = Find(doc, "sidebar").Node;
+        var people = Find(doc, "roster").Node;
+        output.WriteLine($"rooms {rooms.Width:F0}x{rooms.Height:F0}, people {people.Width:F0}x{people.Height:F0}");
+
+        Assert.True(people.Width > 0f, "the members are still unreachable on a phone");
+        Assert.True(people.Height > 0f, "the members have no height to be read in");
+
+        // Two halves of one column, not two things on top of each other.
+        Assert.Equal(rooms.Width, people.Width, 1);
+        Assert.True(rooms.Height + people.Height <= doc.ViewportHeight + 1f,
+            "the two halves together are taller than the screen they share");
+    }
+
+    [Fact]
+    public void OnAWideWindowPuttingTheRoomsAwayLeavesTheRosterAlone()
+    {
+        // The classes are inert above the breakpoint, and deliberately: there the roster is a
+        // column of its own, and putting the room list away is not a reason to take the members
+        // with it.
+        var vm = Furnished();
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+        var p = BanterChatApp.Presentation(1280, 800);
+
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+        var before = Find(doc, "roster").Node.Width;
+
+        vm.ToggleRooms(narrow: false);
+        doc.Refresh();
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        Assert.Equal(0f, Find(doc, "sidebar").Node.Width, 1);
+        Assert.Equal(before, Find(doc, "roster").Node.Width, 1);
+    }
+
+    [Fact]
     public void AnOpenedSidebarDoesNotStealTheChatsWidth()
     {
         // The reason it is an overlay and not a column. As a flex item with a width it would be

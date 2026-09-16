@@ -664,13 +664,23 @@ public sealed partial class ChatViewModel
         var showing = Model.SidebarClass.Contains("open", StringComparison.Ordinal)
                       || (!narrow && !Model.SidebarClass.Contains("shut", StringComparison.Ordinal));
         Model.SidebarClass = showing ? "sidebar shut" : "sidebar open";
+
+        // The roster rides along. On a narrow screen the two are not columns, they are the halves
+        // of one overlay — rooms above, people below — so one control moves both, and hiding the
+        // rooms without the members would leave a panel of people floating over the chat with
+        // nothing to explain it. On a wide window these classes do nothing: see RosterClass.
+        Model.RosterClass = showing ? "roster shut" : "roster open";
     }
 
     /// <summary>Puts the room list back under the stylesheet's control, whichever way it was
     /// forced. Called when the window crosses the breakpoint, so a choice made for one shape does
     /// not survive into the other — a sidebar forced open on a phone would otherwise still be
     /// covering the chat after the window was made wide again.</summary>
-    public void ResetRooms() => Model.SidebarClass = "sidebar";
+    public void ResetRooms()
+    {
+        Model.SidebarClass = "sidebar";
+        Model.RosterClass = "roster";
+    }
 
     public void SetZoom(float zoom)
     {

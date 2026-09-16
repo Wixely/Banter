@@ -386,7 +386,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-button class="{{ReadbackClass}}">{{ReadbackText}}</cupri-button>
             </div>
           </div>
-          <div class="roster">
+          <div class="{{RosterClass}}">
             <div class="{{TasksClass}}">
               <div class="roster-title">Work</div>
               <div class="{{RowClass}}" data-repeat="Tasks">
@@ -1701,17 +1701,33 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            So the answer is not to make things smaller. It is to admit that a screen this size
            holds one column, and to decide which. */
         @media (max-width: 960px) {
-          /* Who is in the room is a reference, and referring to it is not why a phone is out of
-             a pocket. It comes back with the window. */
+          /* Who is in the room is a reference, not why a phone came out of a pocket — so it is
+             not a column here. But it cannot simply be gone either: hidden with no way back, a
+             phone could not tell you who was in the room or what work was open, which is a thing
+             the app can do that mobile silently could not.
+
+             So it shares the overlay with the room list, under the same toggle: rooms in the top
+             half, people in the bottom. One control, because on this screen they are not two
+             columns — they are the two halves of one panel. */
           .roster { display: none; }
+          /* border-box, because this one has padding of its own and the room list above it does
+             not: at content-box the same `width: 232px` made the two halves 233 and 252 wide and
+             the overlay came out stepped. */
+          .roster.open { display: flex; flex-direction: column; position: absolute;
+                         box-sizing: border-box;
+                         left: 56px; top: 56%; width: 233px; height: 44%; z-index: 20;
+                         border-left: 0; border-top: 1px solid #20262f;
+                         box-shadow: 0 0 40px #000000a8; }
 
           /* An overlay, not a column: a column here would be taking the width from the only
              thing that needs it. Absolute so it lifts out of the flex row entirely — left as a
              flex item with a width it would still be shrinking `.main`, which is the bug this
              whole block exists to fix. */
           .sidebar { display: none; }
+          /* 56% rather than the whole height, because the roster takes the rest of the column —
+             see the note on .roster above. */
           .sidebar.open { display: flex; position: absolute; left: 56px; top: 0;
-                          width: 232px; height: 100%; z-index: 20;
+                          width: 232px; height: 56%; z-index: 20;
                           box-shadow: 0 0 40px #000000a8; }
 
           /* The rail stays. It is the only way to reach tools, agents, users, work and settings,

@@ -704,6 +704,17 @@ public sealed partial class ChatModel
     /// </summary>
     public string SidebarClass { get; set; } = "sidebar";
 
+    /// <summary>
+    /// Who is in the room: <c>roster</c>, <c>roster open</c> or <c>roster shut</c>, moved by the
+    /// same toggle that moves <see cref="SidebarClass"/>.
+    ///
+    /// <para>Two columns, one control, because on a narrow screen they are not two columns — they
+    /// are the two halves of one overlay, rooms above and people below. On a wide window the
+    /// classes are inert: the roster is a column of its own there, and putting the room list away
+    /// is not a reason to take the members with it.</para>
+    /// </summary>
+    public string RosterClass { get; set; } = "roster";
+
     public string ConnectServer { get; set; } = "";
     public string ConnectUser { get; set; } = "";
 
