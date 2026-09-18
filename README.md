@@ -80,8 +80,11 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: sign-in screen (server/name/password), on every head | implemented, tested |
 | App: stay signed in — password kept user-only, DPAPI-wrapped on Windows | implemented, tested |
 | App: sign out / switch server or account (Settings → Account) | implemented, tested |
-| `Banter.App.Android` (`CupriActivity` head, TCP) | implemented; builds a signed 26 MB APK, not yet run on a device |
+| `Banter.App.Android` (`CupriActivity` head, TCP) | implemented; signed ~51 MB APK, **run on a device**: sign in, join, send, receive, attach, all green |
+| App: one column, touch sizing and breakpoints on a phone | implemented, tested; confirmed on a 411×914 dp screen |
+| App: sends survive the reconnect a backgrounded phone forces (§7a) | implemented, tested; confirmed on a device |
 | Android voice: `AudioRecord` capture, `AudioTrack` playback, in-context mic permission | implemented; needs a device |
+| Android: fling momentum in the timeline | **absent** — the list tracks the finger and stops dead on release; wants one confirmation with a real finger before it goes upstream |
 
 ## Running the server
 
@@ -428,8 +431,29 @@ dotnet workload install android
 dotnet build src/Banter.App.Android/Banter.App.Android.csproj -c Release -t:SignAndroidPackage
 ```
 
+**A `Debug` APK needs `-p:EmbedAssembliesIntoApk=true` as well**, or it dies in `Runtime.initInternal`
+before the first frame: fast deployment expects the assemblies to be pushed separately, and under
+CoreCLR the store is never registered, so `System.Private.CoreLib.dll` is simply not found. The
+message in `logcat` names the assembly and not the cause, which is a slow half hour if you meet it
+without knowing.
+
+An emulator is enough for everything but the microphone: `android-36 google_apis x86_64` at
+1080×2400 / 420 dpi is 411×914 dp, near enough the 412×915 that `banter --phone` draws, and
+`hw.keyboard = no` means the soft keyboard actually appears. `10.0.2.2` is the host from inside it,
+so a server on the laptop is `tcp://10.0.2.2:7770`.
+
 It speaks `tcp://` only for now — CupriNet on Android is still the Phase 0 spike PLAN §10 lists as
 outstanding, and the head says so rather than timing out with no reason.
+
+**A phone is a client that keeps losing its connection**, and that is normal rather than
+exceptional: Android destroys a backgrounded app's TCP sockets once it has been out of the
+foreground long enough — measured at 30–45s on the emulator, logged by `netd` as `Destroyed live
+tcp sockets for uids={…}`. The file picker is a trip out of the foreground by definition, so
+attaching a file reliably crossed that line. `BanterClient` already redialled; what was missing was
+that anything sent in the gap was thrown away at a connection already being replaced. It now waits
+for the session to be usable again (`BanterClientOptions.ReconnectGrace`, ten seconds, and the wait
+is for the rooms to be rejoined rather than merely for the socket, because the server rejects a
+message to a room the session has not joined yet).
 
 Voice on the phone uses **remote engines only** (PLAN §6a): an OpenAI-compatible endpoint or a
 Wyoming service, set through `voice.endpoint` or `voice.wyomingAsr`. Local Whisper stays the

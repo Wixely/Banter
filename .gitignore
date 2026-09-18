@@ -15,3 +15,10 @@ src/Banter.App.Web/wwwroot/seed.json
 
 # Design scratch, not part of the repo: the visual sample the app was built from.
 preview.html
+
+# The server's default SQLite database. `--db sqlite` with no `--connection` resolves
+# "Data Source=banter.db" against the working directory, so running the server from the repo
+# root — which is the obvious way to try it — drops a database into the working tree.
+banter.db
+banter.db-shm
+banter.db-wal

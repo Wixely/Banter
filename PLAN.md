@@ -116,38 +116,40 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Capability | Shared | Server | CLI | Desktop | Android | Web | Agents |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | **Foundations** |
-| Protocol v1: envelope, payloads, codec, framing | ✅ | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
-| CupriMark capability negotiation | ✅ | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
-| Transport seam + plain-TCP fallback | ✅ | ✅ | ✅ | ✅ | ⬜ | – | ✅ |
-| CupriNet mesh transport | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ⬜ |
+| Protocol v1: envelope, payloads, codec, framing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CupriMark capability negotiation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Transport seam + plain-TCP fallback | ✅ | ✅ | ✅ | ✅ | ✅ | – | ✅ |
+| CupriNet mesh transport | ✅ | ✅ | ⬜ | ✅ | ⬜ | ✅ | ⬜ |
 | Persistence: Dapper + migrations (SQLite / Postgres) | – | ✅ | – | – | – | – | – |
 | **Phase 1 — text chat** |
-| Accounts, auth, hashed credentials | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
-| Rooms: join/part/topic/presence/members | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
-| Messages + history with cursor paging | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | ✅ |
-| Reconnect with backoff + room rejoin | ✅ | – | ✅ | ✅ | ⬜ | ⬜ | ✅ |
-| Streamed messages (`MSG_STREAM_*`) | ✅ | ✅ | 🔨 | ✅ | ⬜ | ⬜ | ✅ |
+| Accounts, auth, hashed credentials | – | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Rooms: join/part/topic/presence/members | – | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Messages + history with cursor paging | – | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reconnect with backoff + room rejoin | ✅ | – | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Sends held through the reconnect a phone forces (§7a) | ✅ | – | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Streamed messages (`MSG_STREAM_*`) | ✅ | ✅ | 🔨 | ✅ | ✅ | ✅ | ✅ |
 | **Phase 2 — app + storage** |
-| Room-scoped file storage: chunks, dedup, grants, quotas | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | – |
-| Timeline: virtualized scrollback, wrapping rows | – | – | – | ✅ | ⬜ | ⬜ | – |
-| Paged scrollback (anchored prepend) | – | ✅ | – | ✅ | ⬜ | ⬜ | – |
-| Composer, unread badges, room switching | – | – | 🔨 | ✅ | ⬜ | ⬜ | – |
-| Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ⬜ | ⬜ | – |
-| Inline image rendering | – | – | – | ⬜ | ⬜ | ⬜ | – |
+| Room-scoped file storage: chunks, dedup, grants, quotas | – | ✅ | ✅ | ✅ | ✅ | ✅ | – |
+| Timeline: virtualized scrollback, wrapping rows | – | – | – | ✅ | ✅ | ✅ | – |
+| Paged scrollback (anchored prepend) | – | ✅ | – | ✅ | ✅ | ✅ | – |
+| Composer, unread badges, room switching | – | – | 🔨 | ✅ | ✅ | ✅ | – |
+| One column, touch sizing, phone breakpoints | – | – | – | ✅ | ✅ | ✅ | – |
+| Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ✅ | ⬜ | – |
+| Inline image rendering | – | – | – | ✅ | ✅ | ✅ | – |
 | QR / mesh-magnet server join | – | ✅ | – | 🔨 | ⬜ | ⬜ | – |
 | **Host heads** |
 | Desktop head (Win/Linux/macOS) | – | – | – | ✅ | – | – | – |
-| Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | ⬜ | – | – |
-| Web head (WASM over CupriNet.WebRtc) — Phase 2.5 | – | ⬜ | – | – | – | ⬜ | – |
+| Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | 🔨 | – | – |
+| Web head (WASM over CupriNet.WebRtc) — Phase 2.5 | – | ✅ | – | – | – | ✅ | – |
 | **Phase 3/4 — voice** |
-| `ITranscriptionEngine` / `ITextToSpeech` abstractions | ⬜ | – | – | – | – | – | – |
-| OpenAI-compatible speech provider | ⬜ | – | – | – | – | – | – |
-| Wyoming provider (Whisper/Piper) | ⬜ | – | – | – | – | – | – |
-| Local STT (Whisper.net, from Bantz) | ⬜ | – | – | ⬜ | ⬜ | – | – |
-| Voice settings + per-speaker voices (§6b) | – | – | – | ✅ | ⬜ | ⬜ | – |
-| Global push-to-talk hotkey | – | – | – | ⬜ | – | – | – |
+| `ITranscriptionEngine` / `ITextToSpeech` abstractions | ✅ | – | – | – | – | – | – |
+| OpenAI-compatible speech provider | ✅ | – | – | – | – | – | – |
+| Wyoming provider (Whisper/Piper) | ✅ | – | – | – | – | – | – |
+| Local STT (Whisper.net, from Bantz) | ✅ | – | – | 🔨 | – | – | – |
+| Voice settings + per-speaker voices (§6b) | – | – | – | ✅ | ✅ | ⬜ | – |
+| Global push-to-talk hotkey | – | – | – | 🔨 | – | – | – |
 | Always-listening + wake word | – | – | – | ⬜ | ⬜ | ⬜ | – |
-| TTS playback of incoming messages | – | – | – | ⬜ | ⬜ | ⬜ | – |
+| TTS playback of incoming messages | – | – | – | 🔨 | 🔨 | ⬜ | – |
 | **Phase 5 — agents** |
 | Agent SDK: connect, join, stream replies, per-room context | – | – | – | – | – | – | ✅ |
 | `LlmChatAgent` against any OpenAI-compatible endpoint | – | – | – | – | – | – | ✅ |
@@ -167,14 +169,31 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Work page: every room's tasks, operator view (§8b) | – | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
 | ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
 | **Phase 6 — hardening** |
-| Account management: users page, temp passwords, `/passwd` | – | ✅ | ✅ | ✅ | ⬜ | ⬜ | – |
+| Account management: users page, temp passwords, `/passwd` | – | ✅ | ✅ | ✅ | ✅ | ✅ | – |
 | Voice notes as attachments | – | ⬜ | – | ⬜ | ⬜ | ⬜ | – |
 
-**Reading the gaps.** Almost every ⬜ in the client columns is the same two missing things: the
-**Android and web heads do not exist yet**, so every capability they would carry is unstarted by
-definition. The other clusters are **voice** (three empty projects — the whole of Phases 3–4) and
-**agent-facing UI** (the server tracks tasks, delegators and rosters, but no client shows them).
-The CLI's ⬜s are mostly deliberate: it is a smoke-test tool, not a product surface.
+**Reading the gaps.** *Rewritten 2026-09-18.* The previous version of this table said the Android
+and web heads did not exist yet and marked every capability they carry ⬜ — which stopped being
+true two phases ago and made this table actively misleading to plan from. Both heads exist and run
+the same `CupriApp`, so a capability implemented in `Banter.App` is present on all three unless
+something platform-shaped is missing.
+
+What the ticks are worth differs by column, and it is worth being honest about which:
+
+- **Desktop** is exercised by the headless suite and used daily.
+- **Android** was run on a device (an `android-36 google_apis x86_64` emulator at 411×914 dp) on
+  2026-09-18: sign in, join, send, receive 60 live messages, scroll, attach via the system picker,
+  receive another client's attachment. Voice on the phone is the exception — it is written but has
+  never met a microphone.
+- **Web** rests on the end-to-end run recorded in §2.5 — connect, join, send, and the message read
+  back out of the server's database over real WebRTC — not on a suite.
+
+What is genuinely left: **voice needs real devices** rather than more code (§6 is written and
+tested headlessly; capture, playback, local Whisper and the hotkey all want a person with a
+microphone), **always-listening and wake word** are Phase 4 and unstarted, **CupriNet on Android**
+is the Phase 0 spike still outstanding — the head links no mesh transport, so a phone can only dial
+a `tcp://` host:port — and **fling momentum** is missing from the Android timeline. The CLI's ⬜s
+are mostly deliberate: it is a smoke-test tool, not a product surface.
 
 ## 3. Transport: CupriNet
 
@@ -557,6 +576,53 @@ Platform-specific pieces (live in the host heads):
 - **macOS global hotkey:** CGEvent tap (requires Accessibility permission) — Phase 6, best-effort.
 
 `Banter.Cli` ships first and stays alive as the smoke-test client and server admin console.
+
+### 7a. A phone is a client that keeps losing its connection
+
+*Measured on a device, 2026-09-18.* Android destroys a backgrounded app's TCP sockets once it has
+been out of the foreground long enough — 30–45 seconds on the emulator, logged by `netd` as
+`Destroyed live tcp sockets for uids={…}`. Nothing warns the app; the receive loop simply ends.
+
+This is not an edge case, it is the shape of the platform. A phone is locked, pocketed, interrupted
+by a notification and handed a different app constantly, and each of those is a reconnect. It was
+found through the **file picker**, which makes it deterministic rather than occasional: choosing a
+file is a trip out of the foreground by definition, so `startActivityForResult` reliably crossed
+the line and the upload came back to a connection that no longer existed.
+
+`BanterClient` already redialled — that half was right, and did its job within a second or two
+every time. What was missing was that **anything issued in the gap was thrown away at a connection
+already being replaced.** The consequences differed only in how loudly they failed: an upload
+reported `upload failed: the connection to the server was lost` and dropped the file, while a
+message vanished with no error at all, because every caller sends with a discard and the fault had
+nobody to throw to.
+
+So a send now waits for the session rather than failing into the gap
+(`BanterClientOptions.ReconnectGrace`, ten seconds by default; `TimeSpan.Zero` keeps the old
+instant failure). Two details decide whether that actually works, and both were learned the hard
+way:
+
+- **The wait is for the session to be usable, not merely dialled.** Rooms are rejoined on a
+  background task after a redial, and the server rejects a message to a room the session has not
+  joined (`TryGetJoinedRoom`), so releasing sends when the socket came up would swap one silent
+  loss for another. The rejoin's own `JOIN` requests therefore bypass the gate, or they would wait
+  on themselves.
+- **A send that fails shuts the gate itself.** On this drop the *write* finds out before the
+  receive loop does, so a retry that trusts the client's own view of "connected" is handed the same
+  dead socket. The first implementation did exactly that, and the mid-transfer test caught it.
+
+An upload cut mid-transfer starts again once: its chunks are keyed to a file id the dead session
+opened, and there is nothing to resume against on the far side. That makes interrupted uploads
+routine, which in turn exposed that each one leaves an open handle on its `.part` file —
+`FileStore` closes them on disposal, but an upload abandoned on a server that keeps running still
+holds one, because pending uploads are attributed to a *user* rather than a session and one user
+may legitimately be uploading from two devices at once.
+
+**What this means elsewhere.** Every design in this plan that assumes a long-lived session should
+be read as assuming a session that is repeatedly re-established: always-listening (§6, Phase 4)
+will hold a microphone open across exactly these drops, and the work ledger's leases (§8b) are
+already built on the assumption that a claim outlives a connection. The desktop `--phone` flag
+cannot reach any of this — it has no platform to destroy its sockets — so this class of bug needs a
+device or an emulator, not a resized window.
 
 ## 8. Agent integration
 
