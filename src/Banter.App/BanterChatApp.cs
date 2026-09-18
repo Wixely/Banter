@@ -642,8 +642,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <cupri-form class="connect-card" data-connect="1">
               <div class="connect-title">Banter</div>
               <div class="connect-label">Server</div>
-              <!-- Focused on arrival, so the first thing typed lands somewhere. -->
-              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770" data-autofocus="1"></cupri-textfield>
+              <!-- Focused on arrival, so the first thing typed lands somewhere. inputmode=url
+                   because a soft keyboard otherwise treats this as prose: Android's default for a
+                   text field is CapSentences with autocorrect, and it typed "Tcp://10.0.2.2:7770"
+                   into the one field on this screen where every character is literal. The scheme
+                   survives that (Uri lowercases it), a hostname would not always. -->
+              <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770" inputmode="url" data-autofocus="1"></cupri-textfield>
               <div class="connect-label">Name</div>
               <cupri-textfield class="connect-field" value="{{ConnectUser}}" placeholder="your nick"></cupri-textfield>
               <div class="connect-label">Password</div>

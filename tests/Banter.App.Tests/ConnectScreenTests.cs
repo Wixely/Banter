@@ -322,4 +322,19 @@ public sealed class ConnectScreenAppTests
         Assert.Equal(420 * 900 * 4, pixels.Length);
         Assert.Contains(pixels, b => b != 0);
     }
+
+    /// <summary>
+    /// A soft keyboard's default for a text field is prose: Android gives it CapSentences with
+    /// autocorrect, and on a phone it typed "Tcp://10.0.2.2:7770" into the field where every
+    /// character is meant literally. <c>Uri</c> lowercases a scheme so that one survived, but a
+    /// hostname would not always, and the field should not be relying on being rescued.
+    /// </summary>
+    [Fact]
+    public void TheServerFieldTellsTheKeyboardItIsAUrlAndNotASentence()
+    {
+        var html = AppPages.Showing("connect").Html;
+
+        var field = html.Split("<cupri-textfield").First(f => f.Contains("{{ConnectServer}}"));
+        Assert.Contains("inputmode=\"url\"", field);
+    }
 }
