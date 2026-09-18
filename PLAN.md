@@ -1358,9 +1358,21 @@ a test asserting no secret-shaped field ever appears, since a plain JSON file in
 not a credential store); and **file transfer** (attachment chips, `/upload`, `/files`, download
 that never silently overwrites).
 
-Still to do here: QR/mesh-magnet join (the `cupri://` scheme is accepted, but generating and
-scanning a code is a per-head job and really an Android concern), inline image rendering for
-image attachments, a native file picker per head to replace `/upload`, and the Android head.
+Still to do here: QR/mesh-magnet join — the `cupri://` scheme is accepted, but generating and
+scanning a code is a per-head job and really an Android concern. Inline image rendering, the
+native file picker and the Android head are all done.
+
+***Shipped in v0.7.0 (2026-09-18) — the phone.*** The client lays itself out for a small screen
+(one column, the chat being the one; management pages become the page; touch sizing keyed off the
+pointer the host reports rather than the width), and the Android head has now been **run on a
+device** rather than merely built: sign in, join, send, receive a live room, scroll it, attach
+through the system picker. Two things that only a device could have told us came out of that pass,
+and both are written up where they belong rather than only in a changelog — the head runs on
+**CoreCLR** because the .NET 10 Mono pack miscompiles a string comparison and kills the app before
+its first frame (§7, and the pin cannot fire from a NuGet `.targets` for any package consumer), and
+a phone **loses its sockets every time it is put down** (§7a), which made every attachment fail and
+every message typed on return disappear. The fix for the latter is in `Banter.Client.Core`, so the
+CLI, the desktop head and the agents get it too.
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 
