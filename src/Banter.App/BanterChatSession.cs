@@ -224,10 +224,33 @@ public sealed partial class BanterChatSession : IDisposable
         return _client.PartAsync(room, cancellationToken: cancellationToken);
     }
 
-    public Task SendAsync(string room, string text, string replyTo = "") =>
-        replyTo.Length > 0
-            ? _client.ReplyAsync(room, text, replyTo).AsTask()
-            : _client.SendMessageAsync(room, text).AsTask();
+    /// <summary>
+    /// Says something in a room, and says so in the room when it could not be said.
+    ///
+    /// <para>Every caller starts this with a discard — sending is not something the UI waits on —
+    /// so a fault here has nobody to throw to. It used to go nowhere: the composer had already
+    /// been cleared, the message never reached the server, and the room showed no trace of
+    /// either. The words go back in the composer rather than being described, because a message
+    /// you have to retype from memory is still a message that was lost.</para>
+    /// </summary>
+    public async Task SendAsync(string room, string text, string replyTo = "")
+    {
+        try
+        {
+            if (replyTo.Length > 0)
+            {
+                await _client.ReplyAsync(room, text, replyTo).ConfigureAwait(false);
+            }
+            else
+            {
+                await _client.SendMessageAsync(room, text).ConfigureAwait(false);
+            }
+        }
+        catch (BanterClientException ex)
+        {
+            _vm.Post(() => _vm.SendFailed(room, text, ex.Message));
+        }
+    }
 
     /// <summary>Sends what somebody chose on an attached question.</summary>
     public Task AnswerAsync(Protocol.AnswerPayload answer) =>

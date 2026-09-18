@@ -264,6 +264,24 @@ public sealed partial class ChatViewModel
 
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
 
+    /// <summary>
+    /// Reports a message that never reached the server, and hands the words back.
+    ///
+    /// <para>The composer is cleared when a message is handed off, on the assumption that it has
+    /// gone. When it has not, saying so is only half the job: a message you have to retype from
+    /// memory was still lost. The draft goes back unless something has been typed since, because
+    /// overwriting a new draft to restore an old one would lose exactly as much as it
+    /// recovered.</para>
+    /// </summary>
+    public void SendFailed(string room, string text, string reason)
+    {
+        System(room, $"not sent: {reason}");
+        if (Model.Composer.Length == 0)
+        {
+            Model.Composer = text;
+        }
+    }
+
     // ── Who is still here ────────────────────────────────────────────────────────────────────
     //
     // A room's backlog outlives the people in it. Reading one where half the names left an hour

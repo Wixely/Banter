@@ -25,7 +25,7 @@ public sealed class FileStoreException(string code, string message) : Exception(
 /// metadata + file↔room grants in the database. Uploads are chunked and sequential; in-flight
 /// upload state is in-memory, so an interrupted upload restarts from scratch (small files only).
 /// </summary>
-public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
+public sealed class FileStore(BanterDatabase database, FileStoreOptions options) : IAsyncDisposable
 {
     private sealed class PendingUpload(string uploader, FilePutStartPayload request, string tmpPath)
     {
@@ -42,6 +42,26 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
     private string TmpDirectory => Path.Combine(options.DataDirectory, "tmp");
 
     public int MaxChunkBytes => options.MaxChunkBytes;
+
+    /// <summary>
+    /// Closes every upload still in flight. Each one holds an open handle on its <c>.part</c>
+    /// file, and an upload interrupted by a dropped connection is never finalised — so without
+    /// this, shutting the server down leaves those handles open until the process exits, and the
+    /// data directory cannot even be deleted.
+    ///
+    /// <para>This is shutdown only. An upload abandoned by one disconnect on a server that keeps
+    /// running still holds its handle until then: pending uploads are keyed by file id and
+    /// attributed to a user rather than to a session, and one user may legitimately be uploading
+    /// from two devices at once, so there is nothing here that can safely be dropped when a
+    /// single session ends.</para>
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var fileId in _pending.Keys)
+        {
+            await AbortAsync(fileId).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>Validates caps/quota and registers the upload. Returns a complete
     /// <see cref="FileInfoPayload"/> immediately when the content already exists (dedup),

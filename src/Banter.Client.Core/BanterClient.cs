@@ -17,6 +17,24 @@ public sealed record BanterClientOptions
     public TimeSpan ReconnectMaxDelay { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// How long something being sent will wait for a redial to finish before giving up.
+    ///
+    /// <para>A reconnect is not an error — it is the ordinary state of a phone, which loses its
+    /// sockets whenever the platform decides the app has been out of the foreground long enough
+    /// (measured on Android: every socket destroyed after ~30-45s backgrounded). Without a wait
+    /// here, whatever the person did first on returning — a message, an attachment — was thrown
+    /// away against a connection that was already being replaced, and was gone a second before
+    /// the client finished reconnecting.</para>
+    ///
+    /// <para>The wait is for the session to be <em>usable</em>, not merely dialled: rooms are
+    /// rejoined on a background task after a redial, and the server rejects a message to a room
+    /// this session has not joined yet, so a send released too early is lost just as surely.</para>
+    ///
+    /// <para><see cref="TimeSpan.Zero"/> restores the old behaviour of failing immediately.</para>
+    /// </summary>
+    public TimeSpan ReconnectGrace { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
     /// How often to ping the server when nothing else is being said. <see cref="TimeSpan.Zero"/>
     /// turns it off.
     ///
@@ -58,6 +76,23 @@ public sealed partial class BanterClient : IAsyncDisposable
     private readonly object _roomsLock = new();
     private readonly CancellationTokenSource _lifecycle = new();
     private volatile IBanterConnection? _connection;
+
+    /// <summary>
+    /// Completed while this session can carry traffic, and replaced with a fresh incomplete
+    /// source the moment the connection drops. Anything being sent waits on it, so a redial is
+    /// a pause rather than a hole (see <see cref="BanterClientOptions.ReconnectGrace"/>).
+    ///
+    /// <para>Completed after the rooms are rejoined rather than when the socket is up: the
+    /// server rejects a message to a room this session has not joined, so releasing sends at
+    /// the redial would swap one silent loss for another.</para>
+    /// </summary>
+    /// <para>Read through <see cref="Volatile"/> and swapped by compare-and-exchange rather than
+    /// marked volatile: the receive loop and a thread that just failed a write can both find the
+    /// connection dead at once, and two plain swaps would leave one of them holding a source
+    /// nothing will ever complete.</para>
+    private TaskCompletionSource _ready =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private Task? _sessionLoop;
     private Task? _keepAliveLoop;
     private bool _disposed;
@@ -152,6 +187,7 @@ public sealed partial class BanterClient : IAsyncDisposable
     {
         var client = new BanterClient(transport, endpoint, username, secret, options ?? new BanterClientOptions());
         client._connection = await client.DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
+        client.MarkReady();
         client._sessionLoop = Task.Run(client.RunSessionsAsync, CancellationToken.None);
         client._keepAliveLoop = Task.Run(client.RunKeepAliveAsync, CancellationToken.None);
         return client;
@@ -177,6 +213,7 @@ public sealed partial class BanterClient : IAsyncDisposable
         var client = new BanterClient(
             transport, endpoint, username, secret: "", options ?? new BanterClientOptions(), privateKey);
         client._connection = await client.DialAndHandshakeAsync(cancellationToken).ConfigureAwait(false);
+        client.MarkReady();
         client._sessionLoop = Task.Run(client.RunSessionsAsync, CancellationToken.None);
         client._keepAliveLoop = Task.Run(client.RunKeepAliveAsync, CancellationToken.None);
         return client;
@@ -418,6 +455,34 @@ public sealed partial class BanterClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(content.Span));
+
+        // An upload is many round trips, which makes it the thing most likely to be in flight
+        // when a connection goes. The chunks are keyed to a file id the dropped session opened,
+        // so there is nothing to resume against on the far side: begin again, once. A second
+        // failure is a connection that is genuinely gone rather than one being replaced, and the
+        // caller should hear about it instead of watching us retry.
+        try
+        {
+            return await PutFileAsync(room, name, content, mimeType, sha, description, quiet, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (BanterDisconnectedException)
+        {
+            return await PutFileAsync(room, name, content, mimeType, sha, description, quiet, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task<FileInfoPayload> PutFileAsync(
+        string room,
+        string name,
+        ReadOnlyMemory<byte> content,
+        string mimeType,
+        string sha,
+        string? description,
+        bool quiet,
+        CancellationToken cancellationToken)
+    {
         var start = await RequestAsync<FileInfoPayload>(
             new FilePutStartPayload(room, name, mimeType, content.Length, sha, description, quiet), cancellationToken)
             .ConfigureAwait(false);
@@ -471,7 +536,13 @@ public sealed partial class BanterClient : IAsyncDisposable
     public async Task<TimeSpan> PingAsync(CancellationToken cancellationToken = default)
     {
         var sent = DateTimeOffset.UtcNow;
-        await RequestAsync<PongPayload>(new PingPayload(sent.ToUnixTimeMilliseconds()), cancellationToken).ConfigureAwait(false);
+
+        // waitForReady: false - a ping measures the connection there is, so holding one until a
+        // redial finishes would report the wait rather than the round trip, and the keep-alive
+        // would sit on the gate instead of ticking.
+        await RequestAsync<PongPayload>(
+            new PingPayload(sent.ToUnixTimeMilliseconds()), cancellationToken, waitForReady: false)
+            .ConfigureAwait(false);
         return DateTimeOffset.UtcNow - sent;
     }
 
@@ -638,29 +709,35 @@ public sealed partial class BanterClient : IAsyncDisposable
         {
             await ReceiveUntilClosedAsync(_connection!, cancellationToken).ConfigureAwait(false);
             _connection = null;
+            MarkNotReady();
             FailPending();
             if (Farewell is { } farewell)
             {
                 // A deliberate goodbye, not a dropped wire. No redial: the credential this
                 // client holds is the thing the server just retired.
+                AbandonWaiters();
                 Evicted?.Invoke(farewell);
                 return;
             }
 
             if (_disposed || cancellationToken.IsCancellationRequested)
             {
+                AbandonWaiters();
                 return;
             }
 
             Disconnected?.Invoke();
             if (!_options.AutoReconnect)
             {
+                AbandonWaiters();
                 return;
             }
 
             var next = await RedialWithBackoffAsync(cancellationToken).ConfigureAwait(false);
             if (next is null)
             {
+                // Out of attempts, or the credential stopped working. Nothing is coming.
+                AbandonWaiters();
                 return;
             }
 
@@ -719,7 +796,10 @@ public sealed partial class BanterClient : IAsyncDisposable
         {
             try
             {
-                await RequestAsync<OkPayload>(new JoinPayload(room), cancellationToken).ConfigureAwait(false);
+                // waitForReady: false - this IS what the gate is waiting for. Waiting on itself
+                // would deadlock until the grace ran out and then rejoin nothing.
+                await RequestAsync<OkPayload>(new JoinPayload(room), cancellationToken, waitForReady: false)
+                    .ConfigureAwait(false);
             }
             catch
             {
@@ -728,6 +808,8 @@ public sealed partial class BanterClient : IAsyncDisposable
             }
         }
 
+        // Only now is the session what it was before the drop, so only now do held sends go.
+        MarkReady();
         Reconnected?.Invoke();
     }
 
@@ -833,7 +915,8 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     // ---- Requests ----
 
-    private async Task<TReply> RequestAsync<TReply>(object payload, CancellationToken cancellationToken)
+    private async Task<TReply> RequestAsync<TReply>(
+        object payload, CancellationToken cancellationToken, bool waitForReady = true)
         where TReply : class
     {
         var envelope = _codec.CreateEnvelope(payload);
@@ -841,7 +924,7 @@ public sealed partial class BanterClient : IAsyncDisposable
         _pending[envelope.MsgId] = tcs;
         try
         {
-            await SendAsync(envelope, cancellationToken).ConfigureAwait(false);
+            await SendAsync(envelope, cancellationToken, waitForReady).ConfigureAwait(false);
             var reply = await tcs.Task.WaitAsync(_options.RequestTimeout, cancellationToken).ConfigureAwait(false);
             return reply switch
             {
@@ -857,18 +940,116 @@ public sealed partial class BanterClient : IAsyncDisposable
         }
     }
 
-    private async ValueTask SendAsync(BanterEnvelope envelope, CancellationToken cancellationToken)
+    private async ValueTask SendAsync(
+        BanterEnvelope envelope, CancellationToken cancellationToken, bool waitForReady = true)
     {
-        var connection = _connection ?? throw new BanterDisconnectedException();
+        var connection = waitForReady
+            ? await AwaitReadyAsync(cancellationToken).ConfigureAwait(false)
+            : _connection ?? throw new BanterDisconnectedException();
+
+        var frame = _codec.EncodeEnvelope(envelope);
         try
         {
-            await connection.SendFrameAsync(_codec.EncodeEnvelope(envelope), cancellationToken).ConfigureAwait(false);
+            await connection.SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            if (!waitForReady)
+            {
+                throw new BanterDisconnectedException();
+            }
+
+            // A connection can die between being handed over and being written to — and on the
+            // drop this exists for, it is the write that finds out first, before the receive loop
+            // has noticed anything. Shutting the gate here rather than waiting to be told is what
+            // stops the retry below being handed the same dead socket.
+            Invalidate(connection);
+        }
+
+        // Once, on whatever the redial produced. A frame that failed to write never reached the
+        // server to be duplicated: the length prefix means a partial write is a truncated frame,
+        // which ends that session without being acted on.
+        var replacement = await AwaitReadyAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await replacement.SendFrameAsync(frame, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
             throw new BanterDisconnectedException();
         }
     }
+
+    /// <summary>
+    /// Marks a connection as the dead one, if it is still the current one. The session loop is
+    /// the owner of what comes next; this only stops sends being released at a socket that has
+    /// already failed.
+    /// </summary>
+    private void Invalidate(IBanterConnection connection)
+    {
+        if (ReferenceEquals(_connection, connection))
+        {
+            MarkNotReady();
+        }
+    }
+
+    /// <summary>
+    /// The live connection, waiting out a redial in progress rather than failing into it.
+    ///
+    /// <para>Only worth waiting when a redial is actually coming: a client with reconnect turned
+    /// off, one already disposed, and one the server said goodbye to are all staying down, and
+    /// making the caller wait for that would be a slower way of saying the same thing.</para>
+    /// </summary>
+    private async ValueTask<IBanterConnection> AwaitReadyAsync(CancellationToken cancellationToken)
+    {
+        var ready = Volatile.Read(ref _ready);
+        if (ready.Task.IsCompleted && _connection is { } live)
+        {
+            return live;
+        }
+
+        if (!_options.AutoReconnect || _options.ReconnectGrace <= TimeSpan.Zero
+            || _disposed || Farewell is not null || _lifecycle.IsCancellationRequested)
+        {
+            throw new BanterDisconnectedException();
+        }
+
+        try
+        {
+            await ready.Task.WaitAsync(_options.ReconnectGrace, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new BanterDisconnectedException();
+        }
+
+        // The redial that completed this source could itself have dropped in the meantime; one
+        // wait is the promise, not a loop that never gives an answer.
+        return _connection ?? throw new BanterDisconnectedException();
+    }
+
+    /// <summary>Opens the gate anything waiting to send is holding at.</summary>
+    private void MarkReady() => Volatile.Read(ref _ready).TrySetResult();
+
+    /// <summary>
+    /// Shuts the gate, so the next send waits for the redial instead of being thrown away at a
+    /// connection that is already gone. Only a source that has already been opened is replaced,
+    /// which is what makes the one anything is waiting on the one that gets completed.
+    /// </summary>
+    private void MarkNotReady()
+    {
+        var current = Volatile.Read(ref _ready);
+        if (current.Task.IsCompleted)
+        {
+            Interlocked.CompareExchange(
+                ref _ready, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), current);
+        }
+    }
+
+    /// <summary>Releases everything waiting for a redial that is never coming.</summary>
+    private void AbandonWaiters() =>
+        Volatile.Read(ref _ready).TrySetException(new BanterDisconnectedException());
 
     private void FailPending()
     {
