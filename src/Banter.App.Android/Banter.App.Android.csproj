@@ -15,6 +15,17 @@
     <ApplicationDisplayVersion>$(VersionPrefix)</ApplicationDisplayVersion>
     <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
     <RootNamespace>Banter.App.Android</RootNamespace>
+    <!-- CoreCLR, because Mono miscompiles the engine and the app dies before its first frame.
+         CupriFace.Android pins this itself from 0.25.0, and this line was removed once as
+         redundant - but a pin delivered by a NuGet package cannot survive a FIRST restore, and
+         that is the only kind a clean machine does. Package .targets are imported from the assets
+         file, which does not exist yet when restore runs: UseMonoRuntime is still true, restore
+         fetches the Mono packs, and then the build - now with the package's pin applied - asks for
+         CoreCLR packs nobody downloaded. NETSDK1112, on a green build everywhere it had been
+         built before. Here it is evaluated before any package is imported, so restore hears it.
+         Reproduced by hiding microsoft.netcore.app.runtime.android-* from the NuGet cache; put it
+         back and this line is what makes the difference. -->
+    <UseMonoRuntime>false</UseMonoRuntime>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
