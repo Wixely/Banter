@@ -144,6 +144,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public IFilePicker FilePicker { get; init; } = NullFilePicker.Instance;
 
+    /// <summary>
+    /// Opens whatever this head scans codes with, answering the text of the first one that could
+    /// be a server, or null when the person backed out or there is no camera.
+    ///
+    /// <para>Default does nothing: the control that calls it is hidden until a head calls
+    /// <see cref="ChatViewModel.EnableScan"/>, so this is only reachable where it was wired.</para>
+    /// </summary>
+    public Func<Task<string?>> ScanServerAsync { get; init; } = () => Task.FromResult<string?>(null);
+
     /// <summary>Called with a chosen path, to be sent to the room the user is looking at.</summary>
     public Func<string, string, Task> AttachAsync { get; init; } = (_, _) => Task.CompletedTask;
 
@@ -653,6 +662,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="connect-label">Password</div>
               <cupri-password class="connect-field" value="{{ConnectPassword}}"></cupri-password>
               <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
+              <!-- After Connect, not beside the Server field it fills, and that is not a
+                   preference. CupriFace makes an element focusable by matching a click handler,
+                   and the Tab walk counts it even with display:none — so a control here between
+                   Server and Name silently ate a Tab and typing went back into the field above.
+                   Last in the form is the one place it cannot do that. Hidden unless a head wired
+                   a camera. -->
+              <cupri-button class="{{ScanButtonClass}}">Scan a code</cupri-button>
               <div class="connect-status">{{ConnectStatus}}</div>
               <div class="connect-hint">{{ConnectHint}}</div>
             </cupri-form>
@@ -1708,6 +1724,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .connect-go { margin-top: 16px; padding: 9px 0; font-size: 13px; text-align: center;
                       background: #ef4444; color: #ffffff; border: 1px solid #ef4444;
                       border-radius: 10px; font-weight: bold; }
+        .connect-scan { margin-top: 8px; padding: 8px 0; font-size: 12px; text-align: center;
+                        background: #171b22; color: #cbd3de; border: 1px solid #252b35;
+                        border-radius: 10px; }
+        /* display:none, not merely invisible: a head with no camera must not have this in its
+           render tree at all, or it sits in the Tab order between Server and Name and a keyboard
+           walks into a button that opens nothing. Every .hidden in this sheet is scoped to its
+           own control for the same reason — there is no blanket rule to inherit. */
+        .connect-scan.hidden { display: none; }
         .connect-status { font-size: 12px; color: #fb7185; padding-top: 10px; }
         .connect-hint { font-size: 11px; color: #8d97a6; padding-top: 8px; }
         .account-row { display: flex; align-items: center; }
@@ -1966,6 +1990,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".readback", _ => CycleReadback());
         doc.OnClick(".attach-open", _ => PickAttachment());
         doc.OnClick(".connect-go", _ => Connect());
+        doc.OnClick(".connect-scan", _ => Scan());
 
         // Enter anywhere in the sign-in form. Distinct from the button click above, and worth
         // both: filling in a password and reaching for the mouse is not how anyone signs in.
@@ -2913,6 +2938,26 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// the head must not reach back into the model for them, and the password is cleared out of it
     /// as soon as the attempt resolves.</para>
     /// </summary>
+    /// <summary>Starts a scan and does not wait for it — the click is over long before the
+    /// camera is.</summary>
+    public void Scan() => _ = ScanAsync();
+
+    /// <summary>
+    /// Scans a code and puts what it found in the Server field — and stops there, rather than
+    /// connecting with it. A link that arrived by camera should be visible before it is used: it
+    /// is the one value on this screen nobody can check by reading it back.
+    /// </summary>
+    public async Task ScanAsync()
+    {
+        var scanned = await ScanServerAsync().ConfigureAwait(false);
+        if (scanned is null)
+        {
+            return;                                 // backed out, or nothing a server could be
+        }
+
+        ViewModel.Post(() => ViewModel.Scanned(scanned.Trim()));
+    }
+
     public void Connect()
     {
         ViewModel.Post(() =>

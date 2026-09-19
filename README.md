@@ -83,6 +83,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: sign out / switch server or account (Settings → Account) | implemented, tested |
 | `Banter.App.Android` (`CupriActivity` head, TCP + CupriNet link) | implemented; signed ~51 MB APK, **run on a device**: sign in, join, send, receive, attach, all green |
 | Android: a phone reaches the mesh (Pilgrimage to the Nodestar site over a TCP vessel) | implemented, tested; confirmed on a device against `banter-nodestar` |
+| Android: scanning a server's QR (camera2 → managed decode) | implemented, tested; confirmed on the emulator reading a real code off its virtual scene |
 | App: one column, touch sizing and breakpoints on a phone | implemented, tested; confirmed on a 411×914 dp screen |
 | App: sends survive the reconnect a backgrounded phone forces (§7a) | implemented, tested; confirmed on a device |
 | Android voice: `AudioRecord` capture, `AudioTrack` playback, in-context mic permission | implemented; needs a device |
@@ -448,8 +449,10 @@ so a server on the laptop is `tcp://10.0.2.2:7770`.
 terminal instead of being handed ~380 characters of base64 to retype. It needs 85 columns and says
 so rather than printing a wrapped code, which is not a smaller code but noise shaped like one;
 `--no-qr` turns it off and `--no-colour` drops the escape codes (colour is what keeps the polarity
-right on a light-on-dark terminal, not decoration). Scanning it **inside** the app is not built
-yet — today a phone's camera app reads it and you paste the text across.
+right on a light-on-dark terminal, not decoration). The phone scans it **inside the app**: tap
+*Scan a code* under the Server field, point the camera at the terminal, and the link lands in the
+field — where you can look at it before connecting, since it is the one value on that screen nobody
+can check by reading it back.
 
 It speaks `tcp://` **and a CupriNet link**. Paste the link `banter-nodestar` prints into the Server
 field and the phone makes a Pilgrimage to the site it serves — the same site, the same conduit and

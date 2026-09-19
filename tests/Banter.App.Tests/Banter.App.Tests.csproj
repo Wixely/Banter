@@ -9,5 +9,8 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
     <ProjectReference Include="../../src/Banter.App/Banter.App.csproj" />
     <ProjectReference Include="../../src/Banter.App.Desktop/Banter.App.Desktop.csproj" />
+    <!-- Test-only: builds the camera frame the scanner is given, so the decode can be exercised
+         without a lens. The app itself only ever decodes. -->
+    <PackageReference Include="QRCoder" Version="1.8.0" />
   </ItemGroup>
 </Project>

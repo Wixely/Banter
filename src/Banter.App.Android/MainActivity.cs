@@ -46,6 +46,16 @@ public sealed class MainActivity : CupriActivity
 
     private const int PickRequestCode = 4102;
 
+    /// <summary>The scan in flight, completed by <see cref="OnActivityResult"/>.</summary>
+    private TaskCompletionSource<string?>? _scanRequest;
+
+    private const int ScanRequestCode = 4103;
+
+    /// <summary>The camera request in flight, completed by <see cref="OnRequestPermissionsResult"/>.</summary>
+    private TaskCompletionSource<bool>? _cameraRequest;
+
+    private const int CameraRequestCode = 4104;
+
     protected override CupriApp CreateApp()
     {
         _settings = BanterSettings.Load(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
@@ -57,6 +67,11 @@ public sealed class MainActivity : CupriActivity
         // on the UI thread before there is a document to refresh, so the first frame already has
         // it rather than gaining it a frame later.
         _viewModel.EnableAttach();
+
+        // The phone is the head that needs this and the only one that can do it: a signed link is
+        // ~380 characters, and this is the device with no keyboard worth typing that on and a
+        // camera to avoid it.
+        _viewModel.EnableScan();
 
         return new BanterChatApp(_viewModel)
         {
@@ -75,6 +90,7 @@ public sealed class MainActivity : CupriActivity
             // it was the one head that could not send either: EnableAttach was called from the
             // desktop head alone, so the control never appeared here.
             FilePicker = new AndroidFilePicker(this),
+            ScanServerAsync = ScanServerAsync,
             // Quoted, because the picker's copy is named after what the user knows the file as
             // and that name can contain spaces.
             AttachAsync = (room, path) => _session?.UploadAsync(room, $"\"{path}\"") ?? Task.CompletedTask,
@@ -143,6 +159,15 @@ public sealed class MainActivity : CupriActivity
             var granted = grantResults.Length > 0 && grantResults[0] == Permission.Granted;
             var pending = _micRequest;
             _micRequest = null;
+            pending?.TrySetResult(granted);
+            return;
+        }
+
+        if (requestCode == CameraRequestCode)
+        {
+            var granted = grantResults.Length > 0 && grantResults[0] == Permission.Granted;
+            var pending = _cameraRequest;
+            _cameraRequest = null;
             pending?.TrySetResult(granted);
             return;
         }
@@ -216,6 +241,17 @@ public sealed class MainActivity : CupriActivity
             return;
         }
 
+        if (requestCode == ScanRequestCode)
+        {
+            var pending = _scanRequest;
+            _scanRequest = null;
+            pending?.TrySetResult(
+                resultCode == global::Android.App.Result.Ok
+                    ? data?.GetStringExtra(ScannerActivity.ServerExtra)
+                    : null);
+            return;
+        }
+
         base.OnActivityResult(requestCode, resultCode, data);
     }
 
@@ -279,6 +315,57 @@ public sealed class MainActivity : CupriActivity
         {
             _viewModel.Post(() => _viewModel.ConnectFailed(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// Opens the scanner and waits for it, asking for the camera the first time it is wanted.
+    ///
+    /// <para>One at a time, and for the same reason the file pick is: the scanner is a separate
+    /// activity, so the only way to be asked twice is to have come back from the first — which
+    /// means the first answer is never arriving.</para>
+    /// </summary>
+    private async Task<string?> ScanServerAsync()
+    {
+        if (!await EnsureCameraAsync().ConfigureAwait(false))
+        {
+            _viewModel.Post(() => _viewModel.ConnectFailed("camera permission was refused."));
+            return null;
+        }
+
+        _scanRequest?.TrySetResult(null);
+
+        var request = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _scanRequest = request;
+
+        try
+        {
+            StartActivityForResult(new global::Android.Content.Intent(this, typeof(ScannerActivity)), ScanRequestCode);
+        }
+        catch (global::Android.Content.ActivityNotFoundException)
+        {
+            _scanRequest = null;
+            return null;
+        }
+
+        return await request.Task.ConfigureAwait(false);
+    }
+
+    private Task<bool> EnsureCameraAsync()
+    {
+        if (CheckSelfPermission(Manifest.Permission.Camera) == Permission.Granted)
+        {
+            return Task.FromResult(true);
+        }
+
+        var pending = _cameraRequest;
+        if (pending is not null)
+        {
+            return pending.Task;
+        }
+
+        _cameraRequest = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RequestPermissions([Manifest.Permission.Camera], CameraRequestCode);
+        return _cameraRequest.Task;
     }
 
     /// <summary>

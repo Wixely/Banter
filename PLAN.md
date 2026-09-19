@@ -136,7 +136,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | One column, touch sizing, phone breakpoints | – | – | – | ✅ | ✅ | ✅ | – |
 | Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ✅ | ⬜ | – |
 | Inline image rendering | – | – | – | ✅ | ✅ | ✅ | – |
-| QR / mesh-magnet server join — server prints one; nothing scans one yet | – | ✅ | – | 🔨 | 🔨 | ⬜ | – |
+| QR / mesh-magnet server join | – | ✅ | – | 🔨 | ✅ | ⬜ | – |
 | **Host heads** |
 | Desktop head (Win/Linux/macOS) | – | – | – | ✅ | – | – | – |
 | Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | 🔨 | – | – |
@@ -670,6 +670,46 @@ Two smaller things the wiring settled:
   behind NAT advertises a Host address that is valid and unreachable; on an emulator that address
   is `127.0.0.1`, which does resolve on the phone — to the phone. Set `PublicHost` on any node
   whose visitors are not on its LAN.
+
+### 7c. Getting a link onto a phone
+
+A signed link is ~380 characters of base64. Nobody types that, and on a phone nobody pastes it
+either — during the mesh work above it reached the device only because the app's settings file was
+written from the host, which is not a thing a user can do. So the node prints a QR and the phone
+reads one.
+
+**Printing it.** `banter-nodestar` renders the link to the terminal as well as the text; the two
+are for different readers, a camera and a clipboard. Three decisions make it scannable rather than
+merely square, and each was got wrong first:
+
+- **Error correction L**, which is the opposite of the usual advice. At this length the level
+  decides whether it fits a window at all: 77 modules across against 85 for M, so 85 columns
+  against 93 once the quiet zone is added. Nothing here is printed on paper or read at an angle —
+  it is on a screen a foot from a camera, the easiest job a scanner gets.
+- **The quiet zone is ours to add.** QRCoder's `ModuleMatrix` is the bare symbol, and a code
+  printed flush against other text is frequently not seen at all.
+- **Colour names both halves of every cell**, which is what fixes the polarity. A QR must be dark
+  on light; a terminal drawing text light-on-dark hands a scanner the negative.
+
+It refuses to print into a window narrower than the code, because a wrapped QR is not a smaller QR
+— it is noise shaped like one.
+
+**Reading it.** The decode is platform-free (`QrScan`, ZXing.Net over a luminance plane), so the
+half that can be tested is separate from the half that needs a lens. The Android head supplies the
+lens: a camera2 preview in its own activity, started for a result exactly as the file picker is,
+because CupriFace owns a GL surface and layering a camera under it is a fight with no prize.
+
+Two things learned pointing it at a real code:
+
+- **`Dispose()` is not `Close()` on an Android `Image`.** Disposing releases the managed peer;
+  only `Close` hands the buffer back to the reader. Without it the third frame throws
+  `maxImages (2) has already been acquired` on the camera's own thread, which is fatal and takes
+  the activity with it. The frame is now copied and closed before anything is decoded.
+- **Not every code is a server.** A phone is pointed at the world and the world is full of QR
+  codes; filling the Server field with a parcel label because it was first in shot would look like
+  it had worked. The scanner keeps looking until it sees a scheme the connect screen could use, and
+  what it finds goes into the field rather than straight into a connection — it is the one value on
+  that screen nobody can check by reading it back.
 
 ## 8. Agent integration
 
@@ -1405,8 +1445,10 @@ a test asserting no secret-shaped field ever appears, since a plain JSON file in
 not a credential store); and **file transfer** (attachment chips, `/upload`, `/files`, download
 that never silently overwrites).
 
-Still to do here: QR/mesh-magnet join — the `cupri://` scheme is accepted, but generating and
-scanning a code is a per-head job and really an Android concern. Inline image rendering, the
+***Phase 2 is closed.*** The last item was QR/mesh-magnet join, and it is done on both sides:
+`banter-nodestar` prints its link as a code (§7c) and the Android head scans one with the camera.
+The desktop still shows no code of its own — it is the head least likely to need one, since it has
+a keyboard and a clipboard. Inline image rendering, the
 native file picker and the Android head are all done.
 
 ***Shipped in v0.7.0 (2026-09-18) — the phone.*** The client lays itself out for a small screen

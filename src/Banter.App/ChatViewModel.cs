@@ -49,6 +49,24 @@ public sealed partial class ChatViewModel
     /// </summary>
     public void EnableAttach() => Model.AttachButtonClass = "attach-open";
 
+    /// <summary>
+    /// Shows the scan control on the connect screen. Called by a head that wired a camera; without
+    /// it the button stays hidden rather than offering something that cannot happen.
+    ///
+    /// <para>It earns its place only where a link is unusable by hand: a signed one is ~380
+    /// characters, and a phone is the one head with no keyboard worth typing that on and the one
+    /// with a camera to avoid it.</para>
+    /// </summary>
+    public void EnableScan() => Model.ScanButtonClass = "connect-scan";
+
+    /// <summary>What a scan found, put where a person can see it before they connect rather than
+    /// acted on behind their back.</summary>
+    public void Scanned(string server)
+    {
+        Model.ConnectServer = server;
+        Model.ConnectStatus = "Scanned.";
+    }
+
     /// <summary>Sets an unread count and its visibility together, so the two cannot disagree.</summary>
     private static void SetBadge(RoomRow tab, string badge)
     {

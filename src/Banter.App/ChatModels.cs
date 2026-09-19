@@ -691,6 +691,10 @@ public sealed partial class ChatModel
     /// <summary>The attach control. Hidden on a head that cannot open a file dialog.</summary>
     public string AttachButtonClass { get; set; } = "attach-open hidden";
 
+    /// <summary>Whether the connect screen offers to scan a code, which only a head with a camera
+    /// wired does.</summary>
+    public string ScanButtonClass { get; set; } = "connect-scan hidden";
+
     /// <summary>
     /// The connect screen. Heads that are given a server on the command line never show it; a
     /// phone has no command line, so it is how an account is entered there.

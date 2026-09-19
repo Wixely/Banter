@@ -4,5 +4,12 @@
        requires it to be requested at runtime, which the head does not do yet. -->
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <!-- Reading a server's QR off a screen. Asked for at the moment somebody taps Scan, not at
+       launch: a chat client that wants the camera before you have signed in is one people refuse,
+       and a refusal is sticky. -->
+  <uses-permission android:name="android.permission.CAMERA" />
+  <!-- A phone with no camera can still be a perfectly good Banter client, so this is not a
+       requirement to install. -->
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
   <application android:label="Banter" android:supportsRtl="true" />
 </manifest>
