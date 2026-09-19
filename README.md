@@ -444,6 +444,13 @@ An emulator is enough for everything but the microphone: `android-36 google_apis
 `hw.keyboard = no` means the soft keyboard actually appears. `10.0.2.2` is the host from inside it,
 so a server on the laptop is `tcp://10.0.2.2:7770`.
 
+`banter-nodestar` prints its link **as a QR code** as well as text, so a phone can read it off the
+terminal instead of being handed ~380 characters of base64 to retype. It needs 85 columns and says
+so rather than printing a wrapped code, which is not a smaller code but noise shaped like one;
+`--no-qr` turns it off and `--no-colour` drops the escape codes (colour is what keeps the polarity
+right on a light-on-dark terminal, not decoration). Scanning it **inside** the app is not built
+yet — today a phone's camera app reads it and you paste the text across.
+
 It speaks `tcp://` **and a CupriNet link**. Paste the link `banter-nodestar` prints into the Server
 field and the phone makes a Pilgrimage to the site it serves — the same site, the same conduit and
 the same code above the vessel as the browser client, which differs only in carrying its vessel on

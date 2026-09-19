@@ -14,6 +14,18 @@ using CupriNet.Nodestar.WebRtc;
 // CupriNet.Nodestar that is not on the feed yet, and the shipping server must keep restoring
 // without it.
 
+// The link as a code a phone can read, which is the only humane way to get ~380 characters of
+// base64 onto one. On by default because the moment you need it is the moment you are standing a
+// server up next to a phone; --no-qr for a log nobody is looking at.
+var showQr = !Flag("--no-qr");
+
+// Colour is what fixes the polarity: a QR must be dark on light, and a terminal that draws text
+// light-on-dark would otherwise hand a scanner the negative. Honour NO_COLOR, and drop it when the
+// output is redirected, where escape codes are just litter in a file.
+var useColour = !Flag("--no-colour")
+    && Environment.GetEnvironmentVariable("NO_COLOR") is null
+    && !Console.IsOutputRedirected;
+
 var dataDir = Arg("--data") ?? Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Banter", "nodestar");
 Directory.CreateDirectory(dataDir);
@@ -124,9 +136,38 @@ builder.OnStarted((app, cancellationToken) =>
     // The link is what a browser needs, and the only thing it needs: it carries the site's Signet,
     // the network, and the WebRTC credentials the browser writes the node's answer from.
     var links = new NodestarLinkProvider(app.Node, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1));
+    var link = links.Current().Link;
     Console.WriteLine();
-    Console.WriteLine("Paste this into the web client's Server field:");
-    Console.WriteLine(links.Current().Link);
+
+    // The code first and the text second, because they are for different readers: a phone points
+    // its camera at the code, and a browser on this machine takes the text. Printing ~380
+    // characters and expecting anyone to retype them onto a phone was the state of the art here
+    // until now.
+    //
+    // Only when the window can hold it. A code wider than the terminal wraps, and a wrapped QR is
+    // not a smaller QR — it is noise that looks like a QR, which wastes more of somebody's time
+    // than not printing one would have.
+    var columns = TerminalQr.Columns(link);
+    var width = TerminalWidth();
+    if (!showQr)
+    {
+        // Asked not to. Nothing to say about it.
+    }
+    else if (width is { } available && available < columns)
+    {
+        Console.WriteLine(
+            $"The QR needs {columns} columns and this window has {available}. Widen it and " +
+            "restart for a code a phone can scan, or use the link below.");
+    }
+    else
+    {
+        Console.WriteLine("Scan this with a phone, or paste the link below:");
+        Console.WriteLine();
+        Console.Write(TerminalQr.Render(link, colour: useColour));
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(link);
     Console.WriteLine();
 
     if (seedFile is not null)
@@ -217,6 +258,27 @@ return 0;
 
 int Port(string name, int fallback) =>
     int.TryParse(Arg(name), out var value) ? value : fallback;
+
+/// <summary>The window's width, or null when there is no window to ask — a redirected stream or a
+/// container, where Console.WindowWidth throws or answers zero rather than a width.</summary>
+int? TerminalWidth()
+{
+    if (Console.IsOutputRedirected)
+    {
+        return null;
+    }
+
+    try
+    {
+        return Console.WindowWidth > 0 ? Console.WindowWidth : null;
+    }
+    catch (IOException)
+    {
+        return null;
+    }
+}
+
+bool Flag(string name) => Array.IndexOf(args, name) >= 0;
 
 string? Arg(string name)
 {

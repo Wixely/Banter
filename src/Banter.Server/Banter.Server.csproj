@@ -11,6 +11,9 @@
     <PackageReference Include="Npgsql" Version="10.0.3" />
     <!-- Tools run server-side, so the MCP client lives here and agents never hold credentials. -->
     <PackageReference Include="MCPHub.Proxy" Version="0.6.0" />
+    <!-- A link is ~380 characters of base64, so the only humane way onto a phone is a code it can
+         look at. The estate already standardised on this one (CupriNet.Nodestar, Lodestar). -->
+    <PackageReference Include="QRCoder" Version="1.8.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.Core/Banter.Core.csproj" />

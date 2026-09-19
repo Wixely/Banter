@@ -136,7 +136,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | One column, touch sizing, phone breakpoints | – | – | – | ✅ | ✅ | ✅ | – |
 | Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ✅ | ⬜ | – |
 | Inline image rendering | – | – | – | ✅ | ✅ | ✅ | – |
-| QR / mesh-magnet server join | – | ✅ | – | 🔨 | ⬜ | ⬜ | – |
+| QR / mesh-magnet server join — server prints one; nothing scans one yet | – | ✅ | – | 🔨 | 🔨 | ⬜ | – |
 | **Host heads** |
 | Desktop head (Win/Linux/macOS) | – | – | – | ✅ | – | – | – |
 | Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | 🔨 | – | – |
