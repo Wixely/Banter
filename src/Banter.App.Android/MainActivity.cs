@@ -30,10 +30,24 @@ public sealed class MainActivity : CupriActivity
 {
     private const string LogTag = "Banter";
 
-    private readonly ChatViewModel _viewModel = new();
-    private BanterClient? _client;
-    private BanterChatSession? _session;
+    /// <summary>
+    /// The process's view model, not this activity's. An activity is a view of the app and is
+    /// destroyed for reasons that have nothing to do with the conversation, so the model it shows
+    /// outlives it — see <see cref="LiveConnection"/>.
+    /// </summary>
+    private readonly ChatViewModel _viewModel = LiveConnection.ViewModel;
+
+    /// <summary>The live session, wherever it was made. A property rather than a field because
+    /// this activity may not be the one that opened it.</summary>
+    private static BanterChatSession? Session => LiveConnection.Session;
+
     private BanterSettings _settings = new();
+
+    /// <summary>
+    /// Voice stays with the activity rather than moving to <see cref="LiveConnection"/>: a
+    /// microphone held by a backgrounded app is a different promise from a socket held by one, and
+    /// not one this makes. It is rebuilt when an activity is.
+    /// </summary>
     private AndroidVoice? _voice;
 
     /// <summary>The microphone request in flight, completed by <see cref="OnRequestPermissionsResult"/>.</summary>
@@ -56,12 +70,28 @@ public sealed class MainActivity : CupriActivity
 
     private const int CameraRequestCode = 4104;
 
+    /// <summary>The notification request in flight, completed by <see cref="OnRequestPermissionsResult"/>.</summary>
+    private TaskCompletionSource<bool>? _notifyRequest;
+
+    private const int NotifyRequestCode = 4105;
+
     protected override CupriApp CreateApp()
     {
         _settings = BanterSettings.Load(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
 
-        _viewModel.SetStatus("Not connected", connected: false);
-        _viewModel.ShowConnect(_settings.Server, _settings.User);
+        if (LiveConnection.IsLive)
+        {
+            // This activity is a replacement, not a first one: the session outlived whichever
+            // activity opened it. Show the conversation it is already in rather than a connect
+            // form for a connection that exists.
+            _viewModel.SetStatus("Connected", connected: true);
+            _viewModel.Connected(LiveConnection.Server, LiveConnection.User);
+        }
+        else
+        {
+            _viewModel.SetStatus("Not connected", connected: false);
+            _viewModel.ShowConnect(_settings.Server, _settings.User);
+        }
 
         // Shows the attach control. Direct rather than posted, like the two calls above: this runs
         // on the UI thread before there is a document to refresh, so the first frame already has
@@ -73,29 +103,41 @@ public sealed class MainActivity : CupriActivity
         // camera to avoid it.
         _viewModel.EnableScan();
 
+        // The one setting that only exists here, because it is the only head whose platform takes
+        // the connection away.
+        _viewModel.EnableStayConnected(_settings.StayConnected);
+
+        // This head has a notification shade rather than a taskbar, and — until now — no rendered
+        // control at all: the alerts page showed a heading and a hint above nothing, because
+        // nobody had ever seeded the choices here the way the desktop head does.
+        _viewModel.EnableNotificationAlerts();
+        _viewModel.SetFlashOnMention(_settings.FlashOnMention);
+
         return new BanterChatApp(_viewModel)
         {
             ConnectAsync = ConnectAsync,
             SignOutAsync = SignOutAsync,
-            SendAsync = (room, text) => _session?.SendAsync(room, text) ?? Task.CompletedTask,
-            ReplyAsync = (room, text, replyTo) => _session?.SendAsync(room, text, replyTo) ?? Task.CompletedTask,
-            AnswerAsync = answer => _session?.AnswerAsync(answer) ?? Task.CompletedTask,
-            CommandAsync = (room, line) => _session?.CommandAsync(room, line) ?? Task.CompletedTask,
-            LoadOlderAsync = room => _session?.LoadOlderAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
-            DownloadAsync = fileId => _session?.DownloadAsync(fileId) ?? Task.CompletedTask,
-            JoinRoomAsync = room => _session?.JoinAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
-            ToolsOpenAsync = agent => _session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
-            ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
+            SendAsync = (room, text) => Session?.SendAsync(room, text) ?? Task.CompletedTask,
+            ReplyAsync = (room, text, replyTo) => Session?.SendAsync(room, text, replyTo) ?? Task.CompletedTask,
+            AnswerAsync = answer => Session?.AnswerAsync(answer) ?? Task.CompletedTask,
+            CommandAsync = (room, line) => Session?.CommandAsync(room, line) ?? Task.CompletedTask,
+            LoadOlderAsync = room => Session?.LoadOlderAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
+            DownloadAsync = fileId => Session?.DownloadAsync(fileId) ?? Task.CompletedTask,
+            JoinRoomAsync = room => Session?.JoinAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
+            ToolsOpenAsync = agent => Session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
+            ToolsSaveAsync = (agent, tools) => Session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
             // The phone is the device with the camera and the photo library on it, and until now
             // it was the one head that could not send either: EnableAttach was called from the
             // desktop head alone, so the control never appeared here.
             FilePicker = new AndroidFilePicker(this),
             ScanServerAsync = ScanServerAsync,
+            StayConnectedChanged = StayConnectedChanged,
+            VoiceSettingsChanged = VoiceSettingsChanged,
             // Quoted, because the picker's copy is named after what the user knows the file as
             // and that name can contain spaces.
-            AttachAsync = (room, path) => _session?.UploadAsync(room, $"\"{path}\"") ?? Task.CompletedTask,
+            AttachAsync = (room, path) => Session?.UploadAsync(room, $"\"{path}\"") ?? Task.CompletedTask,
             VoiceToggleAsync = SetVoiceOpenAsync,
-            ReadbackChangedAsync = policy => _session?.SetReadbackAsync(policy) ?? Task.CompletedTask,
+            ReadbackChangedAsync = policy => Session?.SetReadbackAsync(policy) ?? Task.CompletedTask,
 
             // No tray and no window to close on a phone; the OS owns that.
             StayInTray = false,
@@ -112,7 +154,7 @@ public sealed class MainActivity : CupriActivity
     {
         if (!open)
         {
-            await (_session?.SetVoiceOpenAsync(false) ?? Task.CompletedTask).ConfigureAwait(false);
+            await (Session?.SetVoiceOpenAsync(false) ?? Task.CompletedTask).ConfigureAwait(false);
             return;
         }
 
@@ -126,7 +168,7 @@ public sealed class MainActivity : CupriActivity
             return;
         }
 
-        await (_session?.SetVoiceOpenAsync(true) ?? Task.CompletedTask).ConfigureAwait(false);
+        await (Session?.SetVoiceOpenAsync(true) ?? Task.CompletedTask).ConfigureAwait(false);
     }
 
     private Task<bool> EnsureMicrophoneAsync()
@@ -168,6 +210,15 @@ public sealed class MainActivity : CupriActivity
             var granted = grantResults.Length > 0 && grantResults[0] == Permission.Granted;
             var pending = _cameraRequest;
             _cameraRequest = null;
+            pending?.TrySetResult(granted);
+            return;
+        }
+
+        if (requestCode == NotifyRequestCode)
+        {
+            var granted = grantResults.Length > 0 && grantResults[0] == Permission.Granted;
+            var pending = _notifyRequest;
+            _notifyRequest = null;
             pending?.TrySetResult(granted);
             return;
         }
@@ -274,18 +325,30 @@ public sealed class MainActivity : CupriActivity
             // cannot resolve because the mesh lives outside Banter.Protocol.
             var transport = BanterTransports.TryClient(uri) ?? BuildMesh();
 
-            _client = await BanterClient
+            var client = await BanterClient
                 .ConnectAsync(transport, uri, user, password)
                 .ConfigureAwait(false);
 
-            _session = new BanterChatSession(_client, _viewModel);
+            var session = new BanterChatSession(client, _viewModel);
+
+            // ApplicationContext, not this: what it is adopted into outlives every activity, and a
+            // notification posted from a destroyed one is a leak wearing a lie.
+            LiveConnection.Adopt(
+                client,
+                session,
+                server,
+                user,
+                ApplicationContext!,
+                _settings.FlashOnMention);
 
             _viewModel.Post(() =>
             {
-                _viewModel.SetNick(_client.Nick);
+                _viewModel.SetNick(client.Nick);
                 _viewModel.SetStatus("Connected", connected: true);
                 _viewModel.Connected(server, user);
             });
+
+            await StayConnectedAsync(server).ConfigureAwait(false);
 
             // Remembered only once it worked, and without the password — the settings file is
             // plain JSON in the app's storage and is not a credential store.
@@ -299,7 +362,7 @@ public sealed class MainActivity : CupriActivity
             {
                 try
                 {
-                    await _session.JoinAsync(room, _settings.HistoryPageSize).ConfigureAwait(false);
+                    await session.JoinAsync(room, _settings.HistoryPageSize).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -315,6 +378,102 @@ public sealed class MainActivity : CupriActivity
         {
             _viewModel.Post(() => _viewModel.ConnectFailed(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// Starts holding the connection open, if that is what the user asked for.
+    ///
+    /// <para>Off by default, so this usually does nothing at all. Asking for notifications here
+    /// rather than at launch follows the same rule as the camera and the microphone: at the moment
+    /// the thing that needs it is actually wanted, where a refusal is an answer about a feature
+    /// rather than a reflex about an app that has not done anything yet.</para>
+    /// </summary>
+    private async Task StayConnectedAsync(string server)
+    {
+        if (!_settings.StayConnected)
+        {
+            return;
+        }
+
+        // A refusal is not a reason to skip the service. The connection is the point; the
+        // notification is how Android makes us declare it, and a system that will not show it
+        // still lets the service run.
+        await EnsureNotificationsAsync().ConfigureAwait(false);
+
+        ConnectionService.Start(this, server);
+    }
+
+    /// <summary>
+    /// Anything on the settings page that is not the background connection. Wired here for the
+    /// first time: this head could change these and never keep them, because a phone's settings
+    /// file lives in app-private storage where nobody can edit it by hand — so an unsaved setting
+    /// on a phone is not an inconvenience, it is a setting that does not exist.
+    /// </summary>
+    private void VoiceSettingsChanged()
+    {
+        _settings = _settings with
+        {
+            FlashOnMention = _viewModel.FlashOnMention,
+            Voice = _settings.Voice with
+            {
+                Engine = _viewModel.ChosenTranscribe,
+                Language = _viewModel.Model.VoiceLanguage.Trim(),
+                Vocabulary = _viewModel.Model.VoiceVocabulary.Trim(),
+                Endpoint = _viewModel.Model.VoiceEndpoint.Trim(),
+                WyomingTts = _viewModel.Model.VoiceWyomingTts.Trim(),
+                AutoSubmit = _viewModel.ChosenAutoSubmit,
+                AutoSubmitDelaySeconds = _viewModel.ReadAutoSubmitDelay(),
+            },
+        };
+
+        _settings.TrySave(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
+
+        // The notifier reads this at sign-in and would otherwise keep whatever it was told then.
+        LiveConnection.NotifyOnMention = _viewModel.FlashOnMention;
+    }
+
+    /// <summary>
+    /// The setting changed. Remembered immediately, and acted on immediately: a setting that only
+    /// takes effect next time you sign in is one people conclude is broken.
+    /// </summary>
+    private void StayConnectedChanged(bool stay)
+    {
+        _settings = _settings with { StayConnected = stay };
+        _settings.TrySave(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
+
+        if (!stay)
+        {
+            ConnectionService.Stop(this);
+            return;
+        }
+
+        if (LiveConnection.IsLive)
+        {
+            // Fire and forget: the permission dialog is the user's to answer in their own time,
+            // and the service does not wait on the answer either way.
+            _ = StayConnectedAsync(LiveConnection.Server);
+        }
+    }
+
+    private Task<bool> EnsureNotificationsAsync()
+    {
+        // Below 33 the permission does not exist to be asked for — installing the app was the
+        // consent. The version test is repeated from CanPost rather than trusted through it
+        // because the analyser cannot see through a call, and it is right not to.
+        if (!OperatingSystem.IsAndroidVersionAtLeast(33) || Notifications.CanPost(this))
+        {
+            return Task.FromResult(true);
+        }
+
+        var pending = _notifyRequest;
+        if (pending is not null)
+        {
+            return pending.Task;
+        }
+
+        _notifyRequest = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        RequestPermissions([Manifest.Permission.PostNotifications], NotifyRequestCode);
+        return _notifyRequest.Task;
     }
 
     /// <summary>
@@ -406,19 +565,15 @@ public sealed class MainActivity : CupriActivity
     /// </summary>
     private async Task SignOutAsync()
     {
-        var session = _session;
-        var client = _client;
-        _session = null;
-        _client = null;
+        // First, so the notification goes at the moment the connection does rather than a beat
+        // after it: an app that says it is connected while signing out is worse than one that says
+        // nothing.
+        ConnectionService.Stop(this);
 
         await (_voice?.DisposeAsync() ?? ValueTask.CompletedTask).ConfigureAwait(false);
         _voice = null;
 
-        session?.Dispose();
-        if (client is not null)
-        {
-            await client.DisposeAsync().ConfigureAwait(false);
-        }
+        await LiveConnection.EndAsync().ConfigureAwait(false);
 
         _viewModel.Post(() => _viewModel.SignedOut(_settings.Server, _settings.User));
     }
@@ -430,7 +585,7 @@ public sealed class MainActivity : CupriActivity
     /// </summary>
     private void AttachVoice()
     {
-        if (_session is null)
+        if (Session is null)
         {
             return;
         }
@@ -453,14 +608,49 @@ public sealed class MainActivity : CupriActivity
             _viewModel.SetReadback(_voice.Policy);
         });
 
-        _session.AttachVoice(_voice.Session, _voice.Readback);
+        Session.AttachVoice(_voice.Session, _voice.Readback);
     }
 
+    /// <summary>
+    /// In front of the user, so a mention needs no notification — they are looking at it.
+    /// </summary>
+    protected override void OnResume()
+    {
+        base.OnResume();
+        LiveConnection.InForeground = true;
+    }
+
+    protected override void OnPause()
+    {
+        LiveConnection.InForeground = false;
+        base.OnPause();
+    }
+
+    /// <summary>
+    /// This activity is going. Whether the <em>connection</em> goes with it is the whole question
+    /// this change exists to answer.
+    ///
+    /// <para>With "stay connected" on, it does not: the session lives in
+    /// <see cref="LiveConnection"/> and the foreground service keeps the process around to hold
+    /// it, so a swiped-away task or an activity the system reclaimed comes back to the room it
+    /// left. With it off, this is the end of the app in every sense the user means, and holding a
+    /// socket open for an app somebody closed would be indefensible.</para>
+    ///
+    /// <para>Voice goes either way. It belongs to the activity that has the microphone permission
+    /// and the screen to show what it heard.</para>
+    /// </summary>
     protected override void OnDestroy()
     {
+        LiveConnection.InForeground = false;
+
         _voice?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        _session?.Dispose();
-        _client?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _voice = null;
+
+        if (!_settings.StayConnected)
+        {
+            LiveConnection.EndAsync().GetAwaiter().GetResult();
+        }
+
         base.OnDestroy();
     }
 }

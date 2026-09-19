@@ -12,5 +12,16 @@
   <!-- A phone with no camera can still be a perfectly good Banter client, so this is not a
        requirement to install. -->
   <uses-feature android:name="android.hardware.camera" android:required="false" />
+  <!-- Holding the connection open while the app is in the background. Declared as dataSync, which
+       is the honest name for it: this is a socket kept alive, not a media session or a navigation.
+       Android 14 caps that type at roughly six hours a day and then ends the service, which is why
+       the setting behind it promises to stay connected rather than to stay connected forever. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <!-- Telling you that somebody named you. Runtime-requested from Android 13, and asked for when
+       the setting that needs it is turned on rather than at launch - the same rule as the camera
+       and the microphone. Refusing it is not fatal: the connection is still held, the notification
+       that says so is simply not shown. -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <application android:label="Banter" android:supportsRtl="true" />
 </manifest>

@@ -86,6 +86,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | Android: scanning a server's QR (camera2 → managed decode) | implemented, tested; confirmed on the emulator reading a real code off its virtual scene |
 | App: one column, touch sizing and breakpoints on a phone | implemented, tested; confirmed on a 411×914 dp screen |
 | App: sends survive the reconnect a backgrounded phone forces (§7a) | implemented, tested; confirmed on a device |
+| Android: holding the connection in the background (`dataSync` foreground service, opt-in) | implemented, tested; confirmed on the emulator — the system's socket teardown ran and passed over us, and a message sent two minutes after Home arrived |
+| Android: a notification when somebody names you | implemented, tested; confirmed on the emulator, including staying silent while the app is in front |
 | Android voice: `AudioRecord` capture, `AudioTrack` playback, in-context mic permission | implemented; needs a device |
 | Android: fling momentum in the timeline | **absent** — the list tracks the finger and stops dead on release; wants one confirmation with a real finger before it goes upstream |
 

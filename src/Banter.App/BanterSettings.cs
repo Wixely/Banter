@@ -73,6 +73,25 @@ public sealed record BanterSettings
     public bool FlashOnMention { get; init; } = true;
 
     /// <summary>
+    /// Hold the connection open while the app is in the background, and say so with a persistent
+    /// notification. Android only; the desktop has no equivalent because nothing there takes its
+    /// sockets away.
+    ///
+    /// <para><b>Off by default, because of what it costs rather than what it does.</b> Keeping a
+    /// socket open on a phone means a notification the user cannot dismiss and a process the
+    /// system will not page out — a fair trade for somebody who wants to be reachable, and an
+    /// imposition on somebody who opened a chat client once. So it is asked for rather than
+    /// assumed.</para>
+    ///
+    /// <para>It does not make the connection permanent. Android 14 caps a
+    /// <c>dataSync</c> foreground service at roughly six hours a day, after which the system ends
+    /// it and the phone goes back to losing its sockets when it is put down (§7a) — which is
+    /// survivable rather than fatal, because a send issued into that gap waits for the redial
+    /// instead of vanishing.</para>
+    /// </summary>
+    public bool StayConnected { get; init; }
+
+    /// <summary>
     /// Size the interface for a finger rather than a cursor. Off by default and only meaningful on
     /// the desktop: Android and the web are told what they are by the host and never read this.
     ///

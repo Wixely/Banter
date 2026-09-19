@@ -139,7 +139,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | QR / mesh-magnet server join | – | ✅ | – | 🔨 | ✅ | ⬜ | – |
 | **Host heads** |
 | Desktop head (Win/Linux/macOS) | – | – | – | ✅ | – | – | – |
-| Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | 🔨 | – | – |
+| Android head (`CupriActivity`, IME, foreground service) | – | – | – | – | ✅ | – | – |
 | Web head (WASM over CupriNet.WebRtc) — Phase 2.5 | – | ✅ | – | – | – | ✅ | – |
 | **Phase 3/4 — voice** |
 | `ITranscriptionEngine` / `ITextToSpeech` abstractions | ✅ | – | – | – | – | – | – |
@@ -634,6 +634,43 @@ will hold a microphone open across exactly these drops, and the work ledger's le
 already built on the assumption that a claim outlives a connection. The desktop `--phone` flag
 cannot reach any of this — it has no platform to destroy its sockets — so this class of bug needs a
 device or an emulator, not a resized window.
+
+**And then a way to not lose them, 2026-09-19.** Surviving the drop is not the same as not
+dropping. A phone that reconnects when you pick it up still hears nothing while it is in your
+pocket, and a chat client you have to be looking at is one people stop installing. So the head now
+runs a **foreground service** (`dataSync`) while a setting asks it to, which is what tells the
+system this uid is not idle.
+
+Measured the same way the original bug was. Backgrounded with the service running, the teardown
+still fires on schedule and passes over us: `Destroyed live tcp sockets for uids={10207}` — a
+different uid, zero sockets, while Banter sat on 10218 and kept its connection. A message sent from
+another client two minutes after Home arrived, and a notification for it appeared.
+
+Three things this settled that were not obvious before building it:
+
+- **The mention hook was in the wrong place for a phone.** `MentionedYou` fires from the frame
+  loop, which is right for flashing a taskbar and useless here: a backgrounded app draws no frames,
+  so incoming messages simply queue and nothing counts them. The notification hangs off
+  `BanterClient.MessageReceived` instead, on the receive thread, where it does not care whether
+  anybody is drawing.
+- **The service must not own the connection, but something other than the activity must.** An
+  activity is a view of the app, not the app; a session owned by one dies with it, and a service
+  holding a notification saying "Connected" over a socket that closed is a lie the user cannot
+  dismiss. So the session and the view model live in a static `LiveConnection`, and a rebuilt
+  activity finds the conversation rather than a connect form. Verified with
+  `always_finish_activities`: the activity was destroyed, a mention still arrived and notified, and
+  reopening came back to the room with every message in it.
+- **A setting a phone cannot reach is not a setting.** `settings.json` lives in app-private
+  storage, so anything without a control is unreachable — which is how the alerts page came to
+  render "When you are named" and a hint above no choices at all: nothing had ever seeded them on
+  this head. It now has them, worded for a device with a notification shade rather than a taskbar,
+  and this head wires `VoiceSettingsChanged` for the first time, so what is changed on it is kept.
+
+It is deliberately **off by default**: the cost is a notification nobody can dismiss and a process
+the system will not page out, which is a fair trade for somebody who wants to be reachable and an
+imposition on somebody who opened a chat client once. And it is not permanent — Android 14 caps
+`dataSync` at roughly six hours a day, after which the system ends the service and the phone goes
+back to §7a's behaviour, which is survivable rather than fatal because of everything above.
 
 ### 7b. How a phone reaches the mesh
 

@@ -655,6 +655,9 @@ public sealed partial class ChatModel
     /// <summary>Whether being named flashes the taskbar, on the settings page.</summary>
     public List<ChoiceRow> FlashChoices { get; set; } = [];
 
+    /// <summary>Empty on every host but Android, so no row exists to click or tab to.</summary>
+    public List<ChoiceRow> StayChoices { get; set; } = [];
+
     /// <summary>
     /// Mouse or finger. The engine puts <c>cupri-coarse</c> / <c>cupri-fine</c> on the body from
     /// whatever the HOST says it is being driven by, and every touch-target rule in
@@ -683,6 +686,9 @@ public sealed partial class ChatModel
     public string YouFieldsClass { get; set; } = "mgmt-field";
 
     public string AlertFieldsClass { get; set; } = "mgmt-field hidden";
+
+    /// <summary>Hidden by its section and by whether the host has the problem at all.</summary>
+    public string StayConnectedClass { get; set; } = "mgmt-field hidden";
 
     public string ListeningFieldsClass { get; set; } = "mgmt-field hidden";
 

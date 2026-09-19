@@ -180,6 +180,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     public Action<int> MentionedYou { get; init; } = _ => { };
 
+    /// <summary>
+    /// The user turned holding the background connection on or off. Only the Android head supplies
+    /// this, because it is the only one whose platform takes the connection away; everywhere else
+    /// the control is not rendered and this is never called.
+    /// </summary>
+    public Action<bool> StayConnectedChanged { get; init; } = _ => { };
+
     /// <summary>Rewrites a message already sent. Only the author may; the server enforces it.</summary>
     public Func<string, string, string, Task> EditAsync { get; init; } = (_, _, _) => Task.CompletedTask;
 
@@ -514,6 +521,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         </div>
                       </div>
                       <div class="mgmt-hint">What turns speech into text. Nothing here leaves this machine unless you point it somewhere.</div>
+                    </div>
+                  </div>
+                  <div class="{{StayConnectedClass}}">
+                    <div class="mgmt-label">In the background</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices">
+                        <div class="{{RowClass}}" data-repeat="StayChoices" data-stay="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                            <div class="mgmt-choice-hint">{{Hint}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">A phone takes an app's connection away shortly after you stop looking at it. Staying connected prevents that, at the price of a notification you cannot dismiss.</div>
                     </div>
                   </div>
                   <div class="{{AlertFieldsClass}}">
@@ -2377,6 +2399,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        doc.OnAction("data-stay", e =>
+        {
+            ChooseStayConnected(e.Value == "stay");
+            doc.Refresh();
+            return true;
+        });
+
         doc.OnAction("data-autosubmit", e =>
         {
             ViewModel.ChooseAutoSubmit(e.Value ?? "send");
@@ -2940,6 +2969,20 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// </summary>
     /// <summary>Starts a scan and does not wait for it — the click is over long before the
     /// camera is.</summary>
+    /// <summary>
+    /// Turns the background connection on or off and tells the head, which is the half that owns a
+    /// service. A method rather than only a click handler so the behaviour behind the control can
+    /// be tested without hunting for its pixels, the same reason <see cref="ScanAsync"/> is one.
+    /// </summary>
+    public void ChooseStayConnected(bool stay)
+    {
+        ViewModel.ChooseStay(stay ? "stay" : "drop");
+
+        // Its own callback rather than VoiceSettingsChanged: this one starts and stops a service,
+        // and only the head that has one knows how.
+        StayConnectedChanged(ViewModel.StayConnected);
+    }
+
     public void Scan() => _ = ScanAsync();
 
     /// <summary>

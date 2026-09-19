@@ -207,6 +207,7 @@ public sealed partial class ChatViewModel
         Model.ListeningFieldsClass = FieldClass(section == "listening");
         Model.TranscriptFieldsClass = FieldClass(section == "transcripts");
         Model.VoiceSpeakersClass = FieldClass(section == "speaking" && _voicePool.Count > 0);
+        Model.StayConnectedClass = FieldClass(section == "alerts" && CanStayConnected);
     }
 
     private static string FieldClass(bool shown) => shown ? "mgmt-field" : "mgmt-field hidden";
@@ -236,13 +237,67 @@ public sealed partial class ChatViewModel
     /// <summary>Whether being named should ask for attention outside the window.</summary>
     public bool FlashOnMention { get; private set; } = true;
 
+    /// <summary>
+    /// Whether being named is announced by a system notification rather than by asking a window
+    /// manager for attention. Its own flag rather than a second meaning for
+    /// <see cref="CanStayConnected"/>: they happen to be true on the same head today, and one
+    /// value standing for two facts is how a setting ends up describing something it does not do.
+    /// </summary>
+    public bool AlertsAreNotifications { get; private set; }
+
+    /// <summary>Called by a head whose platform has a notification shade.</summary>
+    public void EnableNotificationAlerts()
+    {
+        AlertsAreNotifications = true;
+        SetFlashOnMention(FlashOnMention);
+    }
+
     public void SetFlashOnMention(bool flash)
     {
         FlashOnMention = flash;
-        Model.FlashChoices = FlashChoices(flash ? "flash" : "quiet");
+        Model.FlashChoices = AlertsAreNotifications
+            ? NotifyChoices(flash ? "flash" : "quiet")
+            : FlashChoices(flash ? "flash" : "quiet");
     }
 
     public void ChooseFlash(string value) => SetFlashOnMention(value == "flash");
+
+    /// <summary>
+    /// Whether this host can hold a connection open while it is in the background at all.
+    ///
+    /// <para>False everywhere but Android, and not because the others lack the feature — because
+    /// they lack the problem. Nothing takes a desktop's sockets away while it is not in front, so
+    /// a control offering to prevent that would be a setting that does nothing, which is worse
+    /// than one that is absent.</para>
+    /// </summary>
+    public bool CanStayConnected { get; private set; }
+
+    /// <summary>Called by the head that has the problem. Nothing else calls it.</summary>
+    public void EnableStayConnected(bool on)
+    {
+        CanStayConnected = true;
+        SetStayConnected(on);
+    }
+
+    /// <summary>Whether to hold the connection open in the background. See
+    /// <c>BanterSettings.StayConnected</c> for what it costs and why it is off by default.</summary>
+    public bool StayConnected { get; private set; }
+
+    public void SetStayConnected(bool stay)
+    {
+        StayConnected = stay;
+        // Empty when this host cannot do it, so no row exists to be clicked or tabbed to. A
+        // control hidden by a class is still a control, which the scan button taught us.
+        Model.StayChoices = CanStayConnected
+            ? StayChoices(stay ? "stay" : "drop")
+            : [];
+    }
+
+    public void ChooseStay(string value) => SetStayConnected(value == "stay");
+
+    private static List<ChoiceRow> StayChoices(string selected) => Choices(selected,
+        ("drop", "Only while open", "Disconnects when you put the phone down, and reconnects when you come back."),
+        ("stay", "Stay connected", "Keeps the connection while Banter is in the background, with a notification saying so. Android ends it after about six hours a day."));
 
     /// <summary>True when the interface should be sized for a finger. See ChatModel.PointerChoices
     /// for why this is a setting and not something the window width can answer.</summary>
@@ -262,6 +317,15 @@ public sealed partial class ChatViewModel
 
     private static List<ChoiceRow> FlashChoices(string selected) => Choices(selected,
         ("flash", "Flash the taskbar", "Only when the window is not already in front, and only for an explicit @name."),
+        ("quiet", "Nothing", "The message is still highlighted in the room."));
+
+    /// <summary>
+    /// The same choice on a device that has no taskbar to flash. Worth its own wording rather than
+    /// a vaguer one that covers both: "flash the taskbar" on a phone describes nothing the phone
+    /// does, and a setting nobody can picture is one nobody touches.
+    /// </summary>
+    private static List<ChoiceRow> NotifyChoices(string selected) => Choices(selected,
+        ("flash", "Notify me", "Only while you are looking at something else, and only for an explicit @name."),
         ("quiet", "Nothing", "The message is still highlighted in the room."));
 
     private static List<ChoiceRow> AutoSubmitChoices(string selected) => Choices(selected,
