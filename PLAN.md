@@ -154,19 +154,19 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Agent SDK: connect, join, stream replies, per-room context | – | – | – | – | – | – | ✅ |
 | `LlmChatAgent` against any OpenAI-compatible endpoint | – | – | – | – | – | – | ✅ |
 | Agent guardrails: rate limit + loop-breaker | – | ✅ | – | – | – | – | ✅ |
-| Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
-| Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ⬜ | ⬜ | ✅ |
+| Delegator election + room dispatch modes (§8a) | ✅ | ✅ | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| Classification + routing + announced egress (§8a) | ✅ | – | – | ✅ | ✅ | ✅ | ✅ |
 | Sub-rooms with inherited sensitivity (§8a) | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | 🔨 |
 | Agents conferring in a collaboration room (§8a-c) | ✅ | ✅ | – | – | – | – | ✅ |
 | Delegator room tools + operator escalation (§8a-d) | – | ✅ | – | – | – | – | ✅ |
-| Structured asks + replies (§8c-a) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
-| Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | ✅ |
+| Structured asks + replies (§8c-a) | ✅ | ✅ | ⬜ | ✅ | ✅ | ✅ | ✅ |
+| Work ledger: `TASK_*`, claims, leases (§8b) | ✅ | ✅ | ⬜ | ✅ | ✅ | ✅ | ✅ |
 | Warden supervision: config fleet, restart, throttles | – | – | – | – | – | – | ✅ |
 | Reconnect: re-announce, missed context, missed work (§8a-r) | – | – | – | – | – | – | ✅ |
 | DaggerAgent `banter` mode (separate repo) | – | – | – | – | – | – | ✅ |
 | MCP tools executed server-side, agent tool loop (§8c) | ✅ | ✅ | ⬜ | – | – | – | ✅ |
-| Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
-| Work page: every room's tasks, operator view (§8b) | – | ✅ | ⬜ | ✅ | ⬜ | ⬜ | – |
+| Per-agent tool grants + management panel (§8c) | ✅ | ✅ | ⬜ | ✅ | ✅ | ✅ | – |
+| Work page: every room's tasks, operator view (§8b) | – | ✅ | ⬜ | ✅ | ✅ | ✅ | – |
 | ACP bridge (Path C, deferred) | – | – | – | – | – | – | ⬜ |
 | **Phase 6 — hardening** |
 | Account management: users page, temp passwords, `/passwd` | – | ✅ | ✅ | ✅ | ✅ | ✅ | – |
@@ -178,6 +178,14 @@ true two phases ago and made this table actively misleading to plan from. Both h
 the same `CupriApp`, so a capability implemented in `Banter.App` is present on all three unless
 something platform-shaped is missing.
 
+*Corrected again 2026-09-19.* That pass fixed the Phase 1 and Phase 2 blocks and missed the Phase 5
+one, which went on saying the agent surfaces were desktop-only. They are not, and never were: the
+work page, the tools panel, structured asks and the delegation controls are all markup in
+`BanterChatApp`, and `Banter.App.Desktop` holds nothing but platform services — audio, hotkey,
+clipboard, picker, DPAPI, taskbar. What the phone and the browser have not had is a person
+exercising those surfaces on them, which is the ticks-differ-by-column point below rather than a
+capability that is absent.
+
 What the ticks are worth differs by column, and it is worth being honest about which:
 
 - **Desktop** is exercised by the headless suite and used daily.
@@ -186,7 +194,10 @@ What the ticks are worth differs by column, and it is worth being honest about w
   receive another client's attachment. Voice on the phone is the exception — it is written but has
   never met a microphone.
 - **Web** rests on the end-to-end run recorded in §2.5 — connect, join, send, and the message read
-  back out of the server's database over real WebRTC — not on a suite.
+  back out of the server's database over real WebRTC. Its *transport* is now covered by a suite as
+  well: the conduit and the DataChannel vessel had tests already, and the head's own receive path
+  got them on 2026-09-19 by being extracted to where a test can reach it. What still has no suite is
+  the head as a running page — ICE, the browser's own channel, AOT.
 
 What is genuinely left: **voice needs real devices** rather than more code (§6 is written and
 tested headlessly; capture, playback, local Whisper and the hotkey all want a person with a
@@ -1530,8 +1541,26 @@ right: the Conduit rite was in `CupriNet.Rites` 0.3.4 all along, merely unreacha
 Pilgrimage path ([CupriNet#3](https://github.com/Wixely/CupriNet/issues/3)).
 
 So §2.5 is: `Banter.Server` hosts a Nodestar, serves the reference WASM client as a clearnet asset,
-and exposes the room over a conduit that a `ShrineBanterTransport` presents as an
-`IBanterConnection`.
+and exposes the room over a conduit that a `ShrineBanterTransport` presents as an `IBanterConnection`.
+
+**What hardening it found, 2026-09-19.** The conduit had 32 tests and the web head had none, because
+`BrowserDataChannel` is bound to `[JSImport]` methods and cannot be constructed off a browser. Both
+of the defects that hid there are the sort a browser would have shown slowly and confusingly:
+
+- **It picked its address with the logic `MeshDial` exists to replace.** Host beacon first, then
+  whichever beacon came first — so a node behind any NAT advertised a valid, unreachable address,
+  and a link carrying only a Relay or an .onion handed one back to be dialled as a hostname, which
+  waits rather than fails. `MeshDial`'s own summary says the browser has this same split; the
+  browser was the one head not using it.
+- **A fault read back as a goodbye.** The oversized-message guard completed the inbound channel with
+  a reason attached precisely so it would not be dropped silently — and the reader caught the
+  resulting `ChannelClosedException` and answered null, which is a clean close. The desync it
+  guarded against happened anyway, without the message that explained it.
+
+The receive path is now `VesselInbox` in `Banter.Transport.Shrine`: platform-free, so it is tested
+(15 tests) rather than merely written, and the distinction between an ending and a fault lives in one
+place. It is the same split as `QrScan` and the scanner activity — the logic on one side of the
+platform boundary, the platform on the other.
 
 ### The 192 KiB frame ceiling, and why it is not our problem to solve
 
