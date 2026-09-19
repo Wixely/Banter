@@ -1,6 +1,6 @@
 using System.Net;
 using System.Runtime.InteropServices.JavaScript;
-using System.Threading.Channels;
+using Banter.Transport.Shrine;
 using CupriNet.Core;
 using CupriNet.Vessel;
 
@@ -42,8 +42,12 @@ public sealed partial class BrowserDataChannel : IDataChannel
     /// </summary>
     private static readonly byte[] Scratch = new byte[262144];
 
-    private readonly Channel<byte[]> _inbound = Channel.CreateUnbounded<byte[]>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+    /// <summary>
+    /// Where messages wait to be read. Shared with the other vessels rather than a channel held
+    /// here, because the distinction it keeps — the peer leaving versus the peer sending something
+    /// impossible — is the one this class used to lose, and it is tested there.
+    /// </summary>
+    private readonly VesselInbox _inbound = new();
 
     private BrowserDataChannel(EndPoint remote)
     {
@@ -88,12 +92,14 @@ public sealed partial class BrowserDataChannel : IDataChannel
         }
 
         // The link carries the node's reachable addresses but not which of them the WebRTC endpoint
-        // listens on — the port is separate, and the host is whichever address is reachable. A
-        // plain host beacon is the one a browser can dial.
-        var host = intonation.Beacons.FirstOrDefault(b => b.Kind == EndpointKind.Host)?.Host
-            ?? intonation.Beacons.FirstOrDefault()?.Host
-            ?? throw new InvalidOperationException(
-                $"The link for '{intonation.Moniker}' names no address to dial.");
+        // listens on — the port is separate, and the host is whichever address is reachable.
+        //
+        // Which address that is, is MeshDial's question and not one to answer twice. This used to
+        // take the Host beacon first and then fall back to whichever beacon came first, which is
+        // precisely the ordering MeshDial exists to correct: a node behind a NAT advertises a Host
+        // beacon that is valid and unreachable, and "whichever came first" will happily hand back a
+        // Relay or an .onion, which a browser dials as a hostname and then waits out.
+        var host = MeshDial.HostOrThrow(intonation.Beacons, intonation.Moniker ?? "the server");
 
         _module ??= JSHost.ImportAsync("banter/rtc", "../banter-rtc.js");
         await _module.ConfigureAwait(false);
@@ -153,28 +159,18 @@ public sealed partial class BrowserDataChannel : IDataChannel
         {
             // The channel went while we were writing. Indistinguishable from the peer leaving, and
             // the reader is about to report exactly that.
-            _inbound.Writer.TryComplete();
+            _inbound.Close();
         }
 
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask<byte[]?> ReceiveAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return await _inbound.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (ChannelClosedException)
-        {
-            // Null, not empty: an empty message is one a DataChannel can legitimately carry.
-            return null;
-        }
-    }
+    public ValueTask<byte[]?> ReceiveAsync(CancellationToken cancellationToken = default) =>
+        _inbound.ReceiveAsync(cancellationToken);
 
     public ValueTask DisposeAsync()
     {
-        _inbound.Writer.TryComplete();
+        _inbound.Close();
 
         if (ReferenceEquals(_current, this))
         {
@@ -206,20 +202,23 @@ public sealed partial class BrowserDataChannel : IDataChannel
                 {
                     // Larger than any DataChannel message the node can send, so something is wrong
                     // with the peer rather than with the buffer. Dropping it silently would show up
-                    // much later as a protocol desync.
-                    channel._inbound.Writer.TryComplete(
-                        new InvalidOperationException(
-                            $"A WebRTC message exceeded the {Scratch.Length}-byte receive buffer."));
+                    // much later as a protocol desync — and completing the channel with the reason
+                    // attached, which is what this did, dropped it just as silently: the reader
+                    // caught the resulting ChannelClosedException and answered null, so the stack
+                    // above read a fault as a goodbye. VesselInbox is where that distinction now
+                    // lives, and where it is tested.
+                    channel._inbound.Fail(
+                        $"A WebRTC message exceeded the {Scratch.Length}-byte receive buffer.");
                 }
 
                 return;
             }
 
-            channel._inbound.Writer.TryWrite(Scratch[..length]);
+            channel._inbound.Deliver(Scratch[..length]);
         }
     }
 
-    private static void NotifyClosed() => _current?._inbound.Writer.TryComplete();
+    private static void NotifyClosed() => _current?._inbound.Close();
 
     [JSImport("connect", "banter/rtc")]
     internal static partial void RtcConnect(

@@ -14,6 +14,24 @@ namespace Banter.Transport.Shrine;
 public static class MeshDial
 {
     /// <summary>
+    /// Whether a link points at a <em>site</em> — something a Pilgrimage can be made to — rather
+    /// than at a bare node.
+    ///
+    /// <para>This is what tells the two mesh transports apart from the outside. A link from
+    /// <c>banter-nodestar</c> stamps the site's Signet into itself (<c>AdvertiseSiteInLink</c>);
+    /// a link from a node serving no site carries none, and that is the shape the Arcanum
+    /// channels in <c>Banter.Transport.CupriNet</c> pair with. Both are the same URI otherwise,
+    /// so a head that supports both has to look rather than ask the user which they pasted.</para>
+    ///
+    /// <para>A string that is not a link at all answers false: the caller is choosing between
+    /// transports, and the one it falls back to gives the better error for that.</para>
+    /// </summary>
+    public static bool AdvertisesSite(Uri? link) =>
+        link is not null
+        && IntonationUri.TryParse(link.OriginalString.Trim(), out var intonation, out _)
+        && intonation.Shrine is not null;
+
+    /// <summary>
     /// Which beacon to dial, most likely to work first.
     ///
     /// <para><see cref="EndpointKind"/> is documented as being in "rough order of connection
@@ -32,24 +50,6 @@ public static class MeshDial
     /// <para>Relay and Onion are skipped: both need a transport this does not have, and dialling
     /// an .onion as a hostname would hang rather than fail.</para>
     /// </summary>
-    /// <summary>
-    /// Whether a link points at a <em>site</em> — something a Pilgrimage can be made to — rather
-    /// than at a bare node.
-    ///
-    /// <para>This is what tells the two mesh transports apart from the outside. A link from
-    /// <c>banter-nodestar</c> stamps the site's Signet into itself (<c>AdvertiseSiteInLink</c>);
-    /// a link from a node serving no site carries none, and that is the shape the Arcanum
-    /// channels in <c>Banter.Transport.CupriNet</c> pair with. Both are the same URI otherwise,
-    /// so a head that supports both has to look rather than ask the user which they pasted.</para>
-    ///
-    /// <para>A string that is not a link at all answers false: the caller is choosing between
-    /// transports, and the one it falls back to gives the better error for that.</para>
-    /// </summary>
-    public static bool AdvertisesSite(Uri? link) =>
-        link is not null
-        && IntonationUri.TryParse(link.OriginalString.Trim(), out var intonation, out _)
-        && intonation.Shrine is not null;
-
     public static Beacon? Preferred(IEnumerable<Beacon> beacons)
     {
         ArgumentNullException.ThrowIfNull(beacons);
