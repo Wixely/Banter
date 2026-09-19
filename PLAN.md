@@ -638,11 +638,18 @@ thing to know before touching this:
 | Rite | Conjoin → Consecrate → Conduit (Arcanum) | Pilgrimage to a site, then a conduit |
 | Authenticated by | a shared watchword | pinning the **site's** Signet |
 | Server | none shipped — `BanterServer` built by hand in the Phase 0 spike test | **`banter-nodestar`**, which is a program |
-| Used by | the desktop head's `cupri://` | the web head, and now Android |
+| Used by | the desktop, for a link that names no site | web, Android, and the desktop for a link that names one |
 
-Both take the same intonation link, so the difference is invisible in what a person pastes. The
-Android head takes the Shrine path for the plain reason that it is the one with a server behind it;
-wiring it like the desktop would have given a phone something to dial only in a test.
+Both take the same intonation link, so the difference is invisible in what a person pastes — which
+is why the heads look at the link rather than asking. A link that stamps a site's Signet into
+itself (`AdvertiseSiteInLink`, which `banter-nodestar` sets) gets a Pilgrimage; one that names a
+bare node gets Arcanum channels. `MeshDial.AdvertisesSite` is that test.
+
+**The desktop speaks both** and chooses this way; **Android speaks only the site path**, because
+the phone has no use for a watchword server that does not exist and the Arcanum stack is APK weight
+it would carry for nothing. The web head has always been the site path. So the Arcanum channels are
+now reached only by a link from a node serving no site — which is what the Phase 0 spike builds,
+and is the only thing that has ever listened for them.
 
 **The vessel is TCP, and that is a limit rather than a preference.** A browser carries its
 Pilgrimage on a WebRTC DataChannel and needs no signalling, which is what makes it reach a node

@@ -80,4 +80,16 @@ public sealed class MeshDialTests
     {
         Assert.Null(MeshDial.Preferred([]));
     }
+
+    /// <summary>
+    /// The two mesh transports take the same kind of URI, so a head that speaks both has to tell
+    /// them apart by looking at the link rather than by asking which one was pasted.
+    /// </summary>
+    [Fact]
+    public void SomethingThatIsNotALinkAdvertisesNoSite()
+    {
+        Assert.False(MeshDial.AdvertisesSite(new Uri("tcp://127.0.0.1:7770")));
+        Assert.False(MeshDial.AdvertisesSite(new Uri("cuprinet://intone/not-a-real-payload")));
+        Assert.False(MeshDial.AdvertisesSite(null));
+    }
 }

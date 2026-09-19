@@ -2,7 +2,10 @@ using Banter.App;
 using Banter.Client.Core;
 using Banter.Protocol.Transport;
 using Banter.Transport.CupriNet;
+using Banter.Transport.Shrine;
 using CupriFace.Shell;
+using CupriNet.Alembic.BouncyCastle;
+using CupriNet.Vessel;
 
 // The desktop head. Deliberately thin: resolve settings, run the shared CupriApp, and hand the
 // wiring to BanterChatSession. Everything visible lives in Banter.App.
@@ -41,9 +44,12 @@ if (cli is null)
         so this is the mobile interface itself rather than a picture of one: the same breakpoints
         and the same touch targets, on whatever machine is in front of you.
 
-        Transport is chosen by URI scheme:
+        Transport is chosen by URI scheme, and a mesh link by what it advertises:
           tcp://host:port           plain TCP
-          cupri://<intonation-uri>  CupriNet mesh (paste the mesh-magnet link)
+          <intonation-uri>          CupriNet. A link that names a site is dialled with a
+                                    Pilgrimage to it (what banter-nodestar prints, and what the
+                                    browser and Android heads use); one that names a bare node
+                                    is dialled with Arcanum channels and a watchword.
         """);
     return 0;
 }
@@ -303,7 +309,7 @@ async Task SignInAsync(string serverText, string user, string password, bool per
     }
 
     // Built-in schemes first; anything else is the mesh, which lives outside Banter.Protocol.
-    var transport = BanterTransports.TryClient(server) ?? BuildCupriNet(password);
+    var transport = BanterTransports.TryClient(server) ?? BuildMesh(server, password);
 
     BanterClient connected;
     try
@@ -440,6 +446,34 @@ async Task SignOutAsync()
     StoredCredentials.TryDelete(credentialsPath, Warn);
     vm.Post(() => vm.SignedOut(settings.Server, settings.User));
 }
+
+/// <summary>
+/// The transport for a CupriNet link, of which there are two and the link says which.
+///
+/// <para>A link that advertises a <b>site</b> is one a Pilgrimage can be made to — what
+/// <c>banter-nodestar</c> prints, and what the browser and the Android head dial. A link with no
+/// site is a bare node, which is the shape the Arcanum channels below pair with. Both are the same
+/// URI to look at, so this looks rather than asking which was pasted.</para>
+///
+/// <para>Worth knowing which you are on: the Shrine path pins the site's own Signet and needs no
+/// shared secret, while the Arcanum path is gated by a watchword and has no server in this
+/// repository that listens for it outside a test. The site path is the one to reach for.</para>
+/// </summary>
+IBanterClientTransport BuildMesh(Uri link, string password) =>
+    MeshDial.AdvertisesSite(link)
+        ? new ShrineClientTransport(
+            async (intonation, cancellationToken) =>
+            {
+                // The link says where the node is, not which port serves which rite, so the host
+                // comes from the link and the vessel port from settings (banter-nodestar's
+                // --site-port, 7771).
+                var host = MeshDial.HostOrThrow(intonation.Beacons, intonation.Moniker ?? "the server");
+                return await TcpVessel
+                    .ConnectAsync(host, settings.MeshVesselPort, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            },
+            new BouncyCastleSuite())
+        : BuildCupriNet(password);
 
 IBanterClientTransport BuildCupriNet(string password) =>
     new CupriNetBanterTransport(new CupriNetTransportOptions

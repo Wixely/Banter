@@ -65,6 +65,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: file transfer (attachment chips, `/upload`, `/files`, download) | implemented, tested |
 | App: agent roster panel, delegator/mode header, egress styling (§8a made visible) | implemented, tested |
 | `Banter.App.Desktop` (`banter` host head, TCP or CupriNet) | implemented; runs against a live server — connects, joins, survives traffic, exits clean |
+| Desktop: a mesh link is dialled by what it advertises — a Pilgrimage to a site, or Arcanum channels to a bare node | implemented, tested; the site path confirmed against `banter-nodestar` |
 | Voice: energy gate with hysteresis, PTT trimming, utterance segmentation (§6) | implemented, tested |
 | Voice: `VoiceSession` — both capture modes, ordered transcription off the capture thread | implemented, tested |
 | Voice: OpenAI-compatible STT (`/audio/transcriptions`), covers OpenAI, Qwen and local servers | implemented, tested |
