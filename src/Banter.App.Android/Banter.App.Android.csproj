@@ -18,13 +18,14 @@
     <!-- CoreCLR, because Mono miscompiles the engine and the app dies before its first frame.
          CupriFace.Android pins this itself from 0.25.0, and this line was removed once as
          redundant - but a pin delivered by a NuGet package cannot survive a FIRST restore, and
-         that is the only kind a clean machine does. Package .targets are imported from the assets
-         file, which does not exist yet when restore runs: UseMonoRuntime is still true, restore
-         fetches the Mono packs, and then the build - now with the package's pin applied - asks for
-         CoreCLR packs nobody downloaded. NETSDK1112, on a green build everywhere it had been
-         built before. Here it is evaluated before any package is imported, so restore hears it.
-         Reproduced by hiding microsoft.netcore.app.runtime.android-* from the NuGet cache; put it
-         back and this line is what makes the difference. -->
+         that is the only kind a clean machine does. NuGet evaluates the project with
+         ExcludeRestorePackageImports=true during restore, so the package's .props is not imported
+         then: UseMonoRuntime is still true, restore fetches the Mono packs, and then the build -
+         now with the package's pin applied - asks for CoreCLR packs nobody downloaded. NETSDK1112,
+         on a green build everywhere it had been built before. Here it is set in the project, which
+         restore does read. Raised as CupriFace#191 and fixed in 0.26.1: the package now emits
+         CUPRI0002 naming this line rather than leaving a bare NETSDK1112, so the line stays -
+         it is the documented fix, not a workaround waiting to be removed. -->
     <UseMonoRuntime>false</UseMonoRuntime>
   </PropertyGroup>
   <ItemGroup>
@@ -36,7 +37,7 @@
     <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
-    <PackageReference Include="CupriFace.Android" Version="0.26.0" />
+    <PackageReference Include="CupriFace.Android" Version="0.26.1" />
     <!-- The crypto suite the Pilgrimage runs on. The web head takes the same one. -->
     <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
   </ItemGroup>

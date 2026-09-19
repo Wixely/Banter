@@ -9,7 +9,7 @@
     <ProjectReference Include="../Banter.Voice/Banter.Voice.csproj" />
     <!-- Engine only. Host heads (Desktop/Android/Web) bring their own CupriFace.* host package,
          which keeps this project buildable and testable headlessly on any platform. -->
-    <PackageReference Include="CupriFace" Version="0.26.0" />
+    <PackageReference Include="CupriFace" Version="0.26.1" />
     <!-- Reading a server link out of a camera frame. The pure-managed core, not one of the
          platform bindings: it decodes from a luminance array, which is what every camera already
          hands us, so nothing platform-shaped reaches the shared app. -->
