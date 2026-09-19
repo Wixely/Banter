@@ -29,8 +29,15 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
+    <!-- The mesh, as the web head reaches it: a Pilgrimage to the site banter-nodestar serves,
+         pinning the SITE's Signet. Deliberately the Shrine path and not Banter.Transport.CupriNet
+         - the Arcanum channels that head speaks have no shipped server listening for them, so a
+         phone wired that way would have nothing to dial but a test harness. -->
+    <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
     <PackageReference Include="CupriFace.Android" Version="0.25.0" />
+    <!-- The crypto suite the Pilgrimage runs on. The web head takes the same one. -->
+    <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
   </ItemGroup>
 </Project>

@@ -119,7 +119,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Protocol v1: envelope, payloads, codec, framing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | CupriMark capability negotiation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Transport seam + plain-TCP fallback | ✅ | ✅ | ✅ | ✅ | ✅ | – | ✅ |
-| CupriNet mesh transport | ✅ | ✅ | ⬜ | ✅ | ⬜ | ✅ | ⬜ |
+| CupriNet mesh transport | ✅ | ✅ | ⬜ | ✅ | ✅ | ✅ | ⬜ |
 | Persistence: Dapper + migrations (SQLite / Postgres) | – | ✅ | – | – | – | – | – |
 | **Phase 1 — text chat** |
 | Accounts, auth, hashed credentials | – | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -190,9 +190,9 @@ What the ticks are worth differs by column, and it is worth being honest about w
 
 What is genuinely left: **voice needs real devices** rather than more code (§6 is written and
 tested headlessly; capture, playback, local Whisper and the hotkey all want a person with a
-microphone), **always-listening and wake word** are Phase 4 and unstarted, **CupriNet on Android**
-is the Phase 0 spike still outstanding — the head links no mesh transport, so a phone can only dial
-a `tcp://` host:port — and **fling momentum** is missing from the Android timeline. The CLI's ⬜s
+microphone), **always-listening and wake word** are Phase 4 and unstarted, and **fling momentum**
+is missing from the Android timeline. CupriNet on Android is no longer among them: the head reaches
+the mesh as the browser does (§7b). The CLI's ⬜s
 are mostly deliberate: it is a smoke-test tool, not a product surface.
 
 ## 3. Transport: CupriNet
@@ -623,6 +623,46 @@ will hold a microphone open across exactly these drops, and the work ledger's le
 already built on the assumption that a claim outlives a connection. The desktop `--phone` flag
 cannot reach any of this — it has no platform to destroy its sockets — so this class of bug needs a
 device or an emulator, not a resized window.
+
+### 7b. How a phone reaches the mesh
+
+*Written 2026-09-19, after wiring it.* The Android head speaks a CupriNet link as well as
+`tcp://`: paste the link `banter-nodestar` prints and the phone makes a Pilgrimage to the site it
+serves. The same site the browser reaches, the same conduit, and the same code above the vessel.
+
+**There are two mesh transports in this repository and they do not interoperate**, which is the
+thing to know before touching this:
+
+| | `Banter.Transport.CupriNet` | `Banter.Transport.Shrine` |
+|---|---|---|
+| Rite | Conjoin → Consecrate → Conduit (Arcanum) | Pilgrimage to a site, then a conduit |
+| Authenticated by | a shared watchword | pinning the **site's** Signet |
+| Server | none shipped — `BanterServer` built by hand in the Phase 0 spike test | **`banter-nodestar`**, which is a program |
+| Used by | the desktop head's `cupri://` | the web head, and now Android |
+
+Both take the same intonation link, so the difference is invisible in what a person pastes. The
+Android head takes the Shrine path for the plain reason that it is the one with a server behind it;
+wiring it like the desktop would have given a phone something to dial only in a test.
+
+**The vessel is TCP, and that is a limit rather than a preference.** A browser carries its
+Pilgrimage on a WebRTC DataChannel and needs no signalling, which is what makes it reach a node
+through NAT. A phone cannot: [CupriWebRTC](https://github.com/Wixely/CupriWebRTC) is the
+*answering* half — an ICE-lite responder in the DTLS **server** role, written precisely so a node
+can accept a browser — and there is no client in the estate to dial with. So this is **not NAT
+traversal**; the node still has to be reachable. What it is over `tcp://` is authenticated and
+encrypted rather than a bare socket, and one link instead of a host and a port.
+
+Two smaller things the wiring settled:
+
+- **A link says where a node is, not which port serves what.** The host comes from the link and the
+  vessel port from settings (`meshVesselPort`, 7771, matching `banter-nodestar --site-port`). The
+  browser has the same split for its WebRTC port, so this is the shape rather than a shortcut.
+- **Among a link's addresses, a human's beats anything observed.** `MeshDial.Preferred` takes
+  Manual, then Mapped, then Host — the reverse of `EndpointKind`'s own "rough order of connection
+  preference", which is written from the node's point of view and runs outward from its LAN. A node
+  behind NAT advertises a Host address that is valid and unreachable; on an emulator that address
+  is `127.0.0.1`, which does resolve on the phone — to the phone. Set `PublicHost` on any node
+  whose visitors are not on its LAN.
 
 ## 8. Agent integration
 
@@ -1552,7 +1592,7 @@ admin flow), packaging (MSIX, APK, service installers), docs.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | CupriNet pre-1.0 / unaudited crypto / API churn | Transport breakage | `IBanterTransport` abstraction + TCP/TLS fallback impl; Phase 0 spike gates the decision |
-| CupriNet on Android (.NET 10 AOT, background sockets) | App instability | Spike on-device early; fallback transport is mobile-safe |
+| ~~CupriNet on Android (.NET 10 AOT, background sockets)~~ **Closed 2026-09-19** | — | Both halves answered on a device: the runtime by moving the head to CoreCLR (§7), the network by a Pilgrimage over a TCP vessel to the Nodestar site (§7b). `tcp://` remains as the fallback it was always meant to be |
 | CupriFace chat table-stakes unproven (virtualized scrollback, composer/IME feel) | Client UX unusable at scale | Phase 0 spikes on desktop + real Android device; fallback ladder: Android fails → MAUI mobile, fundamentals fail → MAUI everywhere |
 | Single-stack concentration on pre-1.0 CupriFace (which we maintain) | UI bugs block the client | Accepted — our repo; issues found are fixes to our own product; Bantz ships on it in production today |
 | Browser-side CupriNet DataChannel stack unproven | Web client slips | Server side documented (CupriNet 0.2.0); `IBanterTransport` WebSocket fallback; web is Phase 2.5, not v1-critical |

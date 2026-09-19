@@ -4,6 +4,9 @@ using Android.Content.PM;
 using Banter.App;
 using Banter.Client.Core;
 using Banter.Protocol.Transport;
+using Banter.Transport.Shrine;
+using CupriNet.Alembic.BouncyCastle;
+using CupriNet.Vessel;
 using CupriFace;
 using CupriFace.Android;
 
@@ -231,15 +234,9 @@ public sealed class MainActivity : CupriActivity
                 return;
             }
 
-            // CupriNet on Android is a Phase 0 spike the plan still lists as outstanding
-            // (§10: .NET AOT and background sockets). Saying so beats a timeout with no reason.
-            var transport = BanterTransports.TryClient(uri);
-            if (transport is null)
-            {
-                _viewModel.Post(() => _viewModel.ConnectFailed(
-                    $"This head speaks {string.Join(", ", BanterTransports.Schemes)} for now; '{uri.Scheme}://' is not wired yet."));
-                return;
-            }
+            // Built-in schemes first; anything else is a CupriNet link, which BanterTransports
+            // cannot resolve because the mesh lives outside Banter.Protocol.
+            var transport = BanterTransports.TryClient(uri) ?? BuildMesh();
 
             _client = await BanterClient
                 .ConnectAsync(transport, uri, user, password)
@@ -283,6 +280,35 @@ public sealed class MainActivity : CupriActivity
             _viewModel.Post(() => _viewModel.ConnectFailed(ex.Message));
         }
     }
+
+    /// <summary>
+    /// A transport for a CupriNet link: a TCP vessel to the node, a Pilgrimage over it to the site
+    /// <c>banter-nodestar</c> serves, and Banter frames on a conduit inside that.
+    ///
+    /// <para>The same site the web head reaches, and the same code above the vessel — the browser
+    /// differs only in carrying its vessel on a WebRTC DataChannel. A phone cannot do that: the
+    /// managed WebRTC in the estate is the <em>answering</em> half, an ICE-lite responder in the
+    /// DTLS server role built so a node can accept a browser. There is no client to dial with, so
+    /// the phone dials TCP.</para>
+    ///
+    /// <para>So this is not NAT traversal, and it is worth being plain about that: the node still
+    /// has to be reachable. What it is instead of <c>tcp://</c> is an authenticated one — the
+    /// Pilgrimage pins the site's own Signet and the frames ride an encrypted conduit, where a
+    /// plain socket pins nothing and encrypts nothing.</para>
+    /// </summary>
+    private IBanterClientTransport BuildMesh() =>
+        new ShrineClientTransport(
+            async (intonation, cancellationToken) =>
+            {
+                // The link names the node's reachable addresses but not which port serves which
+                // rite, so the host comes from the beacons and the port from settings.
+                var host = MeshDial.HostOrThrow(intonation.Beacons, intonation.Moniker ?? "the server");
+
+                return await TcpVessel
+                    .ConnectAsync(host, _settings.MeshVesselPort, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            },
+            new BouncyCastleSuite());
 
     /// <summary>
     /// Ends the session and returns to the connect screen, filled in with what was just used.

@@ -26,6 +26,18 @@ public sealed record BanterSettings
     /// <summary>Messages to request per history page.</summary>
     public int HistoryPageSize { get; init; } = 100;
 
+    /// <summary>
+    /// The port a CupriNet link's vessel host is listening on — <c>banter-nodestar --site-port</c>,
+    /// which defaults to 7771 and is commented there as "vessels, for desktop clients".
+    ///
+    /// <para>It is a setting because a signed link does not carry it. The link carries the site's
+    /// Signet, the network, and the node's reachable addresses; which port serves which rite is
+    /// separate, and the browser has the same problem — it reads the host out of the beacons and
+    /// gets the WebRTC port from elsewhere. So the host comes from the link and only the port is
+    /// configured, rather than asking for a whole second address.</para>
+    /// </summary>
+    public int MeshVesselPort { get; init; } = 7771;
+
     /// <summary>Messages kept per room before the oldest are dropped from memory.</summary>
     public int Scrollback { get; init; } = 5_000;
 

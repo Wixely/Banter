@@ -80,7 +80,8 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | App: sign-in screen (server/name/password), on every head | implemented, tested |
 | App: stay signed in — password kept user-only, DPAPI-wrapped on Windows | implemented, tested |
 | App: sign out / switch server or account (Settings → Account) | implemented, tested |
-| `Banter.App.Android` (`CupriActivity` head, TCP) | implemented; signed ~51 MB APK, **run on a device**: sign in, join, send, receive, attach, all green |
+| `Banter.App.Android` (`CupriActivity` head, TCP + CupriNet link) | implemented; signed ~51 MB APK, **run on a device**: sign in, join, send, receive, attach, all green |
+| Android: a phone reaches the mesh (Pilgrimage to the Nodestar site over a TCP vessel) | implemented, tested; confirmed on a device against `banter-nodestar` |
 | App: one column, touch sizing and breakpoints on a phone | implemented, tested; confirmed on a 411×914 dp screen |
 | App: sends survive the reconnect a backgrounded phone forces (§7a) | implemented, tested; confirmed on a device |
 | Android voice: `AudioRecord` capture, `AudioTrack` playback, in-context mic permission | implemented; needs a device |
@@ -442,8 +443,29 @@ An emulator is enough for everything but the microphone: `android-36 google_apis
 `hw.keyboard = no` means the soft keyboard actually appears. `10.0.2.2` is the host from inside it,
 so a server on the laptop is `tcp://10.0.2.2:7770`.
 
-It speaks `tcp://` only for now — CupriNet on Android is still the Phase 0 spike PLAN §10 lists as
-outstanding, and the head says so rather than timing out with no reason.
+It speaks `tcp://` **and a CupriNet link**. Paste the link `banter-nodestar` prints into the Server
+field and the phone makes a Pilgrimage to the site it serves — the same site, the same conduit and
+the same code above the vessel as the browser client, which differs only in carrying its vessel on
+a WebRTC DataChannel instead of TCP.
+
+**A phone cannot do the WebRTC half**, and the reason is worth knowing before you look for it:
+[CupriWebRTC](https://github.com/Wixely/CupriWebRTC) is the *answering* side — an ICE-lite responder
+in the DTLS server role, written so a node can accept a browser with no signalling server. There is
+no client to dial with, so the phone dials TCP. **This is not NAT traversal**: the node still has to
+be reachable. What it gives over `tcp://` is authentication — the Pilgrimage pins the site's own
+Signet and the frames ride an encrypted conduit, where a plain socket pins nothing and encrypts
+nothing.
+
+A link names the addresses a node believes it can be reached at, but not which port serves which
+rite, so the host comes from the link and the port from `meshVesselPort` in settings (7771, matching
+`banter-nodestar --site-port`). Of the addresses, the one configured by a human wins: set
+`CUPRINET_NODESTAR_PublicHost` on the server to whatever visitors actually reach, because a node
+behind NAT also advertises an address it found on itself that they cannot. On an emulator that
+address is `127.0.0.1`, which resolves on the phone — to the phone.
+
+Deliberately the Shrine path, not `Banter.Transport.CupriNet`: the Arcanum channels the desktop
+head's `cupri://` speaks have no shipped server listening for them, so a phone wired that way would
+have had nothing to dial but a test harness.
 
 **A phone is a client that keeps losing its connection**, and that is normal rather than
 exceptional: Android destroys a backgrounded app's TCP sockets once it has been out of the
