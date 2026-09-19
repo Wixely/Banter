@@ -36,7 +36,7 @@
     <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
-    <PackageReference Include="CupriFace.Android" Version="0.25.0" />
+    <PackageReference Include="CupriFace.Android" Version="0.26.0" />
     <!-- The crypto suite the Pilgrimage runs on. The web head takes the same one. -->
     <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
   </ItemGroup>
