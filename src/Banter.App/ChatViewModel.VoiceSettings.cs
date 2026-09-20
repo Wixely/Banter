@@ -286,11 +286,13 @@ public sealed partial class ChatViewModel
     public void SetStayConnected(bool stay)
     {
         StayConnected = stay;
-        // Empty when this host cannot do it, so no row exists to be clicked or tabbed to. A
-        // control hidden by a class is still a control, which the scan button taught us.
-        Model.StayChoices = CanStayConnected
-            ? StayChoices(stay ? "stay" : "drop")
-            : [];
+
+        // Populated whenever the setting is set, like every other choice list here — a head that
+        // does not have the feature simply never calls this, and the field is hidden by its own
+        // class. It used to be blanked on purpose even when it was set, because a hidden control
+        // was still a Tab stop (CupriFace#195, fixed in 0.26.2): markup carrying a rule about
+        // focus behaviour rather than about itself.
+        Model.StayChoices = StayChoices(stay ? "stay" : "drop");
     }
 
     public void ChooseStay(string value) => SetStayConnected(value == "stay");

@@ -21,12 +21,16 @@ public sealed class StayConnectedTests
     }
 
     /// <summary>
-    /// Empty rather than hidden. The scan button taught this the expensive way: a click-handled
-    /// node at <c>display:none</c> is still counted by the focus walk, so it was eating a Tab on
-    /// the sign-in form. A row that does not exist cannot.
+    /// Nothing seeds the rows on a head that never enabled the feature — the same way every other
+    /// choice list on this page waits to be set by the head that owns it.
+    ///
+    /// <para>This was once a deliberate blanking even when the setting <em>was</em> set, because a
+    /// hidden control was still a Tab stop and would eat one (CupriFace#195, fixed in 0.26.2). The
+    /// guard for that now lives where it belongs: the sign-in form's tab-order tests walk past a
+    /// hidden scan button and would fail if the engine regressed.</para>
     /// </summary>
     [Fact]
-    public void AHostThatCannotDoItRendersNoRowToClickOrTabTo()
+    public void AHostThatNeverEnabledItHasNoRows()
     {
         var vm = new ChatViewModel();
 

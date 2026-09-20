@@ -18,7 +18,7 @@
     <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
     <ProjectReference Include="../Banter.Voice.OpenAI/Banter.Voice.OpenAI.csproj" />
     <ProjectReference Include="../Banter.Voice.Wyoming/Banter.Voice.Wyoming.csproj" />
-    <PackageReference Include="CupriFace.Shell" Version="0.26.1" />
+    <PackageReference Include="CupriFace.Shell" Version="0.26.2" />
     <!-- The crypto suite a Pilgrimage runs on; the other heads take the same one. -->
     <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
     <!-- Decoding a cached preview into a clipboard DIB. Transitive via CupriFace, declared

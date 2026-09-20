@@ -679,18 +679,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                    into the one field on this screen where every character is literal. The scheme
                    survives that (Uri lowercases it), a hostname would not always. -->
               <cupri-textfield class="connect-field" value="{{ConnectServer}}" placeholder="tcp://host:7770" inputmode="url" data-autofocus="1"></cupri-textfield>
+              <!-- Beside the field it fills, which is where it belongs. It sat after Connect from
+                   0.26.0 until now: a hidden control was still a Tab stop then, and one here ate
+                   a Tab on every head without a camera, which three sign-in tests caught.
+                   CupriFace#195 fixed that in 0.26.2 and the button came back.
+
+                   Worth knowing if this is ever revisited: on 0.26.1 the tab-order tests pass with
+                   the button here, so whatever made this position fail on 0.26.0 was already gone
+                   before the engine fix landed — the move outlived its reason by a version. The
+                   engine bug was real either way (CupriFace#195 has a reproduction), and those
+                   tests are what would say so again. -->
+              <cupri-button class="{{ScanButtonClass}}">Scan a code</cupri-button>
               <div class="connect-label">Name</div>
               <cupri-textfield class="connect-field" value="{{ConnectUser}}" placeholder="your nick"></cupri-textfield>
               <div class="connect-label">Password</div>
               <cupri-password class="connect-field" value="{{ConnectPassword}}"></cupri-password>
               <cupri-button class="connect-go">{{ConnectButtonText}}</cupri-button>
-              <!-- After Connect, not beside the Server field it fills, and that is not a
-                   preference. CupriFace makes an element focusable by matching a click handler,
-                   and the Tab walk counts it even with display:none — so a control here between
-                   Server and Name silently ate a Tab and typing went back into the field above.
-                   Last in the form is the one place it cannot do that. Hidden unless a head wired
-                   a camera. -->
-              <cupri-button class="{{ScanButtonClass}}">Scan a code</cupri-button>
               <div class="connect-status">{{ConnectStatus}}</div>
               <div class="connect-hint">{{ConnectHint}}</div>
             </cupri-form>
