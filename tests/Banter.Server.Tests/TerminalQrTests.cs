@@ -82,7 +82,18 @@ public sealed class TerminalQrTests
         Assert.Equal(85, line.Split("[48;2;").Length - 1);
 
         // Left set, the rest of the row keeps the code's colours to the end of the line.
-        Assert.EndsWith("[0m\r", line);
+        //
+        // Trimmed like its neighbour above. The renderer ends lines with Environment.NewLine,
+        // which is right for something written to a console - and means the carriage return this
+        // asserted for exists on Windows and nowhere else. Every local run was green while CI was
+        // red for four runs, because CI is the only Linux this repo ever builds on.
+        //
+        // The escape is built from its char code rather than embedded as a raw ESC byte, which is
+        // what this line held before: an invisible control character in source reads as a typo and
+        // does not survive being edited by anything that normalises text.
+        var reset = (char)27 + "[0m";
+
+        Assert.EndsWith(reset, line.TrimEnd('\r'));
     }
 
     [Fact]
