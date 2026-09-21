@@ -214,9 +214,16 @@ public sealed class WorkLedgerTests : IAsyncLifetime
         await agent.ClaimTaskAsync(task.TaskId);
 
         // Keep reporting for longer than the 1s lease; it must still be held at the end.
-        for (var i = 0; i < 6; i++)
+        //
+        // Paced off the clock rather than a fixed count, and at a tenth of the lease rather than
+        // a third of it. At 300ms a stall of 700ms was enough to let the lease lapse and the task
+        // be reclaimed mid-loop, which a CI runner under load duly produced — NOT_HOLDER, on a
+        // release tag, from a test that passes every time on a quiet machine. What is being
+        // tested is that renewal holds a lease open, not how finely the interval can be cut.
+        var until = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(2);
+        for (var i = 0; DateTimeOffset.UtcNow < until; i++)
         {
-            await Task.Delay(300);
+            await Task.Delay(100);
             await agent.UpdateTaskAsync(task.TaskId, $"step {i}");
         }
 

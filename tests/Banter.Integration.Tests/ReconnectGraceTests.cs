@@ -118,7 +118,9 @@ public sealed class ReconnectGraceTests : IAsyncLifetime
         await RestartServerAsync(port);
         await send.WaitAsync(Timeout);
 
-        Assert.Contains("held through the reconnect", await TextsInRoomAsync("#grace"));
+        Assert.Contains(
+            "held through the reconnect",
+            await WaitForTextInRoomAsync("#grace", "held through the reconnect"));
     }
 
     [Fact]
@@ -238,5 +240,35 @@ public sealed class ReconnectGraceTests : IAsyncLifetime
         await bob.JoinAsync(room);
         var history = await bob.GetHistoryAsync(room);
         return [.. history.Messages.Select(m => m.Text)];
+    }
+
+    /// <summary>
+    /// The room's messages, once the one being waited for is among them — or whatever is there
+    /// when the timeout runs out, so the assertion still fails with a readable collection.
+    ///
+    /// <para>A send completing means this client got its acknowledgement. Whether another client
+    /// can already read the row back is a separate question, and on a loaded CI runner the answer
+    /// was sometimes "not yet": the read won, the collection came back empty, and a release tag
+    /// failed on a test that had never failed on a developer machine. Waiting for the thing being
+    /// asserted is the fix; sleeping a fixed amount would only move the race.</para>
+    /// </summary>
+    private async Task<IReadOnlyList<string>> WaitForTextInRoomAsync(string room, string text)
+    {
+        await using var bob = await ConnectAsync("bob", "pw-b");
+        await bob.JoinAsync(room);
+
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        while (true)
+        {
+            var history = await bob.GetHistoryAsync(room);
+            var texts = history.Messages.Select(m => m.Text).ToList();
+
+            if (texts.Contains(text) || DateTimeOffset.UtcNow >= deadline)
+            {
+                return texts;
+            }
+
+            await Task.Delay(50);
+        }
     }
 }
