@@ -1510,6 +1510,24 @@ its first frame (§7, and the pin cannot fire from a NuGet `.targets` for any pa
 a phone **loses its sockets every time it is put down** (§7a), which made every attachment fail and
 every message typed on return disappear. The fix for the latter is in `Banter.Client.Core`, so the
 CLI, the desktop head and the agents get it too.
+
+***Shipped in v0.8.0 (2026-09-21) — the phone you can put down.*** 0.7.0 proved the phone worked
+while you were looking at it; this closes the other half. "Stay connected" runs a `dataSync`
+foreground service so the connection survives the pocket (§7a), and being named raises a
+notification unless you are already in that room. Phase 2's last item shipped here too, having
+waited two days on a red main: `banter-nodestar` prints its link as a QR code and the phone reads
+one with the camera (§7c).
+
+Three things about the release itself are worth keeping, because none of them was about the code.
+The suite was green on Windows every time while CI had been red since the 19th, on one assertion
+about a line ending that only Windows has — CI is the only Linux this repo builds on, so "green
+locally" had quietly stopped meaning anything. Then three *different* integration tests failed on
+three consecutive runs, each passing on a re-run: `dotnet test` starts every project at once, so
+190 tests holding real sockets and measuring real time were sharing two cores with 607 rendering
+tests. `-m:1` settled it. And the first v0.8.0 tag failed on the second of those, which is the
+guard working — pack, the app publish, the image and the release job all skipped behind it, so
+nothing was pinned to the tag and it could be re-cut on the fixed commit rather than burning a
+version the way 0.7.0 had to.
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 
