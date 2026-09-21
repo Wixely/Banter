@@ -42,7 +42,17 @@ jobs:
       - name: Build
         run: dotnet build Banter.slnx --no-restore --configuration Release
       - name: Test
-        run: dotnet test Banter.slnx --no-build --configuration Release --logger "trx;LogFileName=results.trx" --results-directory artifacts/test-results
+        # -m:1 runs the test projects one at a time. Without it MSBuild starts all seven at once,
+        # so 190 integration tests - which stand up real servers and measure elapsed time - share
+        # two cores with 607 rendering tests. Three different integration tests failed on three
+        # consecutive runs that way, each passing locally and on a re-run: a lease renewed every
+        # 300ms lapsing, a message asserted before its row was readable, and a room list simply
+        # timing out. Only the third survived fixing the other two, which is what made it clear
+        # the tests were not the problem.
+        #
+        # It costs about a minute of wall clock. A release that cannot be cut because the suite
+        # fails one run in two costs considerably more.
+        run: dotnet test Banter.slnx --no-build --configuration Release -m:1 --logger "trx;LogFileName=results.trx" --results-directory artifacts/test-results
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
