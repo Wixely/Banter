@@ -1,0 +1,10 @@
+This file exists so the directory does.
+
+The VS Code launch configurations use .banter-dev as their working directory, and VS Code
+checks that a cwd exists before it starts anything - so without this, a fresh clone or a
+`git clean -xfd` left every one of them failing with "Invalid 'cwd' value" before any Banter
+code ran. Nothing else creates it.
+
+Everything else in here is ignored: client settings, agent keys, the SQLite database and the
+mesh identity written while debugging. None of it belongs in the repository, and none of it
+should ever reach the real profile at %APPDATA%/Banter.

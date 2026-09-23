@@ -7,7 +7,14 @@ artifacts/
 
 # Local debug profile: settings, mesh identity and SQLite db written by the VS Code
 # launch configs, kept out of the real profile at %APPDATA%/Banter.
-.banter-dev/
+#
+# The CONTENTS are ignored; the directory itself is tracked, through .gitkeep. Half the launch
+# configurations name it as their `cwd`, and VS Code checks a cwd exists before it runs anything -
+# so on a clone, a new machine, or after a `git clean -xfd`, every one of them failed with
+# "Invalid 'cwd' value" before a single line of Banter ran. Nothing created it: not a task, not
+# the server, not a script. It only ever existed because somebody had made it by hand.
+.banter-dev/*
+!.banter-dev/.gitkeep
 
 # Written at runtime by `banter-nodestar --seed-file` so the web client can pre-fill its Server
 # field. A link, not a secret, but it is machine- and run-specific and belongs to nobody else.
