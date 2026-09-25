@@ -358,18 +358,22 @@
       // The server on a CupriNet node instead of a socket: this is what the browser client
       // talks to. Full C# debugging, same as any other coreclr config.
       //
-      // --seed-file drops this node's link where the web head can fetch it from its own origin,
-      // so the browser pre-fills its Server field instead of needing a 400-character paste on
-      // every run. The file is gitignored and rewritten every 30s, because links rotate.
+      // --client is the web head, which THIS node serves at /_nodestar/app. One server: there is
+      // no separate dev server for the page any more. The node also publishes its live link
+      // beside the bundle at /_nodestar/app/intonation.json, which the head reads to pre-fill its
+      // Server field instead of needing a 400-character paste on every run.
+      //
+      // The preLaunchTask publishes the head as well as building the server, because a node
+      // pointed at a stale bundle - or none - is a 404 five minutes into a debugging session.
       "name": "Mesh server (Nodestar + WebRTC)",
       "type": "coreclr",
       "request": "launch",
-      "preLaunchTask": "build-mesh-server",
+      "preLaunchTask": "mesh-server-and-client",
       "program": "${workspaceFolder}/src/Banter.Server.Nodestar/bin/Debug/net10.0/banter-nodestar.dll",
       "args": [
         "--data", "${workspaceFolder}/.banter-dev/nodestar",
         "--network", "banter-dev",
-        "--seed-file", "${workspaceFolder}/src/Banter.App.Web/wwwroot/seed.json"
+        "--client", "${workspaceFolder}/src/Banter.App.Web/bin/Release/net10.0/publish/wwwroot"
       ],
       "env": { "BANTER_ADMIN_PASSWORD": "banter" },
       "cwd": "${workspaceFolder}",
@@ -391,22 +395,30 @@
       // sounds: the head is one line of CupriFace.Web.Mono plus a WebRTC data channel, and the
       // behaviour worth stepping through lives in Banter.App and Banter.Client.Core, which the
       // test suite covers headlessly.
+      //
+      // The url is the MESH SERVER's, because that is what serves the page. Launch this on its
+      // own and the wait below sits until a node is up; launch the compound and it starts one.
+      // userDataDir is the difference between this working and "Unable to attach to browser".
+      // A browser started against a profile that is ALREADY OPEN does not start: it hands the url
+      // to the running instance and exits, so the debugger is left with nothing to attach to, and
+      // anyone debugging a web app has their own browser open. Its own profile also means no
+      // extensions, no cookies and no session carried in from ordinary browsing.
       "name": "Web client (Edge)",
       "type": "msedge",
       "request": "launch",
-      "preLaunchTask": "serve-web",
-      "url": "http://localhost:7775",
+      "preLaunchTask": "wait-for-mesh-web",
+      "url": "http://localhost:7774/_nodestar/app",
       "webRoot": "${workspaceFolder}/src/Banter.App.Web/wwwroot",
-      "browserLaunchLocation": "workspace"
+      "userDataDir": "${workspaceFolder}/.banter-dev/edge-profile"
     },
     {
       "name": "Web client (Chrome)",
       "type": "chrome",
       "request": "launch",
-      "preLaunchTask": "serve-web",
-      "url": "http://localhost:7775",
+      "preLaunchTask": "wait-for-mesh-web",
+      "url": "http://localhost:7774/_nodestar/app",
       "webRoot": "${workspaceFolder}/src/Banter.App.Web/wwwroot",
-      "browserLaunchLocation": "workspace"
+      "userDataDir": "${workspaceFolder}/.banter-dev/chrome-profile"
     },
     {
       "name": "Attach to process",
@@ -416,9 +428,10 @@
   ],
   "compounds": [
     {
-      // The web stack: a Banter server on a CupriNet node, and the browser client that reaches
-      // it over WebRTC. The server seeds its link, so the client's Server field is already
-      // filled — sign in as admin / banter.
+      // The web stack, and it is ONE server: a Banter server on a CupriNet node, which also
+      // hands out the browser client that reaches it over WebRTC. The node offers its own link at
+      // /_nodestar/app/intonation.json, so the client's Server field is already filled — sign in
+      // as admin / banter.
       //
       // Both halves are debuggable, in different debuggers: C# breakpoints in the server through
       // coreclr, and JS breakpoints in the client through the browser. They are separate

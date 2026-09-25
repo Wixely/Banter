@@ -409,14 +409,20 @@ Needs LM Studio on `:1234` and DaggerAgent on `:5090`.
 
 ### Debugging the web stack
 
-**Run → "Mesh server + web client"** (`.vscode/launch.json`). That builds and starts a Banter
-server on a CupriNet node with WebRTC on, serves the web head at `http://localhost:7775`, and opens
-a browser on it. Sign in as **admin / banter**.
+**Run → "Mesh server + web client"** (`.vscode/launch.json`). That builds the server, publishes the
+web head, starts a Banter server on a CupriNet node with WebRTC on, and opens a browser on
+`http://localhost:7774/_nodestar/app`. Sign in as **admin / banter**.
 
-The Server field is already filled: the node writes its link to
-`src/Banter.App.Web/wwwroot/seed.json` (`--seed-file`, gitignored, rewritten every 30s because links
-rotate), and the client fetches it from its own origin at boot. Without that the field would need a
-400-character paste on every run.
+**One server.** The node that carries the mesh also hands out the page that dials it — there is no
+separate dev server for the client, which is why the publish is part of the launch. Nodestar serves
+the bundle under `/_nodestar/app` and stamps a `<base>` into the markup, so the bundle does not know
+or care where it is mounted; pass the directory with `--client`, or drop it in a `client` folder
+beside the executable and it is found.
+
+The Server field is already filled: the node publishes its live link beside the bundle at
+`/_nodestar/app/intonation.json` and the client reads it at boot. That endpoint is also what removes
+the signalling server — the page holds the node's remote description before it opens a socket.
+Without it the field would need a 400-character paste on every run.
 
 Breakpoints: **C# in the server** through the ordinary .NET debugger, and **JavaScript in the
 client** through VS Code's built-in browser debugger. Breakpoints in the client's *C#* are not

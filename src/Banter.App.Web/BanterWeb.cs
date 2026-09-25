@@ -47,36 +47,41 @@ public static class BanterWeb
 
         // No server is configured in a browser — there are no command-line arguments to read one
         // from — so the connect screen is where every session starts. The server is the node's
-        // intonation link: pasted in, or seeded by a node that was asked to leave one.
+        // intonation link: pasted in, or offered by the node that served this page.
         _viewModel.ShowConnect(server: "", user: "");
-        _ = WatchForSeedAsync();
+        _ = WatchForNodeLinkAsync();
 
         return app;
     }
 
     /// <summary>
-    /// Watches for a link a node left for us at <c>seed.json</c> (its <c>--seed-file</c>). Absent in
-    /// a normal deployment, where the person pastes a link — so a miss is silence, not an error.
+    /// Asks the node that served this page for its link, at <c>intonation.json</c>.
     ///
-    /// <para>Polled rather than read once, and never awaited by the caller: under a "server +
-    /// client" launch the two start together and the browser regularly wins the race, so a single
-    /// read at boot finds nothing. Not blocking startup matters just as much — a deployment with no
-    /// seed at all must not be made to wait for one that is never coming.</para>
+    /// <para>Relative to the page, which is the whole point: when a Nodestar serves the head it
+    /// mounts it under <c>/_nodestar/app</c> and stamps a <c>&lt;base&gt;</c> into the markup, so
+    /// this resolves to that node's own endpoint without the bundle knowing where it lives. The
+    /// answer is that node's live Intonation — the remote description, held before a socket is
+    /// opened, which is what means there is no signalling server anywhere in this.</para>
+    ///
+    /// <para>Polled rather than read once, and never awaited by the caller: the page can be up
+    /// before the node has a link to give. A deployment where nothing answers is normal too — the
+    /// head is served from anywhere and the person pastes a link — so a miss is silence, not an
+    /// error, and startup never waits on one that is not coming.</para>
     /// </summary>
-    private static async Task WatchForSeedAsync()
+    private static async Task WatchForNodeLinkAsync()
     {
         // An absolute URL, because a browser HttpClient has no BaseAddress and a relative one
-        // throws rather than resolving against the page. That failure looked exactly like "no seed
+        // throws rather than resolving against the page. That failure looked exactly like "no link
         // yet" and retried silently for thirty seconds, which is what a catch-all buys you.
-        Uri seedUri;
+        Uri linkUri;
         try
         {
             var baseUri = JSHost.GlobalThis.GetPropertyAsJSObject("document")?.GetPropertyAsString("baseURI");
-            seedUri = new Uri(new Uri(baseUri ?? "/"), "seed.json");
+            linkUri = new Uri(new Uri(baseUri ?? "/"), "intonation.json");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[banter] cannot resolve the page address, so no seed: {ex.Message}");
+            Console.Error.WriteLine($"[banter] cannot resolve the page address, so no link: {ex.Message}");
             return;
         }
 
@@ -88,10 +93,10 @@ public static class BanterWeb
             {
                 // JsonDocument rather than a deserialised record: reading one string needs no
                 // reflection, and the trimmer can see through it.
-                using var seed = JsonDocument.Parse(
-                    await http.GetStringAsync(seedUri).ConfigureAwait(false));
+                using var offered = JsonDocument.Parse(
+                    await http.GetStringAsync(linkUri).ConfigureAwait(false));
 
-                if (seed.RootElement.TryGetProperty("link", out var element) &&
+                if (offered.RootElement.TryGetProperty("link", out var element) &&
                     element.GetString() is { Length: > 0 } link)
                 {
                     // Offered, not imposed: declined once someone has typed their own, or once the
@@ -102,14 +107,14 @@ public static class BanterWeb
             }
             catch (HttpRequestException)
             {
-                // No seed file. Expected in any deployment that does not use one, and expected for
-                // the first few tries when the node is still starting.
+                // Nothing answering there. Expected when the head is served from somewhere that
+                // is not a node, and expected for the first few tries while one is still starting.
             }
             catch (Exception ex)
             {
                 // Anything else is a fault of ours, and silence would hide it the way it hid the
                 // relative-URI bug above.
-                Console.Error.WriteLine($"[banter] seed watch stopped: {ex.Message}");
+                Console.Error.WriteLine($"[banter] link watch stopped: {ex.Message}");
                 return;
             }
 

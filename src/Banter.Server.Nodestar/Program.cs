@@ -46,35 +46,22 @@ var listenPort = Port("--listen-port", 7772);  // the node's own overlay beacon
 var webRtcPort = Port("--webrtc-port", 7773);  // the browser on-ramp (UDP)
 var webPort = Port("--web-port", 7774);        // the clearnet front, and the link.json it serves
 
-// Where to drop this node's link so a browser client can seed itself instead of being pasted
-// into. The web head fetches it from its own origin, which is why this is a file rather than an
-// endpoint: in development the client is served by its own dev server, not by this node.
-var seedFile = Arg("--seed-file");
-
-// The seed file exists only while this node does, which takes deleting it at both ends.
+// The browser client, served by THIS node. One server: whatever carries the mesh also hands out
+// the page that dials it, so there is no second origin to keep in step and no question of which
+// of them is the real one.
 //
-// A seed outliving its node is the trap: it names a node that is gone, or names this one with a
-// dead process's ICE credentials, and a client that reads it hangs partway through a handshake
-// with nothing to talk to. That reads as the client being broken. Far better to leave no link at
-// all — the client then knows to wait, and says so.
-ClearSeed();
-
-void ClearSeed()
-{
-    if (seedFile is null)
-    {
-        return;
-    }
-
-    try
-    {
-        File.Delete(seedFile);
-    }
-    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-    {
-        Console.Error.WriteLine($"warning: could not clear the seed file: {ex.Message}");
-    }
-}
+// This used to be a file. The node wrote its link into the web head's wwwroot and a separate dev
+// server served it, which is two servers and a link with a lifetime sitting in a file — stale the
+// moment the node that wrote it went away, and failing then in a way that reads as the transport
+// being broken. Nodestar serves the bundle under /_nodestar/app instead, stamping a <base> into
+// the markup so it is mount-point-agnostic, and publishes the live link beside it at
+// /_nodestar/app/intonation.json. That endpoint is what removes the signalling server: the page
+// holds this node's remote description before it opens a socket.
+//
+// Defaults to a "client" directory beside the executable, so a published server that ships the
+// head needs no argument at all.
+var clientRoot = Arg("--client") ?? Path.Combine(AppContext.BaseDirectory, "client");
+var clientAssets = new DirectoryClientAssets(clientRoot);
 var adminPassword = Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD") ?? "admin";
 
 var storage = BanterStorageOptions.Parse("sqlite", $"Data Source={Path.Combine(dataDir, "banter.db")}");
@@ -112,6 +99,14 @@ builder.Node.AdvertiseSiteInLink = true;
 // The browser on-ramp. Without this the WebRTC endpoint never reaches the link, and the web head
 // has nothing to dial: it is the transport, not merely a flag.
 builder.UseWebRtc();
+
+// Separate from UseWebRtc on purpose, and worth keeping separate here too: accepting browser
+// DataChannels and deciding what runs in the browser are different decisions. A node with no
+// client built beside it is still a perfectly good node for the desktop and phone heads.
+if (clientAssets.HasContent)
+{
+    builder.ServeClient(clientAssets.Get);
+}
 
 // The listener has to exist before the server, because the site is registered while the node is
 // being built and the node is running before there is anything to hand it to.
@@ -170,43 +165,21 @@ builder.OnStarted((app, cancellationToken) =>
     Console.WriteLine(link);
     Console.WriteLine();
 
-    if (seedFile is not null)
+    if (clientAssets.HasContent)
     {
-        // Rewritten on a timer rather than written once: a link has a lifetime and rotates, so a
-        // seed file written at startup is stale by the time a long debugging session gets back to
-        // it — and a stale link fails in a way that looks like the transport being broken.
-        _ = Task.Run(async () =>
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(seedFile))!);
-                    await File.WriteAllTextAsync(
-                        seedFile,
-                        System.Text.Json.JsonSerializer.Serialize(new { link = links.Current().Link }),
-                        cancellationToken);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // A seed nobody can write is a convenience lost, not a node that should stop.
-                    Console.Error.WriteLine($"warning: could not write the seed file: {ex.Message}");
-                }
-
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-            }
-        }, cancellationToken);
-
-        Console.WriteLine($"Seeding the web client from {seedFile}.");
-        Console.WriteLine();
+        Console.WriteLine($"The web client is at http://localhost:{webPort}/_nodestar/app");
+        Console.WriteLine($"  from {clientAssets.Root}");
     }
+    else
+    {
+        // Said out loud rather than left as a 404 later. A node with no client is a legitimate
+        // deployment, but so is "I meant to build one and the path is wrong", and those two look
+        // identical from a browser.
+        Console.WriteLine($"No web client at {clientAssets.Root}.");
+        Console.WriteLine("  Publish Banter.App.Web there, or pass --client <wwwroot>.");
+    }
+
+    Console.WriteLine();
 
     Console.WriteLine("Press Ctrl+C to stop.");
     return Task.CompletedTask;
@@ -250,10 +223,6 @@ if (host is not null)
 
 await listener.DisposeAsync();
 await nodestar.DisposeAsync();
-
-// The node is down, so its link is worthless. Taken away rather than left to mislead whoever
-// loads the page next. A hard kill skips this, which is what the delete at startup is for.
-ClearSeed();
 return 0;
 
 int Port(string name, int fallback) =>

@@ -26,9 +26,12 @@ public sealed class WebHeadTests(PublishedHead head, ITestOutputHelper output)
     /// this bound exists to fail a hang, not to measure anything.</summary>
     private const int BootTimeoutMs = 90_000;
 
-    /// <summary>The node's seed file. Absent unless a Nodestar was asked to leave one, which is
-    /// the normal case for a plain deployment - the head polls for it and gives up.</summary>
-    private const string ExpectedMiss = "seed.json";
+    /// <summary>
+    /// The link endpoint a Nodestar publishes beside the bundle it serves. These tests serve the
+    /// published files from a plain static host instead, where nothing answers it - so the head
+    /// polls, gives up, and the person pastes a link. Expected, and the only 404 that is.
+    /// </summary>
+    private const string ExpectedMiss = "intonation.json";
 
     [Fact]
     public async Task ItBootsToItsSignInScreen()

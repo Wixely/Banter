@@ -42,27 +42,60 @@
       "problemMatcher": "$msCompile"
     },
     {
-      // Serves the web head on the fixed port in Properties/launchSettings.json, and stays up.
-      // The browser configs wait for the "App url" line rather than racing it.
+      // PUBLISHES the web head, because that is what the mesh server serves. There is no separate
+      // dev server for it any more: whatever carries the mesh hands out the page that dials it,
+      // which is one origin instead of two and settles which of them is the real one.
       //
-      // No dependsOn: `dotnet run` builds. Depending on build-web as well would rebuild the
-      // project a second time, and a rebuild UNDERNEATH a server that is already serving is the
-      // one thing to avoid here — scripts are fingerprinted, so the running server keeps
-      // advertising a filename the rebuild has just replaced, the import 404s, and the page loads
-      // to a blank canvas with no error on it. If that happens, restart this task.
-      "label": "serve-web",
+      // A publish rather than a build, and Release: the published wwwroot IS the deployable
+      // client - fingerprinted assets, import map, the lot - and a plain build output is not that.
+      // Slow from cold, which is the honest price of there being one server.
+      "label": "publish-web",
       "command": "dotnet",
       "type": "process",
-      "args": ["run", "--project", "${workspaceFolder}/src/Banter.App.Web/Banter.App.Web.csproj"],
-      "isBackground": true,
-      "problemMatcher": {
-        "pattern": [{ "regexp": "^\\s*$", "file": 1, "location": 2, "message": 3 }],
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": "WasmAppHost",
-          "endsPattern": "App url:"
-        }
-      }
+      "args": [
+        "publish",
+        "${workspaceFolder}/src/Banter.App.Web/Banter.App.Web.csproj",
+        "--configuration",
+        "Release",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      // Builds the mesh server AND publishes the client it hands out, so F5 cannot start a node
+      // with a stale bundle beside it - or with none at all.
+      "label": "mesh-server-and-client",
+      "dependsOrder": "sequence",
+      "dependsOn": ["build-mesh-server", "publish-web"],
+      "problemMatcher": []
+    },
+    {
+      // The browser must not open before the node's web front is listening, or it gets a
+      // connection error instead of the page. Polled rather than slept: the node takes about ten
+      // seconds from cold and longer on a tired machine, and a fixed wait is either too short to
+      // work or too long to sit through every single time.
+      //
+      // --retry-all-errors because the failure being waited out is "connection refused", which is
+      // not an HTTP status and which plain --retry ignores.
+      //
+      // "process", NOT "shell": on Windows a shell task runs in PowerShell, where `curl` is an
+      // ALIAS FOR Invoke-WebRequest - which does not understand one flag below and fails the
+      // launch before the browser opens. A process task execs the binary straight off PATH, which
+      // is curl on every platform this repo is developed on.
+      "label": "wait-for-mesh-web",
+      "type": "process",
+      "command": "curl",
+      "args": [
+        "--retry", "90",
+        "--retry-delay", "1",
+        "--retry-all-errors",
+        "--silent",
+        "--fail",
+        "--output", "${workspaceFolder}/.banter-dev/.web-ready",
+        "http://localhost:7774/_nodestar/app"
+      ],
+      "problemMatcher": []
     },
     {
       "label": "test",
