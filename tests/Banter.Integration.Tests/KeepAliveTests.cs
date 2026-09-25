@@ -86,15 +86,32 @@ public sealed class KeepAliveTests(ITestOutputHelper output) : IAsyncLifetime
             new BanterClientOptions { KeepAliveInterval = TimeSpan.FromMilliseconds(200) });
 
         var afterHandshake = counting.FramesSent;
-        await Task.Delay(1200);
-        var afterIdling = counting.FramesSent;
+        var wanted = afterHandshake + 3;
 
-        output.WriteLine($"frames: {afterHandshake} after connecting, {afterIdling} after idling 1.2s");
+        // Wait FOR the pings rather than sleeping a fixed window and counting what turned up.
+        // The keepalive awaits each ping's REPLY before its next tick, and that reply is handed
+        // back by the session loop - so the cadence an observer sees is the interval plus a round
+        // trip, and on a loaded runner the round trip is the larger half. Sleeping 1.2s and
+        // demanding six ticks measured the machine, not the client: CI saw one ping in 1.2s and
+        // went red, with nothing wrong at either end.
+        //
+        // Waiting still pins what this test is for - that an idle client speaks unprompted, and
+        // keeps speaking - and still fails, on the timeout, if the loop ever stops.
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (counting.FramesSent < wanted && waited.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            await Task.Delay(25);
+        }
+
+        var afterIdling = counting.FramesSent;
+        output.WriteLine(
+            $"frames: {afterHandshake} after connecting, {afterIdling} after {waited.ElapsedMilliseconds}ms idle");
 
         // Several ticks' worth, and nobody asked for any of them.
         Assert.True(
-            afterIdling >= afterHandshake + 3,
-            $"an idle client sent only {afterIdling - afterHandshake} frames in 1.2s of a 200ms keepalive");
+            afterIdling >= wanted,
+            $"an idle client sent only {afterIdling - afterHandshake} unprompted frames in " +
+            $"{waited.ElapsedMilliseconds}ms of a 200ms keepalive");
 
         // Still usable: the pings are not consuming replies meant for anyone else.
         await client.JoinAsync("#quiet");
