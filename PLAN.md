@@ -1529,6 +1529,28 @@ tests. `-m:1` settled it. And the first v0.8.0 tag failed on the second of those
 guard working — pack, the app publish, the image and the release job all skipped behind it, so
 nothing was pinned to the tag and it could be re-cut on the fixed commit rather than burning a
 version the way 0.7.0 had to.
+
+***Shipped in v0.9.0 (2026-09-25) — a face, and a page that fits.*** Banter has an icon: one
+source SVG the author drew, and from it the three different things an icon turns out to be — the
+running app's, read through `CupriApp.Icon` by the desktop window, the browser tab and the recents
+card; the desktop executable's `banter.ico`, read by Explorer before any of our code runs; and the
+Android launcher's adaptive `mipmap-*`. The composer's Talk, Attach and Send became glyphs, with
+the word each one used to show moving to `aria-label` and a tooltip rather than being dropped —
+which works on the web head too, the canvas-accessibility caveat in CUPRIFACE-PLAN §3 having been
+overtaken by events.
+
+The fix in it was §2.5's last open item, and it was a hang rather than a wrong answer: a history
+page too big for its connection was refused at the transport, so the reply never came and the
+caller waited out its timeout. Minor rather than patch because `IBanterConnection` gained a member.
+
+Two lessons, neither about the code. Main had been red since the 21st on a keepalive test that was
+measuring the CI runner: nothing anywhere disabled xUnit's in-assembly parallelism, and nineteen of
+this project's twenty integration files call `Task.Delay`. `-m:1` had stopped the *projects*
+fighting and said nothing about what happens inside one — the fourth test to be fixed one at a time
+before anybody looked for the shared cause. And the plan itself had three lines claiming work was
+outstanding that its own later paragraphs recorded as done, which is the worse direction for a plan
+to be wrong in: it sends the next reader off to build something twice.
+
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 
