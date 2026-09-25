@@ -23,5 +23,12 @@
        and the microphone. Refusing it is not fatal: the connection is still held, the notification
        that says so is simply not shown. -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-  <application android:label="Banter" android:supportsRtl="true" />
+  <!-- roundIcon as well as icon: a launcher that wants a circular entry asks for that one, and
+       without it some of them fall back to the legacy square and mask it themselves. Both point
+       at the same adaptive icon, which is what lets the launcher pick its own shape. -->
+  <application
+    android:label="Banter"
+    android:icon="@mipmap/ic_launcher"
+    android:roundIcon="@mipmap/ic_launcher"
+    android:supportsRtl="true" />
 </manifest>

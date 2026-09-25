@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The adaptive icon, used from Android 26 - which is every version this head supports, so this is
+  the one that actually runs. The mipmap-*/ic_launcher.png files beside it are the legacy square,
+  kept for the places that still read one (some launchers, and the Play listing's fallbacks).
+
+  Two layers, because the launcher owns the shape: it masks them to a circle, a squircle, a
+  teardrop or whatever the device's theme says, and animates them apart when you drag the icon.
+  A single pre-shaped bitmap would be cropped by that mask rather than framed by it.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+  <background android:drawable="@color/ic_launcher_background" />
+  <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+  <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>

@@ -5,6 +5,17 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The RUNNING app's icon: the desktop window and taskbar, the web page's favicon, and the
+         phone's recents card all read it through CupriApp.Icon. It is embedded rather than copied
+         beside the executable so every head gets it without each one shipping its own file - and
+         so it cannot go missing from a published zip.
+
+         This is NOT the installed app's icon. A Windows .exe and an Android launcher entry are
+         read out of the built artefact before any of this code exists, which is why the desktop
+         head carries banter.ico and the Android head carries Resources/mipmap-*. -->
+    <EmbeddedResource Include="Assets/logo.png" LogicalName="Assets/logo.png" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Banter.Client.Core/Banter.Client.Core.csproj" />
     <ProjectReference Include="../Banter.Voice/Banter.Voice.csproj" />
     <!-- Engine only. Host heads (Desktop/Android/Web) bring their own CupriFace.* host package,

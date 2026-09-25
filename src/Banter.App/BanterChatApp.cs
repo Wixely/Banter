@@ -206,6 +206,23 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public Func<Voice.ReadbackPolicy, Task> ReadbackChangedAsync { get; init; } = _ => Task.CompletedTask;
 
     public override string Title => "Banter";
+
+    /// <summary>
+    /// The running app's icon: the desktop window and taskbar, the browser tab's favicon, and the
+    /// phone's recents card. One asset for all three, since they all ask the CupriApp for it.
+    ///
+    /// <para>Cached rather than read per call - the base class notes it may hit a resource stream,
+    /// and a window manager asking for the icon on every frame would pay for the decode each
+    /// time.</para>
+    ///
+    /// <para>Not the same thing as the icon of an INSTALLED app, which is read out of the built
+    /// file before any of this exists: that is <c>banter.ico</c> for the desktop executable and
+    /// <c>Resources/mipmap-*</c> for the Android launcher.</para>
+    /// </summary>
+    public override byte[]? Icon => _icon ??= EmbeddedAsset("Assets/logo.png").ReadBytes();
+
+    private byte[]? _icon;
+
     public override object Model => ViewModel.Model;
     public override int Width => WindowWidth;
     public override int Height => WindowHeight;

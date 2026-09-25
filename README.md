@@ -1,4 +1,8 @@
-# Banter
+<p align="center">
+  <img src="assets/banter-icon-256.png" alt="" width="104">
+  <br>
+  <img src="assets/banter-wordmark.png" alt="Banter" width="300">
+</p>
 
 A C#-only suite for managing multiple AI agents and conversing with them (and each other) over an
 IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and web.

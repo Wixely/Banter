@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!-- The icon Explorer, the taskbar and the shortcut read straight off the .exe, before the
+         app runs. The running window's icon is a separate thing and comes from CupriApp.Icon in
+         the shared project. Six sizes from 16 to 256, each PNG-compressed inside the .ico. -->
+    <ApplicationIcon>banter.ico</ApplicationIcon>
     <!-- an application, not a library. -->
     <IsPackable>false</IsPackable>
     <OutputType>WinExe</OutputType>

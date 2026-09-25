@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!--
+    The ground the adaptive icon's foreground sits on. The same dark the client draws its rooms
+    on, so the launcher entry and the first frame after tapping it are the same colour rather
+    than a flash of something else.
+  -->
+  <color name="ic_launcher_background">#0b0e13</color>
+</resources>
