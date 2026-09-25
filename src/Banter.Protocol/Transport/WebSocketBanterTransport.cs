@@ -135,6 +135,10 @@ public sealed class WebSocketBanterTransport : IBanterClientTransport, IBanterSe
 
         public string RemoteDescription => remote;
 
+        /// <summary>The same ceiling the receive side enforces, said out loud so a sender can
+        /// size a reply to it rather than discovering it on the way back.</summary>
+        public int MaxFrameBytes => maxFrameBytes;
+
         public async ValueTask SendFrameAsync(
             ReadOnlyMemory<byte> frame,
             CancellationToken cancellationToken = default)

@@ -10,6 +10,19 @@ public interface IBanterConnection : IAsyncDisposable
     /// <summary>Human-readable remote endpoint, for logs.</summary>
     string RemoteDescription { get; }
 
+    /// <summary>
+    /// The largest frame this connection will carry, so a sender can size a reply to fit instead
+    /// of finding out by having the send refused.
+    ///
+    /// <para>Read, never assumed: the number is not a property of the protocol but of the path.
+    /// A conduit's ceiling is far below Banter's own — the realistic offender is a history page,
+    /// which is built from whatever happens to be in the room.</para>
+    ///
+    /// <para>Defaulted so that a transport with no opinion needs no code. Anything with a real
+    /// limit says so.</para>
+    /// </summary>
+    int MaxFrameBytes => BanterFraming.DefaultMaxFrameBytes;
+
     ValueTask SendFrameAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken = default);
 
     /// <summary>Receives the next frame, or null when the peer closed cleanly.</summary>

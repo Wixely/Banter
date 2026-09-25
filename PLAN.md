@@ -1634,10 +1634,19 @@ an offset, with no per-chunk integrity, no resume and no signing. **§5a's room 
 relics on the conduit path**, and the case for doing the same on every path is worth weighing
 separately.
 
-What remains genuinely ours is **history paging**: a page is not a file, so it wants a `limit`
-bounded against `SiteSession.MaxFrameBytes` (read, never hard-coded — it differs on the channel
-path) rather than a transfer mechanism. `GetHistoryAsync` defaults to 100 messages, and 100 long
-agent replies will pass 192 KiB.
+**History paging is done** (2026-09-25). A page is not a file, so it wanted a bound rather
+than a transfer mechanism — and the bound could not be a count, because the request carries a
+count and the ceiling is in bytes. `IBanterConnection` now states its `MaxFrameBytes` (read,
+never hard-coded — it differs on the channel path, and defaults to Banter's own 4 MB for a
+transport with no opinion), and the server measures the encoded chunk and bisects for the most
+messages that fit, trimming from the OLDEST end so the cursor it returns asks for exactly what
+was dropped. Nothing is lost; it arrives one request later. A single message over the ceiling
+cannot be trimmed towards and is named `PAGE_TOO_LARGE` rather than being refused at the
+transport, which is what turned this into a hang rather than an error.
+
+The plan said `GetHistoryAsync` defaults to 100. It defaults to 50; the 100 is the chat head's
+own back-fill on join (`BanterChatSession.JoinAsync`), which is the caller most likely to ask for
+a page this size. Either way the count was never the thing that mattered.
 
 **Nothing has crossed this seam yet.** Nodestar's tests drive real `ConduitSession`s over an
 in-memory channel on both ends, but the reference client opens no conduits — Banter's web head is

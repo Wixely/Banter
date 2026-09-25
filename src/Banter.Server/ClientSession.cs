@@ -60,6 +60,20 @@ internal sealed class ClientSession(
     public void Send<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull =>
         _outbox.Writer.TryWrite(codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo)));
 
+    /// <summary>The largest frame this peer's connection will carry.</summary>
+    public int MaxFrameBytes => connection.MaxFrameBytes;
+
+    /// <summary>
+    /// Encodes a reply without queueing it, so a caller can find out how big it would be before
+    /// committing to sending it. Pair with <see cref="SendEncoded"/>: send the bytes that were
+    /// measured rather than re-encoding, since each envelope carries a fresh message id.
+    /// </summary>
+    public byte[] Encode<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull =>
+        codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo));
+
+    /// <summary>Queues a frame produced by <see cref="Encode{TPayload}"/>.</summary>
+    public void SendEncoded(byte[] frame) => _outbox.Writer.TryWrite(frame);
+
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         var sendPump = _sendPump = Task.Run(SendPumpAsync, CancellationToken.None);

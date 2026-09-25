@@ -1549,7 +1549,66 @@ internal sealed partial class RoomEngine(
                 m.Room, m.Sender, m.Text, m.Timestamp, m.FileId, m.MessageId,
                 m.EditedAt ?? 0, m.DeletedAt ?? 0, m.ReplyTo))
             .ToArray();
-        session.Send(new HistoryChunkPayload(room.Name, messages, page.NextCursor), replyTo: envelope.MsgId);
+
+        // A page is built from whatever happens to be in the room, so its size is not ours to
+        // choose - and the limit above is a count, which says nothing about bytes. On a conduit
+        // the ceiling is far below Banter's own 4 MB, and a page of long agent replies passes it;
+        // the send would then be refused, with the reply never arriving and the request left to
+        // time out. So: measure, and trim to fit.
+        //
+        // Trimmed from the OLDEST end, because the cursor points backwards. Whatever is dropped
+        // is exactly what the next page asks for, so nothing is lost - it arrives one request
+        // later. Paging already had to work; this only makes it start sooner.
+        var frame = session.Encode(
+            new HistoryChunkPayload(room.Name, messages, page.NextCursor), replyTo: envelope.MsgId);
+
+        if (frame.Length > session.MaxFrameBytes)
+        {
+            // Bisect for the most messages that fit. `fits` is a count known to fit (0 trivially
+            // does) and `tooMany` one known not to, so the gap closes in about nine probes for a
+            // 500-message page - and none of this runs at all for a page that already fitted.
+            var fits = 0;
+            var tooMany = messages.Length;
+            byte[]? best = null;
+
+            while (tooMany - fits > 1)
+            {
+                var probe = fits + ((tooMany - fits) / 2);
+                var candidate = EncodeTail(probe);
+                if (candidate.Length <= session.MaxFrameBytes)
+                {
+                    fits = probe;
+                    best = candidate;
+                }
+                else
+                {
+                    tooMany = probe;
+                }
+            }
+
+            if (best is null)
+            {
+                // One message on its own is over the ceiling. Nothing to trim towards, and it is
+                // not a cursor problem, so say so rather than letting the send be refused: bulk
+                // that large belongs in a relic, not a frame.
+                session.Send(
+                    new ErrorPayload(
+                        "PAGE_TOO_LARGE",
+                        $"A single message in {room.Name} exceeds this connection's " +
+                        $"{session.MaxFrameBytes}-byte frame limit."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+
+            frame = best;
+        }
+
+        session.SendEncoded(frame);
+
+        byte[] EncodeTail(int count) =>
+            session.Encode(
+                new HistoryChunkPayload(room.Name, messages[^count..], messages[^count].MessageId),
+                replyTo: envelope.MsgId);
     }
 
     private void HandleMembers(ClientSession session, BanterEnvelope envelope, RoomMembersPayload request)
