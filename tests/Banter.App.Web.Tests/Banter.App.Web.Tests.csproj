@@ -26,8 +26,17 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
     <!-- To decode a screenshot and find out whether anything was actually drawn. The same
-         version the rest of the repository pins. -->
+         version the rest of the repository pins.
+
+         The native assets are a SEPARATE package on Linux and are not optional here: the base
+         package carries Windows and macOS binaries only, so on a runner SKData's static
+         constructor dies in sk_data_new_empty with no managed frame to explain itself. This
+         project only ever runs on CI's ubuntu and a developer's desktop, which is precisely the
+         split that hides it - the suite was green on Windows and red on the only Linux this
+         repository builds on, which is the same trap that kept main red for two days in v0.8.0.
+         NoDependencies because decoding a PNG needs no fontconfig. -->
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
