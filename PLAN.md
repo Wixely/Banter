@@ -221,8 +221,8 @@ How Banter maps onto CupriNet's API:
   no extra framing layer. `Banter.Transport.CupriNet` implements the `IBanterTransport` seam
   this way (Conjoin against the server's intonation link → Consecrate with the watchword →
   frames over Conduits); the integration suite runs real chat through it, a wrong watchword
-  cannot consecrate, and Windows↔Windows loopback is proven. On-device Android remains the
-  open spike item.
+  cannot consecrate, and Windows↔Windows loopback is proven. On-device Android was the open
+  spike item and is closed (2026-09-19, §10).
 - CupriNet extras we get for free and should keep enabled: Noise XX/IK end-to-end encryption, LAN
   discovery + NAT-PMP + UDP hole punching (lets a home server work without port forwarding),
   warm-start peer caches (fast reconnect on mobile).
@@ -1438,8 +1438,9 @@ solution layout, CI (`dotnet build`/`test`), `Banter.Protocol` v1 contracts + se
 **CupriNet spike** (pair/channel/reconnect Windows↔Windows and Android↔Windows); **CupriFace
 spikes** — desktop half **done and green** (CUPRIFACE-PLAN §5a: 10k-message scrollback is ×1.00
 with `<cupri-virtual>`, full frame 2.1 ms, per-token rebind 0.9 ms, composer write-back works;
-run headlessly as tests in `tests/Banter.App.Spikes`). Outstanding: WASM host round-trip and
-the on-device Android set (scrollback feel, IME, endurance);
+run headlessly as tests in `tests/Banter.App.Spikes`). The WASM host round-trip was proven
+end-to-end on 2026-09-02 and the on-device Android set (scrollback feel, IME, endurance) on
+2026-09-19; nothing here is outstanding;
 **DaggerAgent spike** — **done and green (2026-08-25)**, run against LM Studio
 (`http://localhost:1234/v1`) on `liquid/lfm2.5-1.2b`, a deliberately weak 1.2B model so that
 anything that worked proves the *plumbing*, not the model:

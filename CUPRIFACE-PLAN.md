@@ -127,9 +127,12 @@ separate product and becomes a third host for the same app.
     Web client always-listening is foreground-tab-only, best-effort.
   - Recommendation: **web v1 ships text-first** (full chat, rooms, files, agent control), voice
     follows as web v1.1 with the WebAudio backend.
-- **Web accessibility caveat:** canvas-rendered UI is invisible to screen readers unless the
-  framework bridges to hidden DOM; CupriFace's UIA bridge is desktop-only today. Accept and
-  document for v1; raise upstream (it's our library).
+- ~~**Web accessibility caveat:**~~ **Resolved.** The caveat was that canvas-rendered UI is
+  invisible to screen readers unless the framework bridges to hidden DOM, and that CupriFace's
+  bridge was desktop-only. It is not any more: `WebHostCore` publishes the document's ARIA tree
+  to the page, alongside UIA, AT-SPI, NSAccessibility and the Android host. A control named with
+  `aria-label` reaches a screen reader on every head, web included — which is why the composer's
+  icon buttons carry one.
 - **Auth note:** watchword + user credentials flow is unchanged, but a web client served from the
   open internet makes rate-limiting `AUTH` and CORS/origin pinning on the static host worth doing
   when we get there.
@@ -198,8 +201,10 @@ adopt (3) if it lands. The measurement says either path performs.
 > (it was being treated as collapsible because .NET's `char.IsWhiteSpace` counts U+00A0 and CSS
 > does not). Verified here: `pre-wrap` lays a three-line string out at 50.4px against 16.8px for
 > one, a blank line takes height, long lines still wrap, and `
-`, `
-` and a bare `` all
+`, `
+
+` and a bare `
+` all
 > break. **The per-line workaround has been removed** — message text is bound directly again with
 > `white-space: pre-wrap`, which also removed a re-split on every streamed token. The original
 > finding is kept for the record:
