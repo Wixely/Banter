@@ -222,7 +222,7 @@ jobs:
   web:
     # Out of Banter.slnx for the same reason as the Android head: the `wasm-tools` workload would
     # otherwise be a requirement for anyone building the server or the desktop client.
-    name: Build the web head
+    name: Build and test the web head
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -235,6 +235,28 @@ jobs:
         run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password "${{ secrets.PACKAGES_TOKEN || github.token }}" --store-password-in-clear-text --configfile NuGet.config
       - name: Publish
         run: dotnet publish src/Banter.App.Web/Banter.App.Web.csproj --configuration Release
+      # Publishing only proved the head COMPILES. These open the published files in a real
+      # browser, which is the only place a WebAssembly head can fail: a trimmed-away formatter,
+      # an AOT publish that paints nothing, a fingerprinted asset whose name moved. That last one
+      # loads to a blank canvas with no error on it, so nothing short of running it would notice.
+      #
+      # In this job rather than a new one because the publish it needs has just happened here, and
+      # out of `dotnet test Banter.slnx` because it depends on that publish existing.
+      - name: Build the web head's tests
+        run: dotnet build tests/Banter.App.Web.Tests/Banter.App.Web.Tests.csproj --configuration Release
+      # Playwright ships its own browser build and will not fall back to a system one. --with-deps
+      # because a bare ubuntu runner has none of the shared libraries Chromium wants.
+      - name: Install the browser
+        run: pwsh tests/Banter.App.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - name: Test the web head
+        run: dotnet test tests/Banter.App.Web.Tests/Banter.App.Web.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=web.trx" --results-directory artifacts/test-results
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-test-results
+          path: artifacts/test-results/*.trx
+          if-no-files-found: warn
 
   publish-apps:
     # The two things a person downloads rather than references: the server they host, and the

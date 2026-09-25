@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The web head as a running page, which nothing else in this repository covers. Every other test
+    project stops at the transport seam or below it; CI's web job runs `dotnet publish` and proves
+    only that the head COMPILES (PLAN §2a: "What still has no suite is the head as a running page").
+
+    Deliberately NOT in Banter.slnx, for the same reason src/Banter.App.Web is not: it needs a
+    published WebAssembly head, which an ordinary solution build does not produce. `dotnet test
+    Banter.slnx` stays fast and workload-free; CI runs this in the web job, where the publish it
+    needs has just happened anyway.
+
+    Kestrel rather than WasmAppHost: what ships is a directory of static files behind whatever
+    serves them, and that is what should be under test. The dev host is a convenience that is not
+    in the deployment.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
+    <!-- To decode a screenshot and find out whether anything was actually drawn. The same
+         version the rest of the repository pins. -->
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

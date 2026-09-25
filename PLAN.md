@@ -196,8 +196,14 @@ What the ticks are worth differs by column, and it is worth being honest about w
 - **Web** rests on the end-to-end run recorded in §2.5 — connect, join, send, and the message read
   back out of the server's database over real WebRTC. Its *transport* is now covered by a suite as
   well: the conduit and the DataChannel vessel had tests already, and the head's own receive path
-  got them on 2026-09-19 by being extracted to where a test can reach it. What still has no suite is
-  the head as a running page — ICE, the browser's own channel, AOT.
+  got them on 2026-09-19 by being extracted to where a test can reach it. The head as a running
+  page got one on 2026-09-25 (`tests/Banter.App.Web.Tests`): the PUBLISHED files, served by
+  Kestrel, opened in a real headless Chromium, asserting that it boots to a named sign-in screen,
+  that the canvas has more than one colour in it, and that nothing it asked for 404ed. Those are
+  the failures that exist only here — and the last is the one worth having, because a fingerprinted
+  asset whose name moved loads to a blank canvas with no error on it. Proven by hiding one `.wasm`
+  from the publish output: all three fail, and only that one says why. Still uncovered: **ICE, the
+  browser's own channel, and AOT** — the page is driven, but nothing connects it to a server.
 
 What is genuinely left: **voice needs real devices** rather than more code (§6 is written and
 tested headlessly; capture, playback, local Whisper and the hotkey all want a person with a
