@@ -419,9 +419,50 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="composer-row">
                 <span class="prompt">&gt;</span>
                 <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message" data-composer="1" submit-on-enter></cupri-textarea>
-                <cupri-button class="{{MicClass}}" data-mic="1">{{MicText}}</cupri-button>
-                <cupri-button class="{{AttachButtonClass}}">Attach</cupri-button>
-                <cupri-button class="send">Send</cupri-button>
+                <!-- Icons, not words. The word WAS each button's accessible name, so it moves to
+                     aria-label rather than being dropped: strip the text out and the tree has
+                     nothing left to name the control with, and a screen reader reaching the end
+                     of the composer finds three buttons called nothing.
+
+                     The same word goes in a tooltip, which is the sighted half of the same
+                     problem - an icon is only obvious to whoever drew it.
+
+                     The mic's word is bound, not fixed: it is "Talk" or "Stop" depending on
+                     whether the microphone is open, so its name and its tip say which. -->
+                <cupri-tooltip text="{{MicText}}">
+                  <cupri-button class="{{MicClass}}" data-mic="1" aria-label="{{MicText}}">
+                    <div class="icon-mic">
+                      <div class="mic-capsule"></div>
+                      <div class="mic-stem"></div>
+                      <div class="mic-base"></div>
+                      <div class="mic-stop"></div>
+                    </div>
+                  </cupri-button>
+                </cupri-tooltip>
+                <cupri-tooltip text="Attach a file">
+                  <cupri-button class="{{AttachButtonClass}}" aria-label="Attach a file">
+                    <div class="icon-clip">
+                      <div class="clip-bend"></div>
+                      <div class="clip-bend-hole"></div>
+                      <div class="clip-bend-top"></div>
+                      <div class="clip-hook"></div>
+                      <div class="clip-hook-hole"></div>
+                      <div class="clip-hook-bottom"></div>
+                      <div class="clip-long"></div>
+                      <div class="clip-short"></div>
+                      <div class="clip-stub"></div>
+                    </div>
+                  </cupri-button>
+                </cupri-tooltip>
+                <cupri-tooltip text="Send">
+                  <cupri-button class="send" aria-label="Send">
+                    <div class="icon-send">
+                      <div class="send-shaft"></div>
+                      <div class="send-barb send-barb-up"></div>
+                      <div class="send-barb send-barb-down"></div>
+                    </div>
+                  </cupri-button>
+                </cupri-tooltip>
               </div>
               <div class="composer-hint">Enter to send · Shift+Enter for a newline · /help for commands · @name to reach an agent directly</div>
             </div>
@@ -1066,6 +1107,81 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .chat-tail { position: absolute; left: 5px; top: 12px; width: 8px; height: 8px;
                      border-radius: 2px; background: #ffffff; transform: rotate(45deg); }
 
+        /* The composer's two buttons, built the same way as the rail's icons: filled boxes, with
+           a hole punched by a box in the button's own colour. Neither button has a hover state,
+           so the hole only ever needs the one colour. */
+        /* The microphone, and the stop square that replaces it while the gate is open. Both live
+           in the markup and the button's own state class decides which is drawn - the state is
+           already on the button, so binding a second property to say the same thing again would
+           be two things to keep in step. */
+        .icon-mic { position: relative; width: 18px; height: 18px; }
+        .mic-capsule { position: absolute; left: 6px; top: 1px; width: 6px; height: 9px;
+                       border-radius: 3px; background: #f3f5f7; }
+        .mic-stem { position: absolute; left: 8px; top: 11px; width: 2px; height: 3px;
+                    background: #f3f5f7; }
+        .mic-base { position: absolute; left: 4px; top: 14px; width: 10px; height: 2px;
+                    border-radius: 1px; background: #f3f5f7; }
+        .mic-stop { position: absolute; left: 4px; top: 4px; width: 10px; height: 10px;
+                    border-radius: 2px; background: #f3f5f7; display: none; }
+
+        /* Open, hearing or transcribing: all three are states you stop, so all three show it. */
+        .mic.armed .mic-capsule, .mic.hearing .mic-capsule, .mic.working .mic-capsule,
+        .mic.armed .mic-stem, .mic.hearing .mic-stem, .mic.working .mic-stem,
+        .mic.armed .mic-base, .mic.hearing .mic-base, .mic.working .mic-base { display: none; }
+        .mic.armed .mic-stop, .mic.hearing .mic-stop, .mic.working .mic-stop { display: block; }
+
+        /* A paperclip: one bent wire, drawn as three straight runs joined by two half-turns.
+           It was a closed ring on the diagonal first, which reads as a pen, then two runs over a
+           single bend, which reads as the letter U.
+
+           The detail that finally made it a clip is not the turns but WHERE THE OUTER RUN STOPS.
+           Taken to the top it sits level with the turn, and the silhouette goes flat and reads as
+           two shapes side by side; a real clip's outer end stops about a fifth of the way down,
+           and that one step is most of the difference. Measured off Material's own attach_file
+           rather than guessed at.
+
+           Built the only way the engine allows: boxes, uniform radii, and the button's own
+           background painted back over what should not be there. Each half-turn is a whole ring
+           with half of it covered - an arc is not something a box can be - and the runs are bars
+           meeting the rings' walls exactly where each is widest, so the joins have no seam. Each
+           runs a pixel into the ring it meets, burying its rounded end rather than pinching it.
+
+           The wire is 2px everywhere, which is what holds it together as one object: every ring
+           is an outer and an inner radius two apart, and every run is two wide. That is also the
+           floor on size - the three columns at 4, 10 and 14 plus their air are the whole 12px
+           width, and a narrower body would close the top turn's hole into a blob. */
+        .icon-clip { position: relative; width: 20px; height: 22px; }
+        .clip-bend { position: absolute; left: 4px; top: 9px; width: 12px; height: 12px;
+                     border-radius: 6px; background: #f3f5f7; }
+        .clip-bend-hole { position: absolute; left: 6px; top: 11px; width: 8px; height: 8px;
+                          border-radius: 4px; background: #1b2029; }
+        .clip-bend-top { position: absolute; left: 4px; top: 9px; width: 12px; height: 6px;
+                         background: #1b2029; }
+        .clip-hook { position: absolute; left: 4px; top: 1px; width: 8px; height: 8px;
+                     border-radius: 4px; background: #f3f5f7; }
+        .clip-hook-hole { position: absolute; left: 6px; top: 3px; width: 4px; height: 4px;
+                          border-radius: 2px; background: #1b2029; }
+        .clip-hook-bottom { position: absolute; left: 4px; top: 5px; width: 8px; height: 4px;
+                            background: #1b2029; }
+        .clip-long { position: absolute; left: 14px; top: 5px; width: 2px; height: 11px;
+                     border-radius: 1px; background: #f3f5f7; }
+        .clip-short { position: absolute; left: 4px; top: 4px; width: 2px; height: 12px;
+                      border-radius: 1px; background: #f3f5f7; }
+        .clip-stub { position: absolute; left: 10px; top: 4px; width: 2px; height: 9px;
+                     border-radius: 1px; background: #f3f5f7; }
+
+        /* An arrow rather than a paper plane: a plane is two triangles, and the engine has no
+           triangle - only boxes, uniform radii and rotation about the centre. */
+        .icon-send { position: relative; width: 18px; height: 18px; }
+        .send-shaft { position: absolute; left: 2px; top: 8px; width: 14px; height: 2px;
+                      border-radius: 1px; background: #ffffff; }
+        /* The two barbs meet the shaft at its tip. Each is a bar turned a half-right-angle, and
+           the pair is what makes the head read as a point rather than a cross. */
+        .send-barb { position: absolute; left: 9px; width: 7px; height: 2px;
+                     border-radius: 1px; background: #ffffff; }
+        .send-barb-up { top: 5px; transform: rotate(45deg); }
+        .send-barb-down { top: 11px; transform: rotate(-45deg); }
+
         .icon-users { position: relative; width: 22px; height: 22px; }
         .user-head { position: absolute; left: 7px; top: 2px; width: 10px; height: 10px;
                      border-radius: 5px; background: #bec5cf; }
@@ -1408,19 +1524,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            text-align centres the word. A min-width stretches the label's own box to the button's
            full inner width, and text in a box is left-aligned, so every button wider than its
            word wore the word against its left padding. */
-        .mic { margin-left: 8px; min-width: 64px; padding: 6px 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
-               border: 1px solid #333a46; border-radius: 10px; text-align: center; }
+        /* All three composer buttons carry the SAME width and height rather than each taking
+           whatever its contents happen to measure. Stated rather than inferred: three buttons
+           sized by three glyphs come out a pixel or two apart, which the row's align-items then
+           centres - lining their middles up and nothing else. */
+        .mic { margin-left: 8px; width: 40px; height: 30px; padding: 0; background: #1b2029;
+               color: #f3f5f7; display: flex; align-items: center; justify-content: center;
+               border: 1px solid #333a46; border-radius: 10px; }
         /* The gate's state, said in colour as well as in words: a room microphone is watched
            from across a desk, where the label is too small to read. */
         .mic.armed { background: #2b3a4a; }
         .mic.hearing { background: #2f6b3f; }
         .mic.working { background: #6b5a2f; }
         .mic.hidden { display: none; }
-        .attach-open { margin-left: 8px; min-width: 66px; padding: 6px 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
-                       border: 1px solid #333a46; border-radius: 10px; text-align: center; }
+        /* Square now they hold a glyph instead of a word: 40 wide against the mic's 64, which is
+           where most of the room the phone layout was short of came back from. */
+        .attach-open { margin-left: 8px; width: 40px; height: 30px; padding: 0; background: #1b2029;
+                       color: #f3f5f7; display: flex; align-items: center; justify-content: center;
+                       border: 1px solid #333a46; border-radius: 10px; }
         .attach-open.hidden { display: none; }
-        .send { min-width: 62px; padding: 6px 14px; font-size: 13px; margin-left: 8px; background: #ef4444; color: #ffffff;
-                border: 1px solid #ef4444; border-radius: 10px; font-weight: bold; text-align: center; }
+        .send { width: 40px; height: 30px; padding: 0; margin-left: 8px; background: #ef4444;
+                color: #ffffff; display: flex; align-items: center; justify-content: center;
+                border: 1px solid #ef4444; border-radius: 10px; }
 
         /* The height is reserved whether or not there is anything to say in it. The status text
            is empty at rest and a line of words while the microphone is open, and without a
@@ -1853,9 +1978,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           .composer-wrap { padding: 6px 10px 8px 10px; }
 
           /* The composer is a message box and three buttons on one line, and at this width the
-             buttons win it outright: Mic, Attach and Send carry their own min-widths, and what
-             was left for the box you type in measured ZERO. Not narrow — gone, on the screen
-             where typing is the only thing anyone came to do.
+             buttons win it outright: they carry their own widths, and what was left for the box
+             you type in measured ZERO. Not narrow — gone, on the screen where typing is the only
+             thing anyone came to do.
+
+             Attach and Send have since become icons, which took them from 66 and 62 to 40 apiece
+             — about eighty pixels back. The box still takes its own line: eighty pixels is the
+             difference between nothing and not enough, and the row below is where a thumb
+             expects to find Send anyway.
 
              So the box takes a line of its own (`1 0 100%` — grow, never shrink, start at full
              width) and the three buttons wrap under it, against the right where the send button
