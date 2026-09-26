@@ -1,31 +1,56 @@
-<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    What a CupriFace.Web.Mono app's project file is: the WebAssembly SDK, the host, and the app.
+    The browser head, on the NATIVEAOT-LLVM host: the engine compiled ahead of time rather than
+    interpreted, which the host's own package notes measure at roughly 8x quicker to interact with
+    than the Mono host (hover restyle 2.1 ms against 16.2 ms) for the same download.
 
-    This used to carry the Skia and HarfBuzz wasm natives, WasmBuildNative, two embedded Noto
-    faces, and a workaround for a Mono AOT bug in CupriFace's own code. All of that is the host's
-    now (CupriFace#73), which is where it always belonged — a workaround for someone else's
-    compiler bug is not something a consumer can know to re-test.
+    WHAT THAT COSTS, because none of it is free and the first two are not ours to fix:
+
+      * The ILCompiler.LLVM backend is experimental and not on nuget.org, so the feed, the compiler
+        packages and the two native-asset packages are declared HERE. Restore chooses its sources
+        long before any package's build files are read, so no package can add them for a consumer.
+      * That compiler is a native executable matching the machine doing the build. x64 Windows and
+        x64/arm64 Linux are published; macOS and Windows-ARM are not, so this project cannot be
+        built there at all. It cross-compiles to browser-wasm either way, so the constraint is on
+        who can BUILD the head, not on who can run it.
+      * There is no Mono, so no [JSImport]/[JSExport]. Banter's WebRTC channel is the only interop
+        it writes, and it is DllImports over the C ABI against interop/banter-rtc.js, linked in
+        rather than fetched. See BrowserDataChannel.
+
+    Going back is smaller than it looks: CupriFace.Web.Mono needs none of the above and both hosts
+    expose the same WebHost.Run(new MyApp()). It is this file and the interop, not the app.
   -->
   <PropertyGroup>
     <!-- an application, not a library. -->
     <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- Required by [JSImport]; the source generator emits unsafe marshalling code. -->
+    <!-- The C ABI passes UTF-16 buffers and byte arrays by address; see BrowserDataChannel. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
-    <!-- Browser-only by definition; the JSExport/JSImport platform hints are expected here. -->
+    <!-- Browser-only by definition; the platform-compatibility hints are expected here. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <DotNetJsApi>true</DotNetJsApi>
+    <UsingBrowserRuntimeWorkload>false</UsingBrowserRuntimeWorkload>
+    <InvariantTimezone>true</InvariantTimezone>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <WasmEnableLegacyJsInterop>false</WasmEnableLegacyJsInterop>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <StackTraceSupport>true</StackTraceSupport>
+    <DebugType>none</DebugType>
     <!--
-      TRIMMED. 9.1 MB of brotli and 208 assemblies become 5.3 MB and 50 - measured both ways into
-      clean directories, because publishing over a previous publish leaves the old assemblies
-      behind and makes the trimmed build look bigger than the untrimmed one.
+      TRIMMED, and on this host that is not a choice: PublishTrimmed is what drives ILC. 9.1 MB of
+      brotli and 208 assemblies became 5.3 MB and 50 on the Mono host before the move - measured
+      both ways into clean directories, because publishing over a previous publish leaves the old
+      assemblies behind and made the trimmed build look bigger than the untrimmed one.
 
-      Two things were in the way, and only one of them was the one this file used to name.
+      Two things were in the way, and only one was the one this file used to name.
 
       The JSON wire format was the first, and nothing here ever selected it: four IL2026 errors,
       all System.Text.Json, all in BanterCodec, for a debugging convenience that makes frames
@@ -37,21 +62,49 @@
       The fear was specific - a formatter trimmed away would "build and then fail on the first
       frame it decodes" - and that is precisely what MeshChatTests catches: a browser, over a real
       mesh, whose message has to survive a MessagePack round trip and land in the server's
-      database. It passes on the trimmed head. The warnings are about reflective paths reached
-      through the non-generic Serialize(Type, ...) overloads; the formatters those need are
-      source-generated and statically referenced, so they survive.
+      database. The warnings are on reflective paths reached through the non-generic
+      Serialize(Type, ...) overloads; the formatters those need are source-generated and statically
+      referenced, so they survive.
 
       That test running on every push is the whole justification for the line below it. If it is
-      ever removed or skipped, this suppression stops being honest and the payload should go back.
+      ever removed or skipped, this suppression stops being honest.
     -->
-    <NoWarn>$(NoWarn);IL2104</NoWarn>
+    <!-- IL2104 is the trimmer's aggregate for MessagePack and IL3053 the AOT compiler's; they are
+         the same reflective paths seen by two analysers, and MeshChatTests is what stands behind
+         both. -->
+    <NoWarn>$(NoWarn);IL2104;IL3053</NoWarn>
     <PublishTrimmed>true</PublishTrimmed>
-    <!-- AOT is opt-in via `-p:Aot=true`, never via Configuration: a previous AOT publish leaves
-         artifacts in obj/ that make a later plain run paint a blank canvas. The host's
-         buildTransitive targets supply the interpreter workaround AOT needs. -->
-    <RunAOTCompilation Condition="'$(Aot)' == 'true'">true</RunAOTCompilation>
-    <WasmEmitSymbolMap Condition="'$(Aot)' == 'true'">true</WasmEmitSymbolMap>
-    <WasmNativeDebugSymbols Condition="'$(Aot)' == 'true'">false</WasmNativeDebugSymbols>
+    <TrimMode>full</TrimMode>
+    <!--
+      THESE THREE BELONG TO THE HOST PACKAGE AND ARE SET HERE BECAUSE 0.27.0 DOES NOT SHIP THEM.
+
+      CupriFace.Web.NativeAot's props are meant to supply the RID and the WebGL flag; in 0.27.0 the
+      packed props chain (buildTransitive -> buildMultiTargeting -> build) ends in a file holding
+      nothing but the StaticWebAssets imports, which the SDK generates at the same path and which
+      evidently won. The .targets half survived and is doing its job. Without the RID, ILC fails
+      with "The PrivateSdkAssemblies ItemGroup is required", which names nothing that leads here.
+
+      Remove these when a host release carries its own props again.
+    -->
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <!-- Without it emscripten_webgl_create_context SILENTLY downgrades a version-2 request to
+         WebGL1, and the first sign is a shader error naming a line nobody wrote. -->
+    <EmccFlags>$(EmccFlags) -sMAX_WEBGL_VERSION=2</EmccFlags>
+    <!-- -O1 keeps the publish loop tolerable; -O3 for shipping. The longjmp flag satisfies
+         libSkiaSharp's __wasm_longjmp on image-codec error paths. -->
+    <EmccFlags>$(EmccFlags) -O1 -sSUPPORT_LONGJMP=wasm</EmccFlags>
+    <ExecutableExtensionName Condition="$([MSBuild]::IsOSPlatform('Windows'))">.exe</ExecutableExtensionName>
+    <!-- Pinned rather than floating: a nightly drop should not change the compiler under us, and
+         the package path below has to stay deterministic. Override either on the command line to
+         try a newer one. -->
+    <IlcHostRid Condition="'$(IlcHostRid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</IlcHostRid>
+    <IlcLlvmVersion Condition="'$(IlcLlvmVersion)' == ''">10.0.0-rc.1.26357.1</IlcLlvmVersion>
+    <IlcHostPackagePath>$(NuGetPackageRoot)runtime.$(IlcHostRid).microsoft.dotnet.ilcompiler.llvm/$(IlcLlvmVersion)</IlcHostPackagePath>
+    <!-- THE restore-time fact no package can supply for us. -->
+    <RestoreAdditionalProjectSources>
+      https://api.nuget.org/v3/index.json;
+      https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-experimental/nuget/v3/index.json;
+    </RestoreAdditionalProjectSources>
   </PropertyGroup>
 
   <ItemGroup>
@@ -63,13 +116,36 @@
 
   <ItemGroup>
     <!-- The browser host, and the same app the desktop and Android heads run. -->
-    <PackageReference Include="CupriFace.Web.Mono" Version="0.27.0" />
+    <PackageReference Include="CupriFace.Web.NativeAot" Version="0.27.0" />
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <!-- The conduit transport's CLIENT half. Deliberately not Banter.Transport.Shrine.Nodestar:
          that brings Kestrel, and a browser has no business downloading an HTTP server to join a
          chat room. -->
     <ProjectReference Include="../Banter.Transport.Shrine/Banter.Transport.Shrine.csproj" />
     <PackageReference Include="CupriNet.Alembic.BouncyCastle" Version="0.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Restore-time, therefore app-side. ExcludeAssets=all on the native-asset packages because
+         only the STATIC ARCHIVES are wanted: the host's targets add those to the Emscripten link,
+         and the managed assets would collide with the ones the engine already brings. -->
+    <PackageReference Include="Microsoft.DotNet.ILCompiler.LLVM" Version="$(IlcLlvmVersion)" />
+    <PackageReference Include="runtime.$(IlcHostRid).Microsoft.DotNet.ILCompiler.LLVM" Version="$(IlcLlvmVersion)" />
+    <PackageReference Include="SkiaSharp.NativeAssets.WebAssembly" Version="3.116.1"
+                      GeneratePathProperty="true" ExcludeAssets="all" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.WebAssembly" Version="8.3.0.1"
+                      GeneratePathProperty="true" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Banter's own half of the boundary. DirectPInvoke because wasm has NO lazy P/Invoke
+         resolution: every native import must be named at build time or the first call throws
+         PlatformNotSupportedException inside the frame loop rather than failing the link.
+         UnmanagedEntryPointsAssembly is the other direction - it surfaces this assembly's
+         [UnmanagedCallersOnly] methods as Module._Name for the JS side to call back through. -->
+    <DirectPInvoke Include="banterrtc" />
+    <UnmanagedEntryPointsAssembly Include="Banter.App.Web" />
+    <LinkerArg Include="--js-library &quot;$(MSBuildThisFileDirectory)interop/banter-rtc.js&quot;" />
   </ItemGroup>
 
 </Project>

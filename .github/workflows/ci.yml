@@ -222,6 +222,12 @@ jobs:
   web:
     # Out of Banter.slnx for the same reason as the Android head: the `wasm-tools` workload would
     # otherwise be a requirement for anyone building the server or the desktop client.
+    #
+    # ubuntu-latest is not incidental. The head is built with the NativeAOT-LLVM compiler, which is
+    # a NATIVE executable published only for x64 Windows and x64/arm64 Linux - so this job could
+    # not move to a macOS or ARM runner without losing the ability to build the head at all. The
+    # wasm-tools workload is still needed on this host: ILC produces the object files, Emscripten
+    # links them, and emcc comes from the workload.
     name: Build and test the web head
     runs-on: ubuntu-latest
     steps:
@@ -233,6 +239,10 @@ jobs:
         run: dotnet workload install wasm-tools
       - name: Add Wixely feed credentials
         run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password "${{ secrets.PACKAGES_TOKEN || github.token }}" --store-password-in-clear-text --configfile NuGet.config
+      # Slower than it used to be: ILC compiles the whole program, where the Mono host shipped
+      # assemblies for an interpreter. The feed that compiler lives on is declared in NuGet.config
+      # and mapped there by exact package id - a clean runner is the first thing that actually
+      # proves that, which is the whole reason it is mapped rather than left to a project property.
       - name: Publish
         run: dotnet publish src/Banter.App.Web/Banter.App.Web.csproj --configuration Release
       # Publishing only proved the head COMPILES. These open the published files in a real

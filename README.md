@@ -23,7 +23,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 | End-to-end over a conduit (client dials the site) | **green over TCP** — handshake, two clients talking, history paging, all on L2 |
 | The same, over a `DataChannelVessel` (the browser's vessel) | **green** — message-oriented framing carries Banter unchanged |
 | `Banter.App.Web` — the same CupriApp in a browser, over **real WebRTC** | **green**, verified end to end: connect, join, send, and the message read back out of the server's database |
-| Web head on the packaged host (`CupriFace.Web.Mono`) | implemented — touch, the ARIA mirror, IME and clipboard come with it, so the browser is no longer the one head a screen reader cannot use |
+| Web head on the packaged host (`CupriFace.Web.NativeAot`) | implemented — touch, the ARIA mirror, IME and clipboard come with it, so the browser is no longer the one head a screen reader cannot use |
 | `Banter.Server` (room engine, sessions, auth, in-memory history) | implemented, tested |
 | `Banter.Client.Core` (`BanterClient`: handshake, requests, push events, auto-reconnect + rejoin) | implemented, tested |
 | End-to-end integration tests (chat, history paging, auth, announcements, spoof rejection) | green |
@@ -424,16 +424,25 @@ The Server field is already filled: the node publishes its live link beside the 
 the signalling server — the page holds the node's remote description before it opens a socket.
 Without it the field would need a 400-character paste on every run.
 
-Breakpoints: **C# in the server** through the ordinary .NET debugger, and **JavaScript in the
-client** through VS Code's built-in browser debugger. Breakpoints in the client's *C#* are not
-wired — the SDK ships a Mono debug proxy for it, but the only VS Code adapter that drives that proxy
-is the Blazor-named one, and there is no Blazor here. It matters less than it sounds: the web head
-is now one line of host plus a WebRTC data channel, and everything worth stepping through lives in
-`Banter.App` and `Banter.Client.Core`, which the test suite covers headlessly.
+Breakpoints: **C# in the server** through the ordinary .NET debugger. Breakpoints in the client's
+C# are not wired, and on this host there is no proxy that could: the app is compiled ahead of time
+by ILC, not interpreted. It matters less than it sounds — the web head is one line of host plus a
+WebRTC data channel, and everything worth stepping through lives in `Banter.App` and
+`Banter.Client.Core`, which the test suite covers headlessly. For the page's own JavaScript there
+are **Web client (Edge)** and **(Chrome)** configurations; they are optional, and the mesh server
+opens a browser without them.
 
-Nothing in `Banter.App.Web` is Blazor: no Razor, no components, no `blazor.webassembly.js`.
-`Microsoft.NET.Sdk.WebAssembly` is the WASM build SDK, and the UI is the same `CupriApp` the desktop
-runs, painted to a canvas by `CupriFace.Web.Mono`.
+Nothing in `Banter.App.Web` is Blazor: no Razor, no components, no `blazor.webassembly.js`. The UI
+is the same `CupriApp` the desktop runs, painted to a canvas by `CupriFace.Web.NativeAot` — the
+NativeAOT-LLVM host, chosen over `CupriFace.Web.Mono` because the engine is compiled rather than
+interpreted (its package notes measure ~8x on interaction latency, for the same download).
+
+**That host constrains who can build the web head, not who can run it.** Its compiler is a native
+executable published for x64 Windows and x64/arm64 Linux only, so `Banter.App.Web` cannot be built
+on macOS or Windows-ARM; it cross-compiles to `browser-wasm` from the machines that can. The
+compiler lives on the `dotnet-experimental` feed, which `NuGet.config` declares and maps by exact
+package id. Going back to the Mono host is this project file and the WebRTC interop — the app is
+untouched, since both hosts expose the same `WebHost.Run(new MyApp())`.
 
 ### The Android head
 

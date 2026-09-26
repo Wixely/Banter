@@ -46,11 +46,26 @@ public sealed class BanterCodec(BanterWireFormat format = BanterWireFormat.Messa
             .WithResolver(Resolver)
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static JsonSerializerOptions? _jsonOptions;
+
+    /// <summary>
+    /// Built on demand behind the same guard as the helpers below, and deliberately not a static
+    /// readonly field. As a field its initializer runs whatever the feature switch says, and the
+    /// non-generic JsonStringEnumConverter it constructs needs runtime code generation - which an
+    /// ahead-of-time compile refuses outright (IL3050), even though nothing on that head will ever
+    /// serialize a frame with it.
+    /// </summary>
+    private static JsonSerializerOptions JsonOptions => _jsonOptions ??= CreateJsonOptions();
+
+    private static JsonSerializerOptions CreateJsonOptions()
     {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
-    };
+        if (!JsonWireFormatSupported) throw new PlatformNotSupportedException(Trimmed);
+        return new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Converters = { new JsonStringEnumConverter() },
+        };
+    }
 
     public BanterWireFormat Format { get; } = format;
 

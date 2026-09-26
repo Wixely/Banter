@@ -1,5 +1,5 @@
 using System.Net;
-using System.Runtime.InteropServices.JavaScript;
+using System.Runtime.InteropServices;
 using Banter.Transport.Shrine;
 using CupriNet.Core;
 using CupriNet.Vessel;
@@ -21,13 +21,6 @@ public sealed partial class BrowserDataChannel : IDataChannel
     /// watching a button say "Connecting" forever learns nothing.
     /// </summary>
     private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(20);
-
-    /// <summary>
-    /// The JS module is loaded once, on first use. <see cref="JSHost.ImportAsync"/> rather than a
-    /// script tag in the page: the page belongs to the host package now, and a transport that
-    /// needed an edit to someone else's HTML would not be one anybody could drop in.
-    /// </summary>
-    private static Task? _module;
 
     /// <summary>
     /// One connection per page, because the JS side keeps one peer connection. Static because the
@@ -101,21 +94,18 @@ public sealed partial class BrowserDataChannel : IDataChannel
         // Relay or an .onion, which a browser dials as a hostname and then waits out.
         var host = MeshDial.HostOrThrow(intonation.Beacons, intonation.Moniker ?? "the server");
 
-        _module ??= JSHost.ImportAsync("banter/rtc", "../banter-rtc.js");
-        await _module.ConfigureAwait(false);
-
+        // No module to load: the JS half is linked into the wasm module rather than fetched, so
+        // there is nothing to await before calling it.
         var channel = new BrowserDataChannel(new DnsEndPoint(host, webRtc.Port));
         _current = channel;
 
-        RtcConnect(
+        Connect(
             host,
             webRtc.Port,
             webRtc.IceUfrag,
             webRtc.IcePassword,
             webRtc.FingerprintAlgorithm,
-            Convert.ToHexString(webRtc.Fingerprint),
-            Drain,
-            NotifyClosed);
+            Convert.ToHexString(webRtc.Fingerprint));
 
         // Polling, because the browser reports readiness through state rather than a promise we can
         // await across the JS boundary. The runtime is single-threaded, so this yields to the event
@@ -134,7 +124,7 @@ public sealed partial class BrowserDataChannel : IDataChannel
                 case 3:
                     _current = null;
                     RtcClose();
-                    throw new InvalidOperationException($"WebRTC: {RtcError()}");
+                    throw new InvalidOperationException($"WebRTC: {LastError()}");
             }
 
             if (DateTimeOffset.UtcNow >= deadline)
@@ -155,7 +145,7 @@ public sealed partial class BrowserDataChannel : IDataChannel
 
     public ValueTask SendAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
-        if (!RtcSend(message.ToArray()))
+        if (!Send(message.Span))
         {
             // The channel went while we were writing. Indistinguishable from the peer leaving, and
             // the reader is about to report exactly that.
@@ -195,7 +185,7 @@ public sealed partial class BrowserDataChannel : IDataChannel
 
         while (true)
         {
-            var length = RtcReceive(Scratch);
+            var length = Receive(Scratch);
             if (length < 0)
             {
                 if (length == -2)
@@ -220,39 +210,107 @@ public sealed partial class BrowserDataChannel : IDataChannel
 
     private static void NotifyClosed() => _current?._inbound.Close();
 
-    [JSImport("connect", "banter/rtc")]
-    internal static partial void RtcConnect(
-        string host,
-        int port,
-        string ufrag,
-        string password,
-        string fingerprintAlgorithm,
-        string fingerprintHex,
-        [JSMarshalAs<JSType.Function>] Action onMessage,
-        [JSMarshalAs<JSType.Function>] Action onClosed);
+    // ---- the boundary -----------------------------------------------------------------------
+    //
+    // There is no Mono here and therefore no [JSImport]: this host is NativeAOT-LLVM, where the
+    // only thing crossing is the C ABI. Calls out are DllImports the Emscripten linker binds to
+    // interop/banter-rtc.js (--js-library, see the csproj); calls in are [UnmanagedCallersOnly]
+    // exports the JS side reaches as Module._Name.
+    //
+    // Everything is a number. Strings go out as pointers to their UTF-16 data, which works because
+    // a managed string is null-terminated in memory; strings come BACK by being copied into a
+    // buffer this side owns, because nothing can be returned by reference. Byte buffers are a
+    // pointer and a length, pinned for the duration of the call and no longer - the wasm heap can
+    // grow, and a pointer kept across a yield would be stale.
+
+    private const string Rtc = "banterrtc";
+
+    private static unsafe void Connect(
+        string host, int port, string ufrag, string password, string algorithm, string fingerprint)
+    {
+        fixed (char* h = host)
+        fixed (char* u = ufrag)
+        fixed (char* p = password)
+        fixed (char* a = algorithm)
+        fixed (char* f = fingerprint)
+        {
+            RtcConnect(h, port, u, p, a, f);
+        }
+    }
+
+    private static unsafe int Receive(byte[] buffer)
+    {
+        fixed (byte* b = buffer)
+        {
+            return RtcReceive(b, buffer.Length);
+        }
+    }
+
+    private static unsafe bool Send(ReadOnlySpan<byte> message)
+    {
+        fixed (byte* m = message)
+        {
+            return RtcSend(m, message.Length) != 0;
+        }
+    }
+
+    /// <summary>The last failure the JS side recorded, copied into a buffer this side owns.</summary>
+    private static unsafe string LastError()
+    {
+        // Long enough for a browser's own wording; a longer one is clipped rather than refused,
+        // because the reason a connection failed is not worth failing a second time over.
+        var buffer = new char[512];
+        fixed (char* b = buffer)
+        {
+            var length = RtcError(b, buffer.Length);
+            return length <= 0 ? "unknown" : new string(buffer, 0, length);
+        }
+    }
+
+    /// <summary>
+    /// A message is waiting. Called from JS, so nothing may escape: an exception crossing an
+    /// UnmanagedCallersOnly boundary does not unwind into a catch anywhere, it ends the process.
+    /// </summary>
+    [UnmanagedCallersOnly(EntryPoint = "BanterRtcMessage")]
+    internal static void MessageArrived()
+    {
+        try { Drain(); }
+        catch (Exception ex) { Console.Error.WriteLine($"[banter/rtc] draining failed: {ex}"); }
+    }
+
+    /// <summary>The channel closed. Same rule as above about escaping.</summary>
+    [UnmanagedCallersOnly(EntryPoint = "BanterRtcClosed")]
+    internal static void ChannelClosed()
+    {
+        try { NotifyClosed(); }
+        catch (Exception ex) { Console.Error.WriteLine($"[banter/rtc] close failed: {ex}"); }
+    }
+
+    [DllImport(Rtc, EntryPoint = "banter_rtc_connect")]
+    private static extern unsafe void RtcConnect(
+        char* host, int port, char* ufrag, char* password, char* algorithm, char* fingerprint);
+
+    /// <summary>0 connecting, 1 open, 2 failed, 3 closed.</summary>
+    [DllImport(Rtc, EntryPoint = "banter_rtc_state")]
+    private static extern int RtcState();
+
+    [DllImport(Rtc, EntryPoint = "banter_rtc_error")]
+    private static extern unsafe int RtcError(char* buffer, int capacityInChars);
+
+    /// <summary>What SCTP agreed a message may be, or 0 before the association is up.</summary>
+    [DllImport(Rtc, EntryPoint = "banter_rtc_max_message_size")]
+    private static extern int RtcMaxMessageSize();
 
     /// <summary>
     /// Copies the next queued message into <paramref name="buffer"/>, returning its length, -1 when
-    /// nothing is waiting, or -2 when it would not fit. The view is safe to pass because C# owns
-    /// the array — the reverse, a view JS made, fails an assertion inside the marshaller.
+    /// nothing is waiting, or -2 when it would not fit.
     /// </summary>
-    [JSImport("receive", "banter/rtc")]
-    internal static partial int RtcReceive([JSMarshalAs<JSType.MemoryView>] ArraySegment<byte> buffer);
+    [DllImport(Rtc, EntryPoint = "banter_rtc_receive")]
+    private static extern unsafe int RtcReceive(byte* buffer, int capacity);
 
-    /// <summary>0 connecting, 1 open, 2 failed, 3 closed.</summary>
-    [JSImport("state", "banter/rtc")]
-    internal static partial int RtcState();
+    [DllImport(Rtc, EntryPoint = "banter_rtc_send")]
+    private static extern unsafe int RtcSend(byte* message, int length);
 
-    [JSImport("error", "banter/rtc")]
-    internal static partial string RtcError();
-
-    /// <summary>What SCTP agreed a message may be, or 0 before the association is up.</summary>
-    [JSImport("maxMessageSize", "banter/rtc")]
-    internal static partial int RtcMaxMessageSize();
-
-    [JSImport("send", "banter/rtc")]
-    internal static partial bool RtcSend([JSMarshalAs<JSType.MemoryView>] ArraySegment<byte> message);
-
-    [JSImport("close", "banter/rtc")]
-    internal static partial void RtcClose();
+    [DllImport(Rtc, EntryPoint = "banter_rtc_close")]
+    private static extern void RtcClose();
 }

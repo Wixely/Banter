@@ -19,7 +19,7 @@ namespace Banter.App.Web.Tests;
 /// </summary>
 public sealed class MeshHead : IAsyncLifetime
 {
-    private const string PublishedTo = "src/Banter.App.Web/bin/Release/net10.0/publish/wwwroot";
+    private const string PublishedTo = "src/Banter.App.Web/bin/Release/net10.0/browser-wasm/publish";
     private const string NodestarUnder = "src/Banter.Server.Nodestar/bin";
 
     /// <summary>What the launch configuration uses, so a person can poke at the same node by hand.</summary>

@@ -2,18 +2,19 @@
 <html>
 
 <!-- Banter's page shell. The page is the one genuinely app-specific piece of a web host; the frame
-     loop, input, touch, ARIA, IME and clipboard all come from CupriFace.Web.Mono, and this app
-     writes no JS for any of them. The one script below is Banter's own and is loaded by the app,
-     not by the page: a WebRTC data channel, which is the whole of what the web head adds. -->
+     loop, input, touch, ARIA, IME and clipboard all come from CupriFace.Web.NativeAot, and this app
+     writes no JS for any of them.
+
+     Banter's own JavaScript — a WebRTC data channel — is NOT loaded from here. On this host it is
+     an Emscripten JS library linked into the wasm module at build time (interop/banter-rtc.js), so
+     there is nothing for the page to fetch and no module for it to name. -->
 
 <head>
   <title>Banter</title>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- No favicon here on purpose: the host sets one at boot from the app's own icon bytes. -->
-  <link rel="preload" id="webassembly" />
-  <script type="importmap"></script>
-  <script type='module' src="_content/CupriFace.Web.Mono/main.js"></script>
+  <script type='module' src="main.js"></script>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #14161a; font-family: sans-serif; }
     /* Fill the window: the app scales into whatever viewport it is given. */

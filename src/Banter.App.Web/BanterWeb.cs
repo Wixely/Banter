@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices.JavaScript;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Banter.Client.Core;
 using Banter.Transport.Shrine;
@@ -76,8 +76,7 @@ public static class BanterWeb
         Uri linkUri;
         try
         {
-            var baseUri = JSHost.GlobalThis.GetPropertyAsJSObject("document")?.GetPropertyAsString("baseURI");
-            linkUri = new Uri(new Uri(baseUri ?? "/"), "intonation.json");
+            linkUri = new Uri(new Uri(PageBase()), "intonation.json");
         }
         catch (Exception ex)
         {
@@ -173,4 +172,24 @@ public static class BanterWeb
             _viewModel.ConnectFailed(ex.Message);
         }
     }
+
+    /// <summary>
+    /// The page's own address, which the link endpoint is resolved against.
+    ///
+    /// <para>A DllImport rather than <c>JSHost.GlobalThis</c>: this host is NativeAOT-LLVM, which
+    /// has no Mono and therefore no JS object model to walk. The JS side copies the string into a
+    /// buffer this side owns, because nothing crosses the C ABI by reference.</para>
+    /// </summary>
+    private static unsafe string PageBase()
+    {
+        var buffer = new char[2048];
+        fixed (char* b = buffer)
+        {
+            var length = BanterPageBase(b, buffer.Length);
+            return length <= 0 ? "/" : new string(buffer, 0, length);
+        }
+    }
+
+    [DllImport("banterrtc", EntryPoint = "banter_page_base")]
+    private static extern unsafe int BanterPageBase(char* buffer, int capacityInChars);
 }

@@ -17,7 +17,7 @@ namespace Banter.App.Web.Tests;
 public sealed class PublishedHead : IAsyncLifetime
 {
     /// <summary>Where a Release publish leaves the head, relative to the repository root.</summary>
-    private const string PublishedTo = "src/Banter.App.Web/bin/Release/net10.0/publish/wwwroot";
+    private const string PublishedTo = "src/Banter.App.Web/bin/Release/net10.0/browser-wasm/publish";
 
     private WebApplication? _server;
     private IPlaywright? _playwright;

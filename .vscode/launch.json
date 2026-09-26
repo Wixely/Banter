@@ -365,6 +365,15 @@
       //
       // The preLaunchTask publishes the head as well as building the server, because a node
       // pointed at a stale bundle - or none - is a 404 five minutes into a debugging session.
+      //
+      // THIS CONFIG OPENS THE BROWSER ITSELF, through serverReadyAction below, and that is why
+      // there is no browser configuration beside it any more. Launching one through the JavaScript
+      // debugger produced "Unable to launch browser: Unable to attach to browser" on this machine,
+      // repeatedly, and nothing reproduced it outside VS Code: Edge accepts a debugging port with
+      // a fresh profile, headless or headed, with thirty-odd other Edge processes running. Rather
+      // than keep guessing at a modal dialog, the default path stopped depending on the thing that
+      // was failing. The browser configurations are still below for anyone who wants JS
+      // breakpoints; see the note on them.
       "name": "Mesh server (Nodestar + WebRTC)",
       "type": "coreclr",
       "request": "launch",
@@ -373,11 +382,25 @@
       "args": [
         "--data", "${workspaceFolder}/.banter-dev/nodestar",
         "--network", "banter-dev",
-        "--client", "${workspaceFolder}/src/Banter.App.Web/bin/Release/net10.0/publish/wwwroot"
+        // The code needs colour to be scannable - a terminal drawing light-on-dark hands a scanner
+        // the negative - and the Debug Console has none. Run the server from a terminal when you
+        // want to join from a phone.
+        "--no-qr",
+        "--client", "${workspaceFolder}/src/Banter.App.Web/bin/Release/net10.0/browser-wasm/publish"
       ],
       "env": { "BANTER_ADMIN_PASSWORD": "banter" },
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
+      // internalConsole, NOT integratedTerminal, and serverReadyAction is the whole reason: it
+      // matches against output the debug adapter reports, and a program owning a terminal reports
+      // none. The trade is the terminal, which this config was not using for input anyway.
+      "console": "internalConsole",
+      // Opens the default browser on the line the node already prints when it finds a client. No
+      // debugger is involved, which is the point.
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "The web client is at (http[^ \n\r]+)",
+        "uriFormat": "%s"
+      },
       "stopAtEntry": false
     },
     {
@@ -398,7 +421,13 @@
       //
       // The url is the MESH SERVER's, because that is what serves the page. Launch this on its
       // own and the wait below sits until a node is up; launch the compound and it starts one.
-      // userDataDir is the difference between this working and "Unable to attach to browser".
+      // OPTIONAL, AND KNOWN TO BE AWKWARD. The mesh server configuration opens a browser on its
+      // own now; these exist only for JavaScript breakpoints in main.js. If one of them fails with
+      // "Unable to attach to browser", add "trace": true and the Debug Console prints the path to
+      // a log that says why - which is more than anybody guessing at it has managed.
+      //
+      // userDataDir because a browser started against a profile that is already open does not
+      // start.
       // A browser started against a profile that is ALREADY OPEN does not start: it hands the url
       // to the running instance and exits, so the debugger is left with nothing to attach to, and
       // anyone debugging a web app has their own browser open. Its own profile also means no
@@ -437,7 +466,7 @@
       // coreclr, and JS breakpoints in the client through the browser. They are separate
       // processes on purpose — the browser is a real peer here, not a hosted page.
       "name": "Mesh server + web client",
-      "configurations": ["Mesh server (Nodestar + WebRTC)", "Web client (Edge)"],
+      "configurations": ["Mesh server (Nodestar + WebRTC)"],
       "stopAll": true
     },
     {
