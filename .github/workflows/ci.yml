@@ -242,6 +242,10 @@ jobs:
       #
       # In this job rather than a new one because the publish it needs has just happened here, and
       # out of `dotnet test Banter.slnx` because it depends on that publish existing.
+      # The mesh server, because one of these tests runs a real one and points a real browser at
+      # it. Not in Banter.slnx (it restores CupriNet.Nodestar), so nothing else here builds it.
+      - name: Build the mesh server
+        run: dotnet build src/Banter.Server.Nodestar/Banter.Server.Nodestar.csproj --configuration Release
       - name: Build the web head's tests
         run: dotnet build tests/Banter.App.Web.Tests/Banter.App.Web.Tests.csproj --configuration Release
       # Playwright ships its own browser build and will not fall back to a system one. --with-deps
