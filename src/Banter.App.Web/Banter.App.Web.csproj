@@ -21,25 +21,31 @@
     <!-- Browser-only by definition; the JSExport/JSImport platform hints are expected here. -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
     <!--
-      The WebAssembly SDK trims Release publishes by default. We do not, because MessagePack is not
-      trim-safe and this app cannot talk without it.
+      TRIMMED. 9.1 MB of brotli and 208 assemblies become 5.3 MB and 50 - measured both ways into
+      clean directories, because publishing over a previous publish leaves the old assemblies
+      behind and makes the trimmed build look bigger than the untrimmed one.
 
-      BanterCodec already avoids the part that matters at run time: it resolves formatters through
-      MessagePack's source generator rather than StandardResolver, so nothing here needs
-      Reflection.Emit, which a browser does not have. But the library still reaches the serializer
-      reflectively from the outside — the non-generic Serialize(Type, object, options) goes through
-      CompiledMethods, MessagePackSerializerOptions.Standard resolves a resolver by type NAME, and
-      MessagePackSecurity hashes through MakeGenericMethod. ILLink cannot see through any of that,
-      reports it (IL2104, "assembly 'MessagePack' produced trim warnings"), and TreatWarningsAsErrors
-      turns the report into NETSDK1144. Silencing it would not make the code reachable again: it
-      would ship a head that builds and then fails on the first frame it decodes, which is worse
-      than a large one.
+      Two things were in the way, and only one of them was the one this file used to name.
 
-      The price is the whole BCL: about 12.6 MB brotli, against roughly half that trimmed. Worth
-      revisiting when MessagePack ships trim annotations — the resolver work that would be needed on
-      our side is already done.
+      The JSON wire format was the first, and nothing here ever selected it: four IL2026 errors,
+      all System.Text.Json, all in BanterCodec, for a debugging convenience that makes frames
+      readable in a log. A browser has no such log. The head switches it off through the feature
+      switch below and ILLink removes the reflection-based serializer behind it.
+
+      MessagePack was the second, and it is real: IL2104, exactly as this file always said. It is
+      suppressed rather than fixed, which is only defensible because of what now stands behind it.
+      The fear was specific - a formatter trimmed away would "build and then fail on the first
+      frame it decodes" - and that is precisely what MeshChatTests catches: a browser, over a real
+      mesh, whose message has to survive a MessagePack round trip and land in the server's
+      database. It passes on the trimmed head. The warnings are about reflective paths reached
+      through the non-generic Serialize(Type, ...) overloads; the formatters those need are
+      source-generated and statically referenced, so they survive.
+
+      That test running on every push is the whole justification for the line below it. If it is
+      ever removed or skipped, this suppression stops being honest and the payload should go back.
     -->
-    <PublishTrimmed>false</PublishTrimmed>
+    <NoWarn>$(NoWarn);IL2104</NoWarn>
+    <PublishTrimmed>true</PublishTrimmed>
     <!-- AOT is opt-in via `-p:Aot=true`, never via Configuration: a previous AOT publish leaves
          artifacts in obj/ that make a later plain run paint a blank canvas. The host's
          buildTransitive targets supply the interpreter workaround AOT needs. -->
@@ -47,6 +53,13 @@
     <WasmEmitSymbolMap Condition="'$(Aot)' == 'true'">true</WasmEmitSymbolMap>
     <WasmNativeDebugSymbols Condition="'$(Aot)' == 'true'">false</WasmNativeDebugSymbols>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Trim="true" is what makes this a TRIMMER fact rather than only a run-time one: without it
+         ILLink still sees a property it cannot fold, and the four call sites survive. -->
+    <RuntimeHostConfigurationOption Include="Banter.Protocol.JsonWireFormatSupported"
+                                    Value="false" Trim="true" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- The browser host, and the same app the desktop and Android heads run. -->

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MessagePack;
@@ -53,6 +54,60 @@ public sealed class BanterCodec(BanterWireFormat format = BanterWireFormat.Messa
 
     public BanterWireFormat Format { get; } = format;
 
+    /// <summary>
+    /// Whether this build carries the JSON wire format at all.
+    ///
+    /// <para>A trimmer feature switch. JSON is a debugging convenience - readable frames in logs
+    /// and captures - and it is the ONLY thing in this assembly a trimmed publish cannot swallow:
+    /// its serializer is reflection-based, so ILLink reports IL2026 on all four call sites and the
+    /// publish fails. MessagePack has no such problem, because the resolver above is composed from
+    /// source-generated formatters.
+    /// </para>
+    ///
+    /// <para>A head that sets <c>Banter.Protocol.JsonWireFormatSupported=false</c> lets ILLink
+    /// substitute this to a constant, see the guard in each helper below throw unconditionally,
+    /// and drop the System.Text.Json calls after it as unreachable. The browser head does that; it
+    /// has no log to read a frame out of, and pays about half its download for the privilege. The
+    /// enum stays either way, because it is public API on a packaged assembly.</para>
+    /// </summary>
+    [FeatureSwitchDefinition("Banter.Protocol.JsonWireFormatSupported")]
+    public static bool JsonWireFormatSupported =>
+        !AppContext.TryGetSwitch("Banter.Protocol.JsonWireFormatSupported", out var supported) || supported;
+
+    private const string Trimmed =
+        "This build was published without the JSON wire format " +
+        "(Banter.Protocol.JsonWireFormatSupported=false). MessagePack is the protocol; JSON is a " +
+        "debugging aid, and a trimmed head does not carry it.";
+
+    // The guard is INLINE in each of these rather than factored into one Require() call, and it has
+    // to be: ILLink removes what follows an unconditional throw in the SAME method. Behind a call
+    // it cannot see that, and every System.Text.Json reference survives - which is the whole point
+    // of the exercise.
+    private static byte[] ToJson(object value, Type type)
+    {
+        if (!JsonWireFormatSupported) throw new PlatformNotSupportedException(Trimmed);
+        return JsonSerializer.SerializeToUtf8Bytes(value, type, JsonOptions);
+    }
+
+    private static byte[] ToJson(BanterEnvelope envelope)
+    {
+        if (!JsonWireFormatSupported) throw new PlatformNotSupportedException(Trimmed);
+        return JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+    }
+
+    private static BanterEnvelope EnvelopeFromJson(ReadOnlySpan<byte> bytes)
+    {
+        if (!JsonWireFormatSupported) throw new PlatformNotSupportedException(Trimmed);
+        return JsonSerializer.Deserialize<BanterEnvelope>(bytes, JsonOptions)
+               ?? throw new InvalidDataException("Envelope decoded to null.");
+    }
+
+    private static object? PayloadFromJson(ReadOnlyMemory<byte> payload, Type type)
+    {
+        if (!JsonWireFormatSupported) throw new PlatformNotSupportedException(Trimmed);
+        return JsonSerializer.Deserialize(payload.Span, type, JsonOptions);
+    }
+
     /// <summary>Wraps a payload in a v1 envelope, serializing it in this codec's format.</summary>
     public BanterEnvelope CreateEnvelope<TPayload>(TPayload payload, string? replyTo = null)
         where TPayload : notnull
@@ -60,20 +115,19 @@ public sealed class BanterCodec(BanterWireFormat format = BanterWireFormat.Messa
         var type = PayloadRegistry.MessageTypeFor(payload.GetType());
         var payloadBytes = Format == BanterWireFormat.MessagePack
             ? MessagePackSerializer.Serialize(payload.GetType(), payload, MsgPackOptions)
-            : JsonSerializer.SerializeToUtf8Bytes(payload, payload.GetType(), JsonOptions);
+            : ToJson(payload, payload.GetType());
         return new BanterEnvelope(BanterEnvelope.CurrentVersion, type, BanterEnvelope.NewMsgId(), replyTo, payloadBytes);
     }
 
     public byte[] EncodeEnvelope(BanterEnvelope envelope) =>
         Format == BanterWireFormat.MessagePack
             ? MessagePackSerializer.Serialize(envelope, MsgPackOptions)
-            : JsonSerializer.SerializeToUtf8Bytes(envelope, JsonOptions);
+            : ToJson(envelope);
 
     public BanterEnvelope DecodeEnvelope(ReadOnlyMemory<byte> bytes) =>
         Format == BanterWireFormat.MessagePack
             ? MessagePackSerializer.Deserialize<BanterEnvelope>(bytes, MsgPackOptions)
-            : JsonSerializer.Deserialize<BanterEnvelope>(bytes.Span, JsonOptions)
-                ?? throw new InvalidDataException("Envelope decoded to null.");
+            : EnvelopeFromJson(bytes.Span);
 
     /// <summary>
     /// Deserializes the envelope's payload via the registry. Returns null for message types this
@@ -90,7 +144,7 @@ public sealed class BanterCodec(BanterWireFormat format = BanterWireFormat.Messa
 
         return Format == BanterWireFormat.MessagePack
             ? MessagePackSerializer.Deserialize(payloadType, envelope.Payload, MsgPackOptions)
-            : JsonSerializer.Deserialize(envelope.Payload, payloadType, JsonOptions);
+            : PayloadFromJson(envelope.Payload, payloadType);
     }
 
     public TPayload DecodePayload<TPayload>(BanterEnvelope envelope) where TPayload : class =>
