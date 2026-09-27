@@ -76,20 +76,22 @@
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>full</TrimMode>
     <!--
-      THESE THREE BELONG TO THE HOST PACKAGE AND ARE SET HERE BECAUSE 0.27.0 DOES NOT SHIP THEM.
+      The RID, and it has to be HERE rather than left to the host package, even though 0.29.0 now
+      ships props that set it (CupriFace#216).
 
-      CupriFace.Web.NativeAot's props are meant to supply the RID and the WebGL flag; in 0.27.0 the
-      packed props chain (buildTransitive -> buildMultiTargeting -> build) ends in a file holding
-      nothing but the StaticWebAssets imports, which the SDK generates at the same path and which
-      evidently won. The .targets half survived and is doing its job. Without the RID, ILC fails
-      with "The PrivateSdkAssemblies ItemGroup is required", which names nothing that leads here.
+      NuGet sets ExcludeRestorePackageImports=true while restoring, and the ImportGroup in
+      obj/*.nuget.g.props is guarded by exactly that - so package props are deliberately not
+      applied during RESTORE. Restore is what decides whether project.assets.json carries a
+      net10.0/browser-wasm target, so a RID that only arrives at build time arrives too late:
+      NETSDK1047, "Assets file doesn't have a target for net10.0/browser-wasm", however many times
+      you restore.
 
-      Remove these when a host release carries its own props again.
+      The host's own sample sidesteps this by importing the props by hand at the top of its project
+      body, outside that guard. A package consumer cannot: the import it would need is the one
+      NuGet is suppressing. Everything else in those props - NoWarn, the WebGL flag - is build-time
+      and does arrive, which is why only this one line is still here.
     -->
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
-    <!-- Without it emscripten_webgl_create_context SILENTLY downgrades a version-2 request to
-         WebGL1, and the first sign is a shader error naming a line nobody wrote. -->
-    <EmccFlags>$(EmccFlags) -sMAX_WEBGL_VERSION=2</EmccFlags>
     <!-- -O1 keeps the publish loop tolerable; -O3 for shipping. The longjmp flag satisfies
          libSkiaSharp's __wasm_longjmp on image-codec error paths. -->
     <EmccFlags>$(EmccFlags) -O1 -sSUPPORT_LONGJMP=wasm</EmccFlags>
@@ -116,7 +118,7 @@
 
   <ItemGroup>
     <!-- The browser host, and the same app the desktop and Android heads run. -->
-    <PackageReference Include="CupriFace.Web.NativeAot" Version="0.27.0" />
+    <PackageReference Include="CupriFace.Web.NativeAot" Version="0.29.0" />
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <!-- The conduit transport's CLIENT half. Deliberately not Banter.Transport.Shrine.Nodestar:
          that brings Kestrel, and a browser has no business downloading an HTTP server to join a
