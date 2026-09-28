@@ -202,8 +202,24 @@ What the ticks are worth differs by column, and it is worth being honest about w
   that the canvas has more than one colour in it, and that nothing it asked for 404ed. Those are
   the failures that exist only here — and the last is the one worth having, because a fingerprinted
   asset whose name moved loads to a blank canvas with no error on it. Proven by hiding one `.wasm`
-  from the publish output: all three fail, and only that one says why. Still uncovered: **ICE, the
-  browser's own channel, and AOT** — the page is driven, but nothing connects it to a server.
+  from the publish output: all three fail, and only that one says why.
+
+  **Nothing on this row is uncovered any more.** `MeshChatTests` (2026-09-26) stands a real
+  `banter-nodestar` on free ports, has it serve the published head, and drives headless Chromium
+  through sign-in and a message — then asks the SERVER's SQLite whether it arrived, because a
+  client that rendered what it sent would satisfy its own timeline and nothing else. That is ICE
+  and the browser's own DataChannel. AOT stopped being a gap by becoming the only thing we ship:
+  the head moved to CupriFace.Web.NativeAot on 2026-09-26, so every test on this row runs on an
+  ahead-of-time compile.
+
+  Driving a canvas is worth writing down, because the obvious approach fails silently. The host
+  mirrors the engine's semantics tree into the DOM for screen readers, and that mirror is
+  generated FROM the document every frame — so READING it is reading engine state, which is what
+  makes assertions by role and name sound. WRITING to it is writing to a reflection: it updates
+  the DOM, reaches nothing, and steals focus from the host's hidden keyboard sink. Input goes
+  where a person's goes — a real pointer, which passes through the overlay because it is
+  `pointer-events:none`, onto the canvas and into the engine's own hit test; then keystrokes to
+  `#cupri-kbd`. Aim with the mirror, act on the canvas.
 
 What is genuinely left: **voice needs real devices** rather than more code (§6 is written and
 tested headlessly; capture, playback, local Whisper and the hotkey all want a person with a
@@ -244,9 +260,10 @@ How Banter maps onto CupriNet's API:
   managed **Tor** transport (`CupriNet.Tor`: dual-stack clearnet+onion, or onion-only hiding
   the server IP) if a privacy-preserving deployment is ever wanted; and **Shrines** — content
   served over L2 at a self-authenticating `cupri1…` address, with **named live feeds** pushed
-  over the same connection (no polling/WebSocket). Shrines are a candidate for serving the web
-  client bundle and for live status fan-out — revisit at Phase 2.5; the Kestrel static-file
-  plan stands until then.
+  over the same connection (no polling/WebSocket). Shrines remain a candidate for live status
+  fan-out. They are **no longer** the candidate for serving the web client bundle, and neither is
+  the Kestrel static-file plan: Nodestar already had a client-assets mode, and `banter-nodestar
+  --client` now uses it (2026-09-25). One server hands out the page that dials it.
 
 **Risk (accepted, mitigated):** CupriNet is pre-1.0 and its crypto is unaudited. Mitigation:
 `Banter.Client.Core` and `Banter.Server` talk to transport through an `IBanterTransport`
@@ -1694,6 +1711,30 @@ Android heads, and adds exactly one thing to the network: an `IDataChannel` over
 carries the ICE credentials and fingerprint, so the browser offers and writes the node's answer
 itself. Proven end to end: connect, join, send, and the message read back out of the server's
 database. This was the path nothing upstream had exercised.
+
+*Served by the node itself, 2026-09-25.* There is no separate dev server for the page any more.
+Nodestar mounts the bundle under `/_nodestar/app`, stamps a `<base>` into the markup so it is
+mount-point-agnostic, and publishes the node's live link beside it at `intonation.json` — which is
+what removes the signalling server in practice, because the page holds the remote description
+before it opens a socket. The `--seed-file` this replaced was the wrong shape rather than merely
+redundant: a link has a lifetime, and one written to disk is stale the moment its node exits, which
+reads as the transport being broken rather than as a file nobody cleaned up.
+
+*On the NativeAOT-LLVM host, 2026-09-26.* `CupriFace.Web.NativeAot` compiles the engine ahead of
+time instead of interpreting it — the mesh round trip in `MeshChatTests` went 21s to 7s. Two costs
+worth knowing: the head can no longer be BUILT on macOS or Windows-ARM, because the ILC compiler is
+a native executable published only for x64 Windows and x64/arm64 Linux (it cross-compiles to
+browser-wasm, so this constrains build machines and not browsers); and there is no Mono, so no
+`[JSImport]` — Banter's WebRTC channel is DllImports over the C ABI against an Emscripten JS
+library linked into the module. The app is untouched; both hosts expose the same `WebHost.Run`.
+
+Trimming came with it, because `PublishTrimmed` is what drives ILC. 9.1 MB of brotli and 208
+assemblies became 5.3 MB and 50. The blocker was never MessagePack, which this project had believed
+for months: a trimmed publish reports four IL2026 errors, all `System.Text.Json`, all in
+`BanterCodec`, for a JSON wire format nothing selects — off behind a feature switch now. MessagePack
+is real but only as an aggregate warning on reflective paths whose formatters are source-generated;
+`MeshChatTests` is what makes suppressing it honest, since it is the one test that would fail on a
+formatter the trimmer removed.
 
 *Unblocked 2026-09-02.* The quota was the Nodestar repository being private; with that fixed the
 packages publish again, so the three per-project `NuGet.config` files and the `.local` version

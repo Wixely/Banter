@@ -216,8 +216,14 @@ works; this is specifically explicit newlines. A non-breaking space is stripped 
 the obvious way to keep a blank line's height. Raised as
 [Wixely/CupriFace#69](https://github.com/Wixely/CupriFace/issues/69).
 
-Still outstanding from this list: WASM host round-trip, and everything on-device Android
-(scrollback feel, soft-keyboard IME, GL/foreground-service endurance).
+Nothing on this list is outstanding. The WASM host round-trip was proven end to end on
+2026-09-02 and is now a TEST rather than a run somebody did once: `MeshChatTests` stands a real
+node, has it serve the published head, and drives a headless browser through sign-in and a message
+that has to turn up in the server's database (2026-09-26). The on-device Android set — scrollback
+feel, soft-keyboard IME, GL and foreground-service endurance — closed 2026-09-19 (PLAN §10).
+
+Spike 4's numbers, since it asked for them: the bundle is 5.3 MB of brotli trimmed on the Mono
+host, and a single 18.9 MB `dotnet.native.wasm` on the NativeAOT-LLVM one it now ships on.
 
 - **Phase 0 spikes (all against real CupriFace):**
   1. 10k-message virtualized/windowed scrollback perf — desktop **and** a mid-range Android
