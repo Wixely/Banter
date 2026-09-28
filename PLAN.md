@@ -134,7 +134,7 @@ Columns: **Shared** = `Banter.Protocol` / `Banter.Core` / `Banter.Client.Core`;
 | Paged scrollback (anchored prepend) | – | ✅ | – | ✅ | ✅ | ✅ | – |
 | Composer, unread badges, room switching | – | – | 🔨 | ✅ | ✅ | ✅ | – |
 | One column, touch sizing, phone breakpoints | – | – | – | ✅ | ✅ | ✅ | – |
-| Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ✅ | ⬜ | – |
+| Persisted settings (no secrets on disk) | – | – | ⬜ | ✅ | ✅ | 🔨 | – |
 | Inline image rendering | – | – | – | ✅ | ✅ | ✅ | – |
 | QR / mesh-magnet server join | – | ✅ | – | 🔨 | ✅ | ⬜ | – |
 | **Host heads** |
@@ -211,6 +211,13 @@ What the ticks are worth differs by column, and it is worth being honest about w
   and the browser's own DataChannel. AOT stopped being a gap by becoming the only thing we ship:
   the head moved to CupriFace.Web.NativeAot on 2026-09-26, so every test on this row runs on an
   ahead-of-time compile.
+
+  Settings became **partial** on the web on 2026-09-28: `localStorage` now holds the zoom and the
+  nick, which is what a reload had been costing. Partial rather than done, because the desktop's
+  `BanterSettings` holds a dozen more and the browser's store is not the place for most of them.
+  Two are deliberately excluded and will stay so: the password, and the SERVER LINK — a link
+  carries ICE credentials and has a lifetime, so one remembered past its node's is a handshake
+  that hangs, which is the stale-link trap that removing `--seed-file` got rid of.
 
   Driving a canvas is worth writing down, because the obvious approach fails silently. The host
   mirrors the engine's semantics tree into the DOM for screen readers, and that mirror is

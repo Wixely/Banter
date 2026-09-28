@@ -43,12 +43,19 @@ public static class BanterWeb
             JoinRoomAsync = room => _session?.JoinAsync(room, HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = filter => _session?.LoadToolsAsync(filter) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
+
+            // The two preferences a reload should not cost you. The desktop head's reasoning for
+            // writing zoom the moment it changes applies here and then some: a browser reloads far
+            // more often than a desktop app restarts, and since Ctrl+wheel started zooming
+            // (CupriFace#219) it is a setting people actually reach for.
+            InitialZoom = BrowserSettings.Zoom,
+            ZoomChanged = zoom => BrowserSettings.Zoom = zoom,
         };
 
         // No server is configured in a browser — there are no command-line arguments to read one
         // from — so the connect screen is where every session starts. The server is the node's
         // intonation link: pasted in, or offered by the node that served this page.
-        _viewModel.ShowConnect(server: "", user: "");
+        _viewModel.ShowConnect(server: "", user: BrowserSettings.User);
         _ = WatchForNodeLinkAsync();
 
         return app;
@@ -143,6 +150,11 @@ public static class BanterWeb
             var session = new BanterChatSession(client, _viewModel);
             _session = session;
             _viewModel.Connected();
+
+            // Remembered only once a connection has actually been made, so a typo is not what the
+            // sign-in screen offers back next time. client.Nick rather than the typed string: the
+            // server has the last word on what you are called.
+            BrowserSettings.User = client.Nick;
 
             // The status badge starts at "Disconnected" and only a head moves it. Without this the
             // room opens looking broken while working perfectly.

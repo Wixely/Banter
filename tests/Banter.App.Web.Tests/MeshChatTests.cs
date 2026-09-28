@@ -75,6 +75,60 @@ public sealed class MeshChatTests(MeshHead mesh, ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A reload does not cost you your nick.
+    ///
+    /// <para>The desktop head writes a settings file and has always done this; the browser head
+    /// persisted nothing at all, so every visit began with a blank sign-in screen (PLAN §2a had
+    /// the web column at not-started for persisted settings). The password is deliberately not
+    /// part of it, and neither is the server link - a link has a lifetime, and one remembered past
+    /// its node's is a handshake that hangs.</para>
+    ///
+    /// <para>Reloaded rather than reopened, because localStorage belongs to the browser context:
+    /// a new context is a new browser as far as this is concerned, which would prove nothing.</para>
+    /// </summary>
+    [Fact]
+    public async Task ItRemembersWhoYouWereAfterAReload()
+    {
+        var page = await mesh.OpenAsync();
+        await page.GotoAsync(mesh.ClientUrl);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Connect" })
+            .WaitForAsync(new() { Timeout = BootMs });
+
+        await TapAsync(page, AriaRole.Textbox, "your nick");
+        await page.Locator(Keyboard).PressSequentiallyAsync(MeshHead.AdminUser);
+        await TapAsync(page, AriaRole.Textbox, "Password");
+        await page.Locator(Keyboard).PressSequentiallyAsync(MeshHead.AdminPassword);
+        await TapAsync(page, AriaRole.Button, "Connect");
+
+        // Only a real connection writes it - a typo should not be what you are offered back.
+        await page.GetByRole(AriaRole.Textbox, new() { Name = "Message" })
+            .WaitForAsync(new() { Timeout = ConnectMs });
+
+        await page.ReloadAsync();
+        var nick = page.GetByRole(AriaRole.Textbox, new() { Name = "your nick" });
+        await nick.WaitForAsync(new() { Timeout = BootMs });
+
+        await Assertions.Expect(nick).ToHaveValueAsync(MeshHead.AdminUser, new() { Timeout = 30_000 });
+        output.WriteLine($"sign-in came back holding '{MeshHead.AdminUser}'");
+
+        // And the one thing that must NOT come back.
+        var password = page.GetByRole(AriaRole.Textbox, new() { Name = "Password" });
+        await Assertions.Expect(password).ToHaveValueAsync("", new() { Timeout = 5_000 });
+
+        // Now prove it came from OUR store and not from the browser's. The mirror's fields are
+        // real <input> elements over the painted ones - that is what makes the browser's editor,
+        // IME and password manager work on them - so form autofill could repopulate that box and
+        // this test would pass having proven nothing. Clear the store, reload, and it must be
+        // blank again.
+        await page.EvaluateAsync("() => window.localStorage.clear()");
+        await page.ReloadAsync();
+        var blank = page.GetByRole(AriaRole.Textbox, new() { Name = "your nick" });
+        await blank.WaitForAsync(new() { Timeout = BootMs });
+        await Assertions.Expect(blank).ToHaveValueAsync("", new() { Timeout = 30_000 });
+        output.WriteLine("and blank again once the store was cleared, so it was not autofill");
+    }
+
+    /// <summary>
     /// Aims with the mirror and acts on the canvas: the mirror node reports where the engine
     /// painted the control, and the click is a real pointer at that point, which passes through
     /// the overlay and reaches the engine's hit test.

@@ -143,8 +143,10 @@
          UnmanagedEntryPointsAssembly is the other direction - it surfaces this assembly's
          [UnmanagedCallersOnly] methods as Module._Name for the JS side to call back through. -->
     <DirectPInvoke Include="banterrtc" />
+    <DirectPInvoke Include="banterstore" />
     <UnmanagedEntryPointsAssembly Include="Banter.App.Web" />
     <LinkerArg Include="--js-library &quot;$(MSBuildThisFileDirectory)interop/banter-rtc.js&quot;" />
+    <LinkerArg Include="--js-library &quot;$(MSBuildThisFileDirectory)interop/banter-store.js&quot;" />
   </ItemGroup>
 
 </Project>
