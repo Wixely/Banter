@@ -78,6 +78,37 @@ public sealed class WebHeadTests(PublishedHead head, ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The canvas is rasterised at the display's real resolution, not at CSS pixels.
+    ///
+    /// <para>This is the bug that started the web work: the host sized the backing store in CSS
+    /// pixels and the compositor stretched the result, so text was soft on every HiDPI display and
+    /// got SOFTER the more the page was zoomed - browser zoom raises devicePixelRatio while
+    /// clientWidth does not. It was reported as "it just gets blurry when I resize", and the
+    /// trigger turned out to be a browser sitting at 150% (CupriFace#218).</para>
+    ///
+    /// <para>Pinned at 2 because that is the host's default ceiling: the cost of a ratio is
+    /// quadratic and the benefit is not, so it caps rather than honouring 2.625 on a phone. A test
+    /// asking for 3 would be asserting the cap, which is the host's business and its own test.</para>
+    /// </summary>
+    [Fact]
+    public async Task ItRasterisesAtTheDisplaysResolution()
+    {
+        var page = await head.OpenAsync(deviceScaleFactor: 2f);
+        await page.GotoAsync(head.BaseUrl);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Connect" })
+            .WaitForAsync(new() { Timeout = BootTimeoutMs });
+
+        var ratio = await page.EvaluateAsync<double>("() => window.devicePixelRatio");
+        var buffer = await page.EvaluateAsync<int>("() => document.getElementById('cupri').width");
+        var css = await page.EvaluateAsync<int>("() => document.getElementById('cupri').clientWidth");
+
+        output.WriteLine($"dpr {ratio}: {css} CSS px backed by {buffer} device px");
+        Assert.Equal(2d, ratio);
+        // Rounded rather than exact, because the page rounds clientWidth * dpr to whole pixels.
+        Assert.InRange(buffer, (css * 2) - 1, (css * 2) + 1);
+    }
+
+    /// <summary>
     /// Nothing the page asked for came back missing. This is the fingerprinted-asset failure:
     /// the head loads its runtime through an import map of hashed filenames, and one stale name
     /// is a 404 that stops the app before it can say anything.

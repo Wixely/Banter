@@ -76,20 +76,17 @@
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>full</TrimMode>
     <!--
-      The RID, and it has to be HERE rather than left to the host package, even though 0.29.0 now
-      ships props that set it (CupriFace#216).
+      The RID, and it has to be HERE. The host package deliberately does not set it as of 0.30.0,
+      which is the right call: NuGet sets ExcludeRestorePackageImports=true while restoring, so
+      package build files are not applied during RESTORE - and restore is what decides whether
+      project.assets.json carries a net10.0/browser-wasm target. A RID that first exists at build
+      time has already missed the decision it was for.
 
-      NuGet sets ExcludeRestorePackageImports=true while restoring, and the ImportGroup in
-      obj/*.nuget.g.props is guarded by exactly that - so package props are deliberately not
-      applied during RESTORE. Restore is what decides whether project.assets.json carries a
-      net10.0/browser-wasm target, so a RID that only arrives at build time arrives too late:
-      NETSDK1047, "Assets file doesn't have a target for net10.0/browser-wasm", however many times
-      you restore.
-
-      The host's own sample sidesteps this by importing the props by hand at the top of its project
-      body, outside that guard. A package consumer cannot: the import it would need is the one
-      NuGet is suppressing. Everything else in those props - NoWarn, the WebGL flag - is build-time
-      and does arrive, which is why only this one line is still here.
+      0.29.0 defaulted it in props, which was worse than nothing: $(RuntimeIdentifier) then read
+      browser-wasm at build time whether or not restore had ever seen one, so a broken app looked
+      configured and got NETSDK1047 naming an assets file. 0.30.0 dropped the default and reports
+      it instead - CUPRI1001 names this host, this line and why. Deleting this line now gets a
+      diagnostic that says so rather than three steps of indirection.
     -->
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
     <!-- -O1 keeps the publish loop tolerable; -O3 for shipping. The longjmp flag satisfies
@@ -118,7 +115,7 @@
 
   <ItemGroup>
     <!-- The browser host, and the same app the desktop and Android heads run. -->
-    <PackageReference Include="CupriFace.Web.NativeAot" Version="0.29.0" />
+    <PackageReference Include="CupriFace.Web.NativeAot" Version="0.30.0" />
     <ProjectReference Include="../Banter.App/Banter.App.csproj" />
     <!-- The conduit transport's CLIENT half. Deliberately not Banter.Transport.Shrine.Nodestar:
          that brings Kestrel, and a browser has no business downloading an HTTP server to join a

@@ -82,9 +82,12 @@ public sealed class PublishedHead : IAsyncLifetime
 
     /// <summary>A fresh page — its own context, so console output and network log belong to one
     /// test rather than to whichever ran first.</summary>
-    public async Task<IPage> OpenAsync()
+    /// <param name="deviceScaleFactor">What the page should believe its display is worth. 1 is an
+    /// ordinary monitor; 2 is a Retina panel, or a browser zoomed to 200%, which are the same
+    /// thing as far as anything here can tell.</param>
+    public async Task<IPage> OpenAsync(float deviceScaleFactor = 1f)
     {
-        var context = await _browser!.NewContextAsync();
+        var context = await _browser!.NewContextAsync(new() { DeviceScaleFactor = deviceScaleFactor });
         return await context.NewPageAsync();
     }
 
