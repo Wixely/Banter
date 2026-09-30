@@ -56,6 +56,10 @@ public enum BanterMessageType : ushort
     FileRevoke = 48,
     FileDelete = 49,
 
+    /// <summary>Asks for a relic ticket to fetch a file's bytes off the conduit (PLAN §2.5).
+    /// Authorisation stays here; the transfer does not.</summary>
+    FileRelic = 50,
+
     // Agent control, server-op only (60–69) — payloads land in Phase 5
     AgentList = 60,
     AgentMove = 61,

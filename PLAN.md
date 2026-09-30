@@ -381,8 +381,14 @@ data blobs. Small files only, not repos; the durable "Banter memory" for a room.
   (default 1 GB), both configurable; oversize `FILE_PUT_START` is rejected up front, not after
   upload. Files are permanent by default (they survive independent of message history); an
   optional TTL per file exists for scratch shares.
-- **Transfer:** chunked over the same BanterProtocol channel (~64 KB chunks, resumable via
-  offset) — no second port or side-channel HTTP needed, and CupriNet's encryption covers it.
+- **Transfer:** chunked, with no second port and no side-channel HTTP either way. **Uploads** are
+  64 KB `FILE_PUT_CHUNK` frames on the BanterProtocol channel; the offset makes them sequential
+  rather than resumable, and an upload cut mid-transfer starts again (see §2.5 — the far side has
+  nothing to resume against). **Downloads** take CupriNet's Relic rite wherever the transport has
+  one, which is every mesh head, and are verified chunk by chunk against a manifest on a logical
+  stream of their own; `FILE_GET` frames remain the path on TCP and WebSocket and the fallback
+  everywhere. Either way the transport's encryption covers it. §2.5 has the whole argument,
+  including why the relic *name* is what carries the authorisation.
 - **Chat integration:** uploading with a target room emits a `MSG` carrying the file reference,
   so shares appear in the timeline; clients render images/audio inline (audio playback = voice
   notes for free). Files can also be uploaded "quietly" (grant only, no message) for reference
@@ -1686,6 +1692,58 @@ That is strictly more than Banter's own file transfer does — 64 KB `FilePutChu
 an offset, with no per-chunk integrity, no resume and no signing. **§5a's room files should become
 relics on the conduit path**, and the case for doing the same on every path is worth weighing
 separately.
+
+**Room files are relics on the conduit path** (2026-09-30). `DownloadFileAsync` fetches through the
+Relic rite wherever the transport has one and loops `FILE_GET` where it does not, so the mesh heads
+— desktop and browser both, since both dial through `ShrineClientTransport` — now verify every chunk
+against a manifest as it lands and the whole file before returning it, on a logical stream of its
+own rather than in front of the room's chat.
+
+Reading the rite first changed the shape of the answer twice, and both are worth keeping:
+
+- **The rite is download-only.** A Pilgrim fetches from a Shrine; there is no upload direction to
+  put an upload on. So `FILE_PUT_*` is unchanged and still has no resume — the note above about an
+  interrupted upload starting again once still stands. What the *Reliquary* half (a manifest built
+  client-side, `ReliquaryAssembler.MissingChunks()` server-side) would give that path is a separate
+  piece of work, and a smaller one now that the vocabulary exists.
+- **The rite carries no caller identity, and its source is node-wide.** `IRelicSource` is asked
+  `ResolveAsync(name)` — no account, no session, no rooms — and `SiteBuilder.ServeRelics` registers
+  one source for the whole node, not one per visit. Banter files are visible through room
+  membership, which is a fact about a session. So naming relics after file ids would have published
+  every room's files to anyone who completed a handshake: a straight authorisation regression, and
+  an easy one to ship without noticing, because every test of the happy path would pass.
+
+Hence the **relic name is the capability**. `FILE_RELIC` on the conduit mints one after the same
+`RequireAccessAsync` that guards `FILE_GET`, from 256 bits of randomness; `FileRelics` resolves only
+live names and forgets them after five minutes. It is a bearer token with the properties of one, so
+the lifetime is minutes and it is not a share link — but the lifetime is the backstop rather than the
+mechanism: `FILE_REVOKE` and `FILE_DELETE` drop every name minted for that file at once, or a revoke
+would take five minutes to mean anything and the bytes would be on disk for all of it. What the
+window still governs is the other way access ends — someone leaving the last room a file is granted
+to, which is a fact about a session rather than about the file. A live name is handed back rather
+than reminted while over half its life remains, so a room opening one attachment hashes it once
+rather than once each.
+
+The seam is two interfaces in `Banter.Protocol.Transport` and no CupriNet anywhere near the file
+store: `IBanterRelicFetch` (client, `ShrineClientTransport` only) and `IBanterRelicSource` (server,
+`FileRelics`), bridged by `ShrineRelicSource` in the Nodestar transport. Falling back is silent and
+deliberate — `NO_RELICS`, `RELIC_BUSY` and `UNSUPPORTED` all ask for the frame path rather than
+reporting a fault, that last one because it is what any server answers for a message type it has no
+contract for, so forgetting it would turn "your server is one release behind your client" into every
+download failing. `NO_ACCESS` is *not* swallowed: retrying that frame by frame only makes the same
+refusal arrive later.
+A silent fallback is its own failure mode, so `RelicFetchFailed` fires when one happens: a deployment
+on the slow path for every file is otherwise invisible. Nothing in `CupriNet.Rites` reflects or
+serialises through JSON, so none of this needed trimmer annotations for the browser head.
+
+**It found a defect in the history paging above.** `IBanterConnection.MaxFrameBytes` is a *defaulted*
+interface member, and both wrappers around a conduit connection — `ParkedConnection` on the server,
+`ShrineClientConnection` on the client — implemented the interface without forwarding it. So the
+server believed Banter's own 4 MB while the conduit's real ceiling was 192 KiB, and bisected history
+pages against the wrong number: the oversized frame the paging work exists to prevent was reachable
+over the mesh the whole time, refused at the transport instead of being named `PAGE_TOO_LARGE`. A
+defaulted member is silent when a wrapper forgets it, which is what made this survive 51 transport
+tests.
 
 **History paging is done** (2026-09-25). A page is not a file, so it wanted a bound rather
 than a transfer mechanism — and the bound could not be a count, because the request carries a

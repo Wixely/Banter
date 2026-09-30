@@ -374,6 +374,36 @@ public sealed record FileRevokePayload(
 [MessagePackObject]
 public sealed record FileDeletePayload([property: Key(0)] string FileId);
 
+/// <summary>
+/// A ticket to fetch one file as a <b>relic</b> — CupriNet's chunked, hash-verified bulk transfer —
+/// instead of looping <see cref="FileGetPayload"/> over the conduit (PLAN §2.5).
+///
+/// <para>As a request, only <see cref="FileId"/> matters; use <see cref="Request"/>. The reply
+/// names the relic and says when the name stops working. A server with no relic source answers
+/// <c>NO_RELICS</c>, which is a fallback signal rather than a failure: the caller loops
+/// <see cref="FileGetPayload"/> as before.</para>
+///
+/// <para><b>Why a ticket and not the file id.</b> The Relic rite is served beside the conduit on
+/// the same visit, but it is answered by a node-wide source that is told a <i>name</i> and nothing
+/// about who is asking — no account, no session, no rooms. Naming relics after file ids would
+/// therefore publish every room's files to anyone who completes a handshake. So the name is the
+/// authority: minted here, where the session is authenticated and room membership is known, and
+/// unguessable. It is a bearer capability with the properties of one — anyone holding it can fetch
+/// until <see cref="ExpiresAt"/>, including a holder who has since left the room — which is why
+/// the lifetime is minutes rather than hours.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record FileRelicPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] string RelicName,
+    [property: Key(2)] long ExpiresAt,
+    // What the relic weighs, so a fetcher can bound its buffer without first asking for the file's
+    // metadata. The transfer refuses a manifest that disagrees with it.
+    [property: Key(3)] long Length = 0)
+{
+    public static FileRelicPayload Request(string fileId) => new(fileId, "", 0);
+}
+
 // ---- Agent control (PLAN §8a) ----
 
 /// <summary>

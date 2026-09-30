@@ -82,6 +82,16 @@ public sealed class ShrineBanterListener(Uri endpoint) : IBanterListener
     {
         public string RemoteDescription => inner.RemoteDescription;
 
+        /// <summary>
+        /// Forwarded, and it has to be: <c>IBanterConnection.MaxFrameBytes</c> is a DEFAULTED
+        /// interface member, so a wrapper that does not pass it on silently answers Banter's own
+        /// 4 MB instead of the conduit's 192 KiB. That is not cosmetic — the server bisects a
+        /// history page against this number, so it built pages up to 4 MB and the conduit then
+        /// refused them, which is precisely the hang <c>PAGE_TOO_LARGE</c> exists to prevent. The
+        /// same omission was in the client's wrapper.
+        /// </summary>
+        public int MaxFrameBytes => inner.MaxFrameBytes;
+
         public ValueTask SendFrameAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken = default) =>
             inner.SendFrameAsync(frame, cancellationToken);
 

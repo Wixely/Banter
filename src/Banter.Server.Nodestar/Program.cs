@@ -112,6 +112,17 @@ if (clientAssets.HasContent)
 // being built and the node is running before there is anything to hand it to.
 var listener = builder.Site.ServeBanter(new Uri($"cupri://{concordium}/banter"));
 
+// Files travel beside the conduit rather than through it (PLAN §2.5): the Relic rite chunks,
+// hashes and verifies a transfer, and runs on its own logical stream, so a download does not sit in
+// front of the room's chat. Only this head serves them — the TCP server has no rite to serve them
+// on — and a client that finds none simply loops FILE_GET as it always has.
+//
+// The authority is the relic NAME, minted on the conduit after the same access check FILE_GET
+// makes, because the rite is answered by a node-wide source that is told a name and nothing about
+// who is asking. FileRelics is where that is argued out.
+var fileRelics = new FileRelics(fileStore);
+builder.Site.ServeBanterRelics(fileRelics);
+
 // Announced from OnStarted, not after Build: the site address does not exist until the node is
 // online, and printing it earlier says "Banter is on the site at " with nothing after it.
 ShrineVesselHost? host = null;
@@ -196,7 +207,8 @@ await using var server = new BanterServer(
     // The same identity model as the TCP server: this is the mesh's front door, not a different
     // idea of who an agent is.
     identities: new AgentIdentityStore(database),
-    accountAdmin: accounts);
+    accountAdmin: accounts,
+    relics: fileRelics);
 
 await server.StartAsync(listener.LocalEndpoint);
 

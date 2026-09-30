@@ -38,6 +38,10 @@ public sealed class CodecTests
         new FileListPayload("#main", [FileInfoPayload.Request("file-1")]),
         new FileInfoPayload("file-1", "cat.png", "image/png", 4, "abc123", "alice", 1234567890, null, ["#main"], true),
         new FileGrantPayload("file-1", "#other"),
+        // Both shapes: the request, whose only meaningful field is the file id, and the reply. The
+        // reply's Length has a default, so a round trip is what shows the key is really written.
+        FileRelicPayload.Request("file-1"),
+        new FileRelicPayload("file-1", "deadbeef/cat.png", 1234567890, 4096),
         new FileRevokePayload("file-1", "#other"),
         new FileDeletePayload("file-1"),
         new MsgStreamStartPayload("#main", "dagger", "stream-1"),

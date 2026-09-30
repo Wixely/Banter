@@ -21,7 +21,10 @@ public sealed class BanterServer(
     TaskLimits? taskLimits = null,
     Tools.IToolBroker? tools = null,
     IAgentIdentityStore? identities = null,
-    IAccountAdminStore? accountAdmin = null) : IAsyncDisposable
+    IAccountAdminStore? accountAdmin = null,
+    // Last, and optional, because a relic is a capability of one transport rather than of the
+    // protocol: without it every file still transfers, over FILE_GET as it always has.
+    Files.FileRelics? relics = null) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
@@ -94,7 +97,8 @@ public sealed class BanterServer(
                 return;
             }
 
-            var session = new ClientSession(connection, _codec, accounts, _engine, files, identities, accountAdmin);
+            var session = new ClientSession(
+                connection, _codec, accounts, _engine, files, relics, identities, accountAdmin);
             var run = session.RunAsync(_stopping.Token);
             _sessionTasks.TryAdd(run, 0);
             _ = run.ContinueWith(t => _sessionTasks.TryRemove(t, out _), TaskScheduler.Default);

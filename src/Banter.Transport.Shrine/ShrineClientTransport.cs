@@ -132,9 +132,25 @@ public sealed class ShrineClientTransport(
     /// Keeps the Pilgrimage alive for as long as the connection is, and disposes it after. The
     /// conduit is a rite <i>on</i> that session, so letting it go first would pull the floor out.
     /// </summary>
-    private sealed class ShrineClientConnection(ShrineConnection inner, ShrineSession shrine) : IBanterConnection
+    private sealed class ShrineClientConnection(ShrineConnection inner, ShrineSession shrine)
+        : IBanterConnection, IBanterRelicFetch
     {
         public string RemoteDescription => inner.RemoteDescription;
+
+        /// <summary>The conduit's, not the relic stream's: this is the frame pipe's ceiling, and a
+        /// relic is how you avoid needing a bigger one.</summary>
+        public int MaxFrameBytes => inner.MaxFrameBytes;
+
+        /// <summary>
+        /// The reason this transport is the only one that implements <see cref="IBanterRelicFetch"/>:
+        /// the Relic rite is already here, on the same visit the conduit rides, demultiplexed onto
+        /// its own logical stream. Nothing is dialled and nothing is authenticated again.
+        /// </summary>
+        public Task<byte[]> FetchRelicAsync(
+            string relicName,
+            long maxBytes,
+            CancellationToken cancellationToken = default) =>
+            shrine.FetchRelicAsync(relicName, maxBytes, cancellationToken);
 
         public ValueTask SendFrameAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken = default) =>
             inner.SendFrameAsync(frame, cancellationToken);

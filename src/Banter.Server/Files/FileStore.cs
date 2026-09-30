@@ -263,6 +263,55 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         return new FileChunkPayload(fileId, offset, buffer, offset + take >= info.Size);
     }
 
+    /// <summary>
+    /// Hashes the file a chunk at a time, in order — what a chunked transfer needs to promise a
+    /// receiver each chunk before the whole arrives (PLAN §2.5).
+    ///
+    /// <para>Here because this is the only class that knows where the bytes are. One pass over one
+    /// open handle, and the whole-file hash is not recomputed: it is already stored, and a blob
+    /// whose content no longer matches its own name is a corrupted store rather than something to
+    /// discover on every download.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<byte[]>> ChunkHashesAsync(
+        string fileId,
+        int chunkSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (chunkSize < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chunkSize));
+        }
+
+        var info = await GetInfoAsync(fileId).ConfigureAwait(false);
+        if (info is null || !info.Complete)
+        {
+            throw new FileStoreException("NOT_FOUND", "No such file.");
+        }
+
+        var hashes = new List<byte[]>();
+        var buffer = new byte[chunkSize];
+        await using var stream = new FileStream(
+            BlobPath(info.Sha256), FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        while (true)
+        {
+            var read = await stream.ReadAtLeastAsync(
+                buffer, chunkSize, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                break;
+            }
+
+            hashes.Add(SHA256.HashData(buffer.AsSpan(0, read)));
+            if (read < chunkSize)
+            {
+                break;
+            }
+        }
+
+        return hashes;
+    }
+
     public async Task GrantAsync(string requester, string fileId, string room)
     {
         await RequireUploaderAsync(requester, fileId).ConfigureAwait(false);

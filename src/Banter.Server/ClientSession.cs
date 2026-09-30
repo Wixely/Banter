@@ -16,6 +16,7 @@ internal sealed class ClientSession(
     IAccountStore accounts,
     RoomEngine engine,
     Files.FileStore files,
+    Files.FileRelics? relics = null,
     IAgentIdentityStore? identities = null,
     IAccountAdminStore? accountAdmin = null)
 {
@@ -643,7 +644,7 @@ internal sealed class ClientSession(
 
     private static bool IsFilePayload(object payload) => payload is FilePutStartPayload or FilePutChunkPayload
         or FilePutEndPayload or FileGetPayload or FileListPayload or FileInfoPayload
-        or FileGrantPayload or FileRevokePayload or FileDeletePayload;
+        or FileGrantPayload or FileRevokePayload or FileDeletePayload or FileRelicPayload;
 
     private async Task HandleFileAsync(BanterEnvelope envelope, object payload)
     {
@@ -687,6 +688,29 @@ internal sealed class ClientSession(
                     Send(await files.ReadChunkAsync(get.FileId, get.Offset, get.MaxBytes).ConfigureAwait(false), replyTo: envelope.MsgId);
                     return;
 
+                case FileRelicPayload relicRequest:
+                    // The same check FILE_GET makes, and that is the whole point of minting here:
+                    // the rite that serves the bytes afterwards is told a name and nothing about
+                    // who asked, so this is the only place the question can be answered.
+                    await RequireAccessAsync(relicRequest.FileId).ConfigureAwait(false);
+                    if (relics is null)
+                    {
+                        // A transport with no relic rite behind it — TCP, WebSocket, or a node
+                        // that serves no relics. Not an error: the caller loops FILE_GET instead.
+                        Send(new ErrorPayload("NO_RELICS", "This server serves no relics."), replyTo: envelope.MsgId);
+                        return;
+                    }
+
+                    var ticket = await relics.MintAsync(relicRequest.FileId).ConfigureAwait(false);
+                    Send(
+                        new FileRelicPayload(
+                            relicRequest.FileId,
+                            ticket.Name,
+                            ticket.Expires.ToUnixTimeMilliseconds(),
+                            ticket.Length),
+                        replyTo: envelope.MsgId);
+                    return;
+
                 case FileListPayload list:
                     if (!await engine.IsMemberAsync(this, list.Room).ConfigureAwait(false))
                     {
@@ -717,11 +741,15 @@ internal sealed class ClientSession(
 
                 case FileRevokePayload revoke:
                     await files.RevokeAsync(Nick, revoke.FileId, revoke.Room).ConfigureAwait(false);
+                    // A relic name outliving the grant it was minted under would make a revoke take
+                    // five minutes to mean anything, and the bytes are still on disk for all of it.
+                    relics?.Forget(revoke.FileId);
                     Send(new OkPayload(), replyTo: envelope.MsgId);
                     return;
 
                 case FileDeletePayload delete:
                     await files.DeleteAsync(Nick, delete.FileId).ConfigureAwait(false);
+                    relics?.Forget(delete.FileId);
                     Send(new OkPayload(), replyTo: envelope.MsgId);
                     return;
             }

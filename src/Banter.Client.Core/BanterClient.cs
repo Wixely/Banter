@@ -501,8 +501,26 @@ public sealed partial class BanterClient : IAsyncDisposable
         return await RequestAsync<FileInfoPayload>(new FilePutEndPayload(start.FileId), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Fetches a stored file whole.
+    ///
+    /// <para>Takes the relic path when the transport has one (PLAN §2.5) and the frame-by-frame path
+    /// otherwise. The difference is not speed: a relic verifies every chunk against a manifest as it
+    /// lands and the whole file before returning it, and it travels on its own logical stream, so a
+    /// large download does not sit in front of the room's chat. Falling back is not a degraded mode
+    /// either — it is what every transport but the mesh has always done.</para>
+    /// </summary>
     public async Task<byte[]> DownloadFileAsync(string fileId, CancellationToken cancellationToken = default)
     {
+        if (RelicFetch is { } relics)
+        {
+            var fetched = await TryFetchAsRelicAsync(relics, fileId, cancellationToken).ConfigureAwait(false);
+            if (fetched is not null)
+            {
+                return fetched;
+            }
+        }
+
         using var buffer = new MemoryStream();
         long offset = 0;
         while (true)
@@ -517,6 +535,84 @@ public sealed partial class BanterClient : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>
+    /// The transport's bulk-fetch rite, or null when it has none (PLAN §2.5).
+    ///
+    /// <para>Exposed because <see cref="DownloadFileAsync"/> is not the only sane thing to do with a
+    /// relic: it returns a whole file as one array, which is the wrong shape for something being
+    /// written to disk. A caller that wants to drive the transfer itself pairs this with
+    /// <see cref="RequestRelicAsync"/>. Null is the ordinary answer on TCP and WebSocket, and means
+    /// "use the file verbs", not "no files".</para>
+    /// </summary>
+    public IBanterRelicFetch? RelicFetch => _connection as IBanterRelicFetch;
+
+    /// <summary>
+    /// Asks the server to name this file as a relic, having checked that this session may read it.
+    ///
+    /// <para>The reply's name is a short-lived bearer capability — see <c>FileRelicPayload</c> for
+    /// what that does and does not mean. Servers with no relic rite answer <c>NO_RELICS</c>.</para>
+    /// </summary>
+    public Task<FileRelicPayload> RequestRelicAsync(string fileId, CancellationToken cancellationToken = default) =>
+        RequestAsync<FileRelicPayload>(FileRelicPayload.Request(fileId), cancellationToken);
+
+    /// <summary>
+    /// Asks for a relic ticket and fetches it, or returns null for the caller to fall back.
+    ///
+    /// <para>Null means "this file did not come over the relic path", never "this file is
+    /// unavailable". Three codes say so and all three ask for the frame path rather than reporting a
+    /// fault: <c>NO_RELICS</c> from a server that serves none, <c>RELIC_BUSY</c> from one out of
+    /// ticket space, and <c>UNSUPPORTED</c> from one predating <c>FILE_RELIC</c> altogether — a
+    /// server answers that for any message type it has no contract for, which is the mechanism that
+    /// keeps mixed-version fleets talking, and forgetting it here would turn "your server is older
+    /// than your client" into every download failing.</para>
+    ///
+    /// <para>An access refusal is NOT swallowed: <c>NO_ACCESS</c> means the download would fail on
+    /// either path, and retrying it frame by frame only makes the same error arrive later.</para>
+    ///
+    /// <para>A ticket has a lifetime, so it is fetched at once rather than held. A transfer that
+    /// outlives its ticket fails on a chunk, which the caller can only answer by asking again — and
+    /// the fallback below is a better answer than a retry loop while the reason is unknown.</para>
+    /// </summary>
+    private async Task<byte[]?> TryFetchAsRelicAsync(
+        IBanterRelicFetch relics,
+        string fileId,
+        CancellationToken cancellationToken)
+    {
+        FileRelicPayload ticket;
+        try
+        {
+            ticket = await RequestRelicAsync(fileId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (BanterErrorException error) when (error.Code is "NO_RELICS" or "RELIC_BUSY" or "UNSUPPORTED")
+        {
+            return null;
+        }
+
+        try
+        {
+            // The server's stated length is the buffer bound. The fetch refuses a manifest claiming
+            // more, so the two have to agree for anything to be allocated.
+            return await relics.FetchRelicAsync(ticket.RelicName, ticket.Length, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A relic-side failure: an expired name, a refused chunk, a hash that did not match, or
+            // a node whose store moved under a live ticket. The bytes are still reachable the other
+            // way, and one round trip is a cheaper answer than surfacing a transport's rite to a
+            // caller that asked for a file.
+            RelicFetchFailed?.Invoke(fileId, exception);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A relic fetch fell back to the frame path, and why. Nothing breaks when it fires — the
+    /// download still completes — which is exactly why it is worth surfacing: a mesh deployment
+    /// silently taking the slow path on every file is invisible otherwise.
+    /// </summary>
+    public event Action<string, Exception>? RelicFetchFailed;
 
     public Task<FileListPayload> ListFilesAsync(string room, CancellationToken cancellationToken = default) =>
         RequestAsync<FileListPayload>(new FileListPayload(room, []), cancellationToken);
