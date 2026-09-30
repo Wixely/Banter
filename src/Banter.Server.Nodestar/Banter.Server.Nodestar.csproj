@@ -6,6 +6,19 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>banter-nodestar</AssemblyName>
     <RootNamespace>Banter.Server.Nodestar</RootNamespace>
+    <!--
+      Banter.Server is OutputType=Exe because it is also the TCP server's own entry point, and this
+      project references it for its TYPES - it constructs a BanterServer and never runs it as a
+      program. The SDK's ValidateExecutableReferences does not know the difference and refuses the
+      pair whenever the two disagree about self-containedness (NETSDK1151), which made the
+      framework-dependent release leg unbuildable while the self-contained one was fine.
+
+      Off for the same reason the SDK turns it off for test projects: that check guards against
+      LAUNCHING a referenced executable whose runtime assumptions differ from yours. Nothing here
+      launches it. The alternative is splitting a library out of Banter.Server, which is the better
+      shape and a refactor of every project that references it.
+    -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Banter.Server/Banter.Server.csproj" />

@@ -264,6 +264,18 @@ jobs:
         run: pwsh tests/Banter.App.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Test the web head
         run: dotnet test tests/Banter.App.Web.Tests/Banter.App.Web.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=web.trx" --results-directory artifacts/test-results
+      # The client the mesh server ships, handed to `publish-mesh` rather than published a second
+      # time there. Reusing this one is the point: it is the exact bundle the browser tests above
+      # just passed against, so the release cannot carry a head that was never run. A second ILC
+      # publish would also cost this workflow another few minutes per leg for no added proof.
+      - name: Upload the published client (on a v* tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-client
+          path: src/Banter.App.Web/bin/Release/net10.0/browser-wasm/publish
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -345,6 +357,87 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  publish-mesh:
+    # The mesh server, with the browser client inside it. The third thing a person downloads, and
+    # until now the one they could not: everything Phase 2.5 added shipped only as source, so a
+    # release could describe a web head nobody was able to run.
+    #
+    # One zip carries both halves on purpose. The node that carries the mesh is also the origin that
+    # hands out the page dialling it — there is no second server to keep in step and no question of
+    # which is the real one — and `banter-nodestar` looks for a "client" directory beside itself
+    # precisely so that this zip needs no argument.
+    #
+    # `needs: web` for the client rather than publishing it again here: that job has already built
+    # it AND driven a real browser through it, so what ships is what was tested.
+    name: Publish Banter.Server.Mesh ${{ matrix.rid }} ${{ matrix.kind }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [build, web]
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, linux-x64]
+        kind: [framework-dependent, self-contained]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Add Wixely feed credentials
+        run: dotnet nuget update source GitHub-Wixely-Packages --username ${{ github.actor }} --password "${{ secrets.PACKAGES_TOKEN || github.token }}" --store-password-in-clear-text --configfile NuGet.config
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Publish the mesh server
+        # The same flags as publish-apps, for the same reasons. The RID here is the SERVER's; the
+        # client is WebAssembly and identical in every leg, which is why it is fetched rather than
+        # built per-platform.
+        run: >
+          dotnet publish src/Banter.Server.Nodestar/Banter.Server.Nodestar.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained ${{ matrix.kind == 'self-contained' }}
+          -p:Version=${{ steps.ver.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=${{ matrix.kind == 'self-contained' }}
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:IncludeAllContentForSelfExtract=true
+          -p:DebugType=none
+          -p:DebugSymbols=false
+          -o "publish/mesh-${{ matrix.rid }}-${{ matrix.kind }}"
+      - name: Take the client the web job tested
+        uses: actions/download-artifact@v7
+        with:
+          name: web-client
+          path: publish/mesh-${{ matrix.rid }}-${{ matrix.kind }}/client
+      - name: Check the client arrived whole
+        shell: bash
+        # A zip whose client is missing or half-there produces a server that starts, says it has no
+        # web client, and serves the mesh perfectly well — so nothing downstream fails and the
+        # release looks complete. The index and a .wasm are the two files whose absence means the
+        # head cannot boot at all.
+        run: |
+          set -euo pipefail
+          client="publish/mesh-${{ matrix.rid }}-${{ matrix.kind }}/client"
+          test -f "${client}/index.html" || { echo "No index.html in ${client}" >&2; exit 1; }
+          ls "${client}"/*.wasm >/dev/null 2>&1 || { echo "No .wasm in ${client}" >&2; exit 1; }
+          echo "client: $(find "${client}" -type f | wc -l) files, $(du -sh "${client}" | cut -f1)"
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="Banter.Server.Mesh-${{ matrix.rid }}-${{ matrix.kind }}-${GITHUB_REF_NAME}"
+          cd "publish/mesh-${{ matrix.rid }}-${{ matrix.kind }}"
+          zip -r "../../${name}.zip" .
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Banter.Server.Mesh-${{ matrix.rid }}-${{ matrix.kind }}
+          path: Banter.Server.Mesh-${{ matrix.rid }}-${{ matrix.kind }}-${{ github.ref_name }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
   docker:
     # The server's third shape, alongside the two zips: an image on GHCR. Deliberately not a
     # release asset — an image is pulled by digest or tag from a registry, and a tarball of one
@@ -415,7 +508,7 @@ jobs:
     # Everything a tag produces, not just the zips: `pack` puts the SDK on the feed, `android`
     # builds the APK that ships here, and `docker` puts the image on GHCR. A release page
     # announcing a version whose packages or image never arrived is a half-shipped tag.
-    needs: [publish-apps, android, docker, pack]
+    needs: [publish-apps, publish-mesh, android, docker, pack]
     permissions:
       contents: write      # create the release and upload its assets
     steps:
@@ -469,11 +562,11 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           assets=(release-assets/*/*.zip release-assets/*/*.apk)
-          # Nine: two applications x two platforms x two flavours, plus the APK. Anything less
-          # means a matrix leg failed quietly, and a release missing a platform is worse than a
-          # release that did not happen.
-          if (( ${#assets[@]} != 9 )); then
-            echo "Expected 9 release assets, found ${#assets[@]}:" >&2
+          # Thirteen: three applications x two platforms x two flavours, plus the APK. Anything
+          # less means a matrix leg failed quietly, and a release missing a platform is worse than
+          # a release that did not happen. Was nine before the mesh server shipped.
+          if (( ${#assets[@]} != 13 )); then
+            echo "Expected 13 release assets, found ${#assets[@]}:" >&2
             for a in "${assets[@]}"; do echo "  ${a}" >&2; done
             exit 1
           fi

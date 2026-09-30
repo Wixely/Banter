@@ -60,7 +60,7 @@ var webPort = Port("--web-port", 7774);        // the clearnet front, and the li
 //
 // Defaults to a "client" directory beside the executable, so a published server that ships the
 // head needs no argument at all.
-var clientRoot = Arg("--client") ?? Path.Combine(AppContext.BaseDirectory, "client");
+var clientRoot = Arg("--client") ?? DefaultClientRoot();
 var clientAssets = new DirectoryClientAssets(clientRoot);
 var adminPassword = Environment.GetEnvironmentVariable("BANTER_ADMIN_PASSWORD") ?? "admin";
 
@@ -257,6 +257,38 @@ int? TerminalWidth()
     {
         return null;
     }
+}
+
+/// <summary>
+/// Where to look for the web client when nobody said: beside the EXECUTABLE, falling back to the
+/// assembly directory.
+///
+/// <para>Those are the same directory most of the time, and are not in the shape we ship.
+/// <c>AppContext.BaseDirectory</c> alone was the obvious answer and the wrong one — the release
+/// zips are single-file publishes with <c>IncludeAllContentForSelfExtract</c>, which makes
+/// BaseDirectory the <i>extraction</i> directory under the user's temp folder. Measured, not
+/// guessed: a published server with a client beside it reported "No web client at
+/// %TEMP%\.netanter-nodestar\Qb_9B-L-wOem\client" and served nothing, which is a release that
+/// looks complete and is not.</para>
+///
+/// <para>The fallback is for <c>dotnet run</c>, where the process is the dotnet host and the client
+/// sits beside the assemblies rather than beside the executable.</para>
+/// </summary>
+string DefaultClientRoot()
+{
+    var candidates = new List<string>(2);
+    if (Path.GetDirectoryName(Environment.ProcessPath) is { Length: > 0 } beside)
+    {
+        candidates.Add(Path.Combine(beside, "client"));
+    }
+
+    candidates.Add(Path.Combine(AppContext.BaseDirectory, "client"));
+
+    // The first that actually holds something, so neither order nor host shape decides it. When
+    // none does there is nothing to serve either way, and naming the first keeps the diagnostic
+    // pointing at where a published server is meant to carry it.
+    return candidates.FirstOrDefault(c => Directory.Exists(c) && Directory.EnumerateFiles(c).Any())
+           ?? candidates[0];
 }
 
 bool Flag(string name) => Array.IndexOf(args, name) >= 0;
