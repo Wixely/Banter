@@ -381,10 +381,13 @@ data blobs. Small files only, not repos; the durable "Banter memory" for a room.
   (default 1 GB), both configurable; oversize `FILE_PUT_START` is rejected up front, not after
   upload. Files are permanent by default (they survive independent of message history); an
   optional TTL per file exists for scratch shares.
-- **Transfer:** chunked, with no second port and no side-channel HTTP either way. **Uploads** are
-  64 KB `FILE_PUT_CHUNK` frames on the BanterProtocol channel; the offset makes them sequential
-  rather than resumable, and an upload cut mid-transfer starts again (see §2.5 — the far side has
-  nothing to resume against). **Downloads** take CupriNet's Relic rite wherever the transport has
+- **Transfer:** chunked and verified in both directions, with no second port and no side-channel
+  HTTP either way. **Uploads** are 64 KB `FILE_PUT_CHUNK` frames on the BanterProtocol channel,
+  carrying a manifest — a SHA-256 per chunk — so the offset names a chunk rather than the append
+  point: the server verifies each chunk as it lands, takes them in any order, and answers
+  `FILE_PUT_RESUME` with the indices it is still missing, so an interrupted upload sends the
+  remainder rather than the file. A client or server without the manifest falls back to the old
+  append-only path, which cannot be resumed and says so. **Downloads** take CupriNet's Relic rite wherever the transport has
   one, which is every mesh head, and are verified chunk by chunk against a manifest on a logical
   stream of their own; `FILE_GET` frames remain the path on TCP and WebSocket and the fallback
   everywhere. Either way the transport's encryption covers it. §2.5 has the whole argument,
@@ -657,9 +660,13 @@ way:
   receive loop does, so a retry that trusts the client's own view of "connected" is handed the same
   dead socket. The first implementation did exactly that, and the mid-transfer test caught it.
 
-An upload cut mid-transfer starts again once: its chunks are keyed to a file id the dead session
-opened, and there is nothing to resume against on the far side. That makes interrupted uploads
-routine, which in turn exposed that each one leaves an open handle on its `.part` file —
+An upload cut mid-transfer **resumes** (2026-09-30): it asks `FILE_PUT_RESUME` which chunks the
+server is still missing and sends those. This used to start again from the beginning, because the
+chunks were keyed to a file id the dead session opened and the server knew a byte count rather than
+which bytes were good — a manifest is what changed that, and the pending upload was always kept
+against the account rather than the session, so it was there to be continued all along. Interrupted
+uploads are routine either way, which in turn exposed that each one leaves an open handle on its
+`.part` file —
 `FileStore` closes them on disposal, but an upload abandoned on a server that keeps running still
 holds one, because pending uploads are attributed to a *user* rather than a session and one user
 may legitimately be uploading from two devices at once.
@@ -1736,10 +1743,21 @@ own rather than in front of the room's chat.
 Reading the rite first changed the shape of the answer twice, and both are worth keeping:
 
 - **The rite is download-only.** A Pilgrim fetches from a Shrine; there is no upload direction to
-  put an upload on. So `FILE_PUT_*` is unchanged and still has no resume — the note above about an
-  interrupted upload starting again once still stands. What the *Reliquary* half (a manifest built
-  client-side, `ReliquaryAssembler.MissingChunks()` server-side) would give that path is a separate
-  piece of work, and a smaller one now that the vocabulary exists.
+  put an upload on. So uploads could not ride it, and got the *manifest* instead — **done
+  2026-09-30**, and the vocabulary existing is what made it small: `FILE_PUT_START` carries a
+  SHA-256 per chunk, the offset therefore names a chunk rather than the append point, and
+  `FILE_PUT_RESUME` answers with what is still owed. The visible win is that a chunk is now refused
+  as it lands rather than a whole file being rejected at the end, and a dropped connection costs the
+  remainder rather than the file.
+
+  `ReliquaryDiskAssembler` does exactly this job and is deliberately **not** used. It needs an
+  `ICryptoSuite`, so using it would put `CupriNet.Alembic` and a crypto provider inside
+  `Banter.Server` — a project that knows no transport — to compute the SHA-256 that
+  `System.Security.Cryptography` is already there for, and inside `Banter.Client.Core`, which the
+  browser head trims. The manifest *concept* is shared with the download side on purpose, and the
+  twenty lines that act on it were not worth the dependency. The whole-file hash is still computed
+  at the end, because a manifest can only say the chunks are the chunks it lists — not that the list
+  belongs to the file the uploader named.
 - **The rite carries no caller identity, and its source is node-wide.** `IRelicSource` is asked
   `ResolveAsync(name)` — no account, no session, no rooms — and `SiteBuilder.ServeRelics` registers
   one source for the whole node, not one per visit. Banter files are visible through room

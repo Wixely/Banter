@@ -299,9 +299,22 @@ public sealed record MsgStreamEndPayload(
 
 // ---- Files (room-scoped storage, §5a) ----
 
-/// <summary>Starts an upload. Server replies with <see cref="FileInfoPayload"/>: when
-/// <c>Complete</c> is already true the content was deduplicated by hash and no chunks are
-/// needed. <see cref="Quiet"/> suppresses the room announcement message.</summary>
+/// <summary>
+/// Starts an upload. Server replies with <see cref="FileInfoPayload"/>: when <c>Complete</c> is
+/// already true the content was deduplicated by hash and no chunks are needed.
+/// <see cref="Quiet"/> suppresses the room announcement message.
+///
+/// <para><b>The manifest is optional and changes what an upload is.</b> Without it the server can
+/// only append: chunks must arrive in order, nothing is checked until the last one, and an upload
+/// cut off partway has nothing to resume against. With it — a chunk size and the SHA-256 of each
+/// chunk — the server verifies every chunk as it lands, writes it at its own offset so order stops
+/// mattering, and can say which chunks it is still missing (<see cref="FilePutResumePayload"/>).
+/// The same shape the Relic rite uses for downloads, which is why it is described the same way; it
+/// is not the rite itself, because that only carries content from a server to whoever asks.</para>
+///
+/// <para>Optional rather than required so that a client older than this field still uploads, and so
+/// that a server older than it ignores one and behaves exactly as it always did.</para>
+/// </summary>
 [MessagePackObject]
 public sealed record FilePutStartPayload(
     [property: Key(0)] string Room,
@@ -310,7 +323,17 @@ public sealed record FilePutStartPayload(
     [property: Key(3)] long Size,
     [property: Key(4)] string Sha256,
     [property: Key(5)] string? Description,
-    [property: Key(6)] bool Quiet);
+    [property: Key(6)] bool Quiet,
+    // How much of the file each chunk carries. Every chunk but the last is exactly this, which is
+    // what lets an offset name a chunk index and a resumed upload agree with the one it resumes.
+    [property: Key(7)] int ChunkBytes = 0,
+    // SHA-256 per chunk, in order. Null or empty means "no manifest": the append-only path.
+    [property: Key(8)] IReadOnlyList<byte[]>? ChunkHashes = null)
+{
+    /// <summary>Whether this upload carries a manifest and can therefore be verified and resumed.</summary>
+    [IgnoreMember]
+    public bool HasManifest => ChunkBytes > 0 && ChunkHashes is { Count: > 0 };
+}
 
 /// <summary>One sequential upload chunk; <see cref="Offset"/> must equal bytes received so far.</summary>
 [MessagePackObject]
@@ -321,6 +344,28 @@ public sealed record FilePutChunkPayload(
 
 [MessagePackObject]
 public sealed record FilePutEndPayload([property: Key(0)] string FileId);
+
+/// <summary>
+/// Which chunks of an upload in flight are still owed.
+///
+/// <para>As a request, only <see cref="FileId"/> matters; use <see cref="Request"/>. The reply lists
+/// the indices the server has not accepted — empty means it has them all and only
+/// <see cref="FilePutEndPayload"/> is left. This is what makes a dropped connection cost the chunks
+/// in flight rather than the whole file: an upload is attributed to an account rather than to a
+/// session, so the same user reconnecting can pick the same upload up by its id.</para>
+///
+/// <para><c>UPLOAD_NOT_FOUND</c> is the ordinary answer once a server has forgotten it — a restart,
+/// or a finalise that already happened — and it means start again rather than something is wrong.
+/// Only an upload started WITH a manifest can answer this: without one the server appended blindly
+/// and knows a byte count, not which chunks are good.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record FilePutResumePayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] IReadOnlyList<int> Missing)
+{
+    public static FilePutResumePayload Request(string fileId) => new(fileId, []);
+}
 
 /// <summary>Requests up to <see cref="MaxBytes"/> from <see cref="Offset"/>; reply is a
 /// <see cref="FileChunkPayload"/>. Loop until <c>Eof</c>.</summary>

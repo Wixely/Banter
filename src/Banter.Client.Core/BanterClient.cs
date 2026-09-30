@@ -442,9 +442,17 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     private const int UploadChunkBytes = 64 * 1024;
 
-    /// <summary>Uploads content to a room. Deduplicated server-side by hash — a second upload
-    /// of identical bytes completes without sending chunks. Unless <paramref name="quiet"/>,
-    /// the server announces the file in the room as a message carrying the file reference.</summary>
+    /// <summary>
+    /// Uploads content to a room. Deduplicated server-side by hash — a second upload of identical
+    /// bytes completes without sending chunks. Unless <paramref name="quiet"/>, the server announces
+    /// the file in the room as a message carrying the file reference.
+    ///
+    /// <para><b>Sent with a manifest</b> — a hash per chunk — so the server verifies each chunk as it
+    /// lands and can say which it is still missing. That turns the thing an upload is most likely to
+    /// meet, a connection going mid-transfer, from starting again into sending the remainder. A server
+    /// that predates the manifest ignores it and appends as it always did, and this still works;
+    /// see <see cref="FilePutStartPayload"/>.</para>
+    /// </summary>
     public async Task<FileInfoPayload> UploadFileAsync(
         string room,
         string name,
@@ -455,50 +463,127 @@ public sealed partial class BanterClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(content.Span));
+        var chunkHashes = DescribeChunks(content);
 
-        // An upload is many round trips, which makes it the thing most likely to be in flight
-        // when a connection goes. The chunks are keyed to a file id the dropped session opened,
-        // so there is nothing to resume against on the far side: begin again, once. A second
-        // failure is a connection that is genuinely gone rather than one being replaced, and the
-        // caller should hear about it instead of watching us retry.
-        try
+        // A manifest is 32 bytes per chunk, and FILE_PUT_START has to fit one frame like anything
+        // else. At 64 KiB chunks over a conduit's 192 KiB ceiling that is a few hundred megabytes of
+        // file before it matters, and the default file cap is 32 MB — but a deployment that raised
+        // the cap would otherwise find large files became unuploadable rather than merely unverified.
+        // So an oversized manifest is dropped instead, and the upload is the append-only one it was
+        // before manifests existed.
+        var manifested = (chunkHashes.Length * 40) + 1024
+                         <= (_connection?.MaxFrameBytes ?? BanterFraming.DefaultMaxFrameBytes);
+
+        // The id of an upload the server has already opened, once there is one. Holding it is what
+        // makes a retry a resume: without it the far side has an orphan and we have a whole file to
+        // send again.
+        string? inFlight = null;
+
+        // Three attempts rather than the one this used to allow, and the bound now means something
+        // different. It used to cap WASTED WORK: a second attempt resent the entire file, so a third
+        // was rarely worth waiting for. Every attempt now sends only what is still owed, so the bound
+        // is only about a connection that is genuinely gone rather than one being replaced — and the
+        // caller should hear about that instead of watching us retry.
+        for (var attempt = 1; ; attempt++)
         {
-            return await PutFileAsync(room, name, content, mimeType, sha, description, quiet, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (BanterDisconnectedException)
-        {
-            return await PutFileAsync(room, name, content, mimeType, sha, description, quiet, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                if (inFlight is null)
+                {
+                    var start = await RequestAsync<FileInfoPayload>(
+                        new FilePutStartPayload(
+                            room, name, mimeType, content.Length, sha, description, quiet,
+                            manifested ? UploadChunkBytes : 0,
+                            manifested ? chunkHashes : null),
+                        cancellationToken).ConfigureAwait(false);
+                    if (start.Complete)
+                    {
+                        return start;
+                    }
+
+                    inFlight = start.FileId;
+                    await SendChunksAsync(inFlight, content, Enumerable.Range(0, ChunkCount(content.Length)), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    // What the server still wants, which after a drop is not the same as what we
+                    // never sent: chunks in flight when the connection went may well have landed.
+                    var owed = await RequestAsync<FilePutResumePayload>(
+                        FilePutResumePayload.Request(inFlight), cancellationToken).ConfigureAwait(false);
+                    await SendChunksAsync(inFlight, content, owed.Missing, cancellationToken).ConfigureAwait(false);
+                }
+
+
+                return await RequestAsync<FileInfoPayload>(new FilePutEndPayload(inFlight), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (BanterDisconnectedException) when (attempt < 3)
+            {
+                // Round again. With an id in hand and a manifest behind it this resumes; otherwise
+                // there is nothing on the far side worth asking about, so drop the id and start —
+                // asking would spend a round trip to be told NOT_RESUMABLE.
+                if (!manifested)
+                {
+                    inFlight = null;
+                }
+            }
+            catch (BanterErrorException error) when (attempt < 3 && inFlight is not null && CanOnlyStartOver(error.Code))
+            {
+                // The upload we were holding is not there to continue — a restarted server, or one
+                // that never kept chunk state because it ignored the manifest. Begin a new one.
+                inFlight = null;
+            }
         }
     }
 
-    private async Task<FileInfoPayload> PutFileAsync(
-        string room,
-        string name,
+    /// <summary>
+    /// Codes that mean "that upload is gone, open another" rather than "this upload failed".
+    ///
+    /// <para><c>UNSUPPORTED</c> is a server with no <c>FILE_PUT_RESUME</c> at all, and
+    /// <c>NOT_RESUMABLE</c> one that took the append-only path because it did not understand the
+    /// manifest. Both are older servers, and on both the answer is the behaviour this method had
+    /// before manifests existed: send it again from the beginning.</para>
+    /// </summary>
+    private static bool CanOnlyStartOver(string code) =>
+        code is "UPLOAD_NOT_FOUND" or "NOT_RESUMABLE" or "UNSUPPORTED";
+
+    private static int ChunkCount(int length) => (length + UploadChunkBytes - 1) / UploadChunkBytes;
+
+    /// <summary>
+    /// The SHA-256 of each chunk, in order — the manifest the server verifies against.
+    ///
+    /// <para>Hashed with the BCL rather than through CupriNet's Reliquary builder, which wants the
+    /// whole file in one span and a crypto suite: this assembly is transport-free and runs in a
+    /// browser, and the hash is the same hash either way.</para>
+    /// </summary>
+    private static byte[][] DescribeChunks(ReadOnlyMemory<byte> content)
+    {
+        var hashes = new byte[ChunkCount(content.Length)][];
+        for (var index = 0; index < hashes.Length; index++)
+        {
+            var offset = index * UploadChunkBytes;
+            var slice = content.Span[offset..Math.Min(offset + UploadChunkBytes, content.Length)];
+            hashes[index] = System.Security.Cryptography.SHA256.HashData(slice);
+        }
+
+        return hashes;
+    }
+
+    /// <summary>Sends the named chunks, each at the offset that identifies it.</summary>
+    private async Task SendChunksAsync(
+        string fileId,
         ReadOnlyMemory<byte> content,
-        string mimeType,
-        string sha,
-        string? description,
-        bool quiet,
+        IEnumerable<int> indices,
         CancellationToken cancellationToken)
     {
-        var start = await RequestAsync<FileInfoPayload>(
-            new FilePutStartPayload(room, name, mimeType, content.Length, sha, description, quiet), cancellationToken)
-            .ConfigureAwait(false);
-        if (start.Complete)
+        foreach (var index in indices)
         {
-            return start;
-        }
-
-        for (var offset = 0; offset < content.Length; offset += UploadChunkBytes)
-        {
+            var offset = index * UploadChunkBytes;
             var slice = content[offset..Math.Min(offset + UploadChunkBytes, content.Length)];
-            await RequestAsync<OkPayload>(new FilePutChunkPayload(start.FileId, offset, slice.ToArray()), cancellationToken)
-                .ConfigureAwait(false);
+            await RequestAsync<OkPayload>(
+                new FilePutChunkPayload(fileId, offset, slice.ToArray()), cancellationToken).ConfigureAwait(false);
         }
-
-        return await RequestAsync<FileInfoPayload>(new FilePutEndPayload(start.FileId), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

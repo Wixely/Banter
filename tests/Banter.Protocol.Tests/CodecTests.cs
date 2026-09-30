@@ -31,6 +31,13 @@ public sealed class CodecTests
         new HistoryReqPayload("#main", null, 50),
         new HistoryChunkPayload("#main", [new MsgPayload("#main", "alice", "hi", 1, null)], "cursor-2"),
         new FilePutStartPayload("#main", "cat.png", "image/png", 4, "abc123", "a cat", Quiet: false),
+        // With a manifest, which is the shape that carries a list of byte arrays - the one most
+        // likely to be the thing a formatter cannot round-trip.
+        new FilePutStartPayload(
+            "#main", "cat.png", "image/png", 4, "abc123", "a cat", Quiet: false,
+            ChunkBytes: 2, ChunkHashes: [new byte[32], new byte[32]]),
+        FilePutResumePayload.Request("file-1"),
+        new FilePutResumePayload("file-1", [3, 7, 11]),
         new FilePutChunkPayload("file-1", 0, [1, 2, 3, 4]),
         new FilePutEndPayload("file-1"),
         new FileGetPayload("file-1", 0, 65536),

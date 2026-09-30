@@ -644,7 +644,8 @@ internal sealed class ClientSession(
 
     private static bool IsFilePayload(object payload) => payload is FilePutStartPayload or FilePutChunkPayload
         or FilePutEndPayload or FileGetPayload or FileListPayload or FileInfoPayload
-        or FileGrantPayload or FileRevokePayload or FileDeletePayload or FileRelicPayload;
+        or FileGrantPayload or FileRevokePayload or FileDeletePayload or FileRelicPayload
+        or FilePutResumePayload;
 
     private async Task HandleFileAsync(BanterEnvelope envelope, object payload)
     {
@@ -671,6 +672,17 @@ internal sealed class ClientSession(
                 case FilePutChunkPayload chunk:
                     await files.AppendChunkAsync(Nick, chunk).ConfigureAwait(false);
                     Send(new OkPayload(), replyTo: envelope.MsgId);
+                    return;
+
+                case FilePutResumePayload resume:
+                    // No room check and no access check: this says only what the server is still
+                    // owed for an upload THIS account started, which GetPending enforces. An
+                    // uploader who has meanwhile left the room finds that out at FILE_PUT_END.
+                    Send(
+                        new FilePutResumePayload(
+                            resume.FileId,
+                            await files.MissingChunksAsync(Nick, resume.FileId).ConfigureAwait(false)),
+                        replyTo: envelope.MsgId);
                     return;
 
                 case FilePutEndPayload end:

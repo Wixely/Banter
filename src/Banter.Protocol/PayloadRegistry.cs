@@ -66,6 +66,7 @@ public static class PayloadRegistry
         [BanterMessageType.FileRevoke] = typeof(FileRevokePayload),
         [BanterMessageType.FileDelete] = typeof(FileDeletePayload),
         [BanterMessageType.FileRelic] = typeof(FileRelicPayload),
+        [BanterMessageType.FilePutResume] = typeof(FilePutResumePayload),
         [BanterMessageType.MsgStreamStart] = typeof(MsgStreamStartPayload),
         [BanterMessageType.MsgStreamDelta] = typeof(MsgStreamDeltaPayload),
         [BanterMessageType.MsgStreamEnd] = typeof(MsgStreamEndPayload),

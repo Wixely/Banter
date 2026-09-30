@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using Banter.Client.Core;
 using Banter.Core;
+using Banter.Protocol;
 using Banter.Protocol.Transport;
 using Banter.Server;
 using Banter.Server.Persistence;
@@ -42,8 +44,30 @@ public sealed class ReconnectGraceTests : IAsyncLifetime
     private sealed class CuttingTransport(IBanterClientTransport inner) : IBanterClientTransport
     {
         private int _cutAfter = -1;
+        private readonly ConcurrentDictionary<BanterMessageType, int> _sent = new();
 
         public void CutAfter(int frames) => Volatile.Write(ref _cutAfter, frames);
+
+        /// <summary>
+        /// How many frames of one kind this client has tried to send, the cut one included.
+        ///
+        /// <para>Decoding the envelope is what makes "did it resume or start again" answerable: both
+        /// finish with the same file on the server, so the only difference is in what crossed the
+        /// wire. A codec here is not a second implementation — it is the same one, read backwards.</para>
+        /// </summary>
+        public int Sent(BanterMessageType type) => _sent.TryGetValue(type, out var count) ? count : 0;
+
+        private void Tally(ReadOnlyMemory<byte> frame)
+        {
+            try
+            {
+                _sent.AddOrUpdate(new BanterCodec().DecodeEnvelope(frame).Type, 1, (_, n) => n + 1);
+            }
+            catch (Exception)
+            {
+                // Not an envelope we can read. Counting is the only thing that suffers.
+            }
+        }
 
         public async Task<IBanterConnection> ConnectAsync(Uri endpoint, CancellationToken cancellationToken = default) =>
             new Cutting(await inner.ConnectAsync(endpoint, cancellationToken), this);
@@ -54,6 +78,8 @@ public sealed class ReconnectGraceTests : IAsyncLifetime
 
             public async ValueTask SendFrameAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken = default)
             {
+                owner.Tally(frame);
+
                 if (Volatile.Read(ref owner._cutAfter) >= 0
                     && Interlocked.Decrement(ref owner._cutAfter) < 0)
                 {
@@ -150,24 +176,76 @@ public sealed class ReconnectGraceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The half that waiting cannot fix: chunks keyed to a session that has since died. There is
-    /// nothing to resume against, so the upload begins again by itself.
+    /// An upload cut part way through sends the REMAINDER, not the file again.
+    ///
+    /// <para>This test is older than the behaviour it now checks. It used to say there was nothing to
+    /// resume against — chunks keyed to a session that had died — and assert only that the file
+    /// eventually landed. That was true of an append-only upload: the server knew a byte count and
+    /// nothing about whether those bytes were good, so the only safe answer was to start over. With a
+    /// manifest it knows exactly which chunks it has verified, and can be asked.</para>
+    ///
+    /// <para>Landing the file is therefore no longer the interesting half, because starting again
+    /// also lands it. What separates the two is what crossed the wire, so that is what is counted: a
+    /// FILE_PUT_RESUME must have been asked, and the chunk frames must be about one fileful rather
+    /// than two. Twenty chunks, cut after ten have gone: resuming sends about twenty-one in total and
+    /// starting again sends about thirty-one.</para>
     /// </summary>
     [Fact]
-    public async Task AnUploadCutPartWayThroughStartsAgainAndStillLands()
+    public async Task AnUploadCutPartWayThroughSendsOnlyTheRemainder()
     {
         var cutting = new CuttingTransport(_transport);
         await using var alice = await BanterClient.ConnectAsync(cutting, _server.Endpoint, "alice", "pw-a");
         await alice.JoinAsync("#grace-chunks");
 
-        // Several chunks' worth, and the cut placed after the first few frames of the transfer,
-        // so the connection dies between chunks rather than before the first one.
-        var content = new byte[400_000];
+        // Exactly twenty 64 KiB chunks, so the arithmetic below is not approximate.
+        const int chunks = 20;
+        var content = new byte[chunks * 64 * 1024];
         Random.Shared.NextBytes(content);
-        cutting.CutAfter(3);
+
+        // FILE_PUT_START and ten chunks get through; the eleventh is cut.
+        cutting.CutAfter(11);
 
         var info = await alice
             .UploadFileAsync("#grace-chunks", "interrupted.bin", content, "application/octet-stream")
+            .WaitAsync(Timeout);
+
+        Assert.Equal(content, await alice.DownloadFileAsync(info.FileId));
+
+        var chunkFrames = cutting.Sent(BanterMessageType.FilePutChunk);
+        var resumes = cutting.Sent(BanterMessageType.FilePutResume);
+
+        Assert.True(resumes >= 1, "the upload never asked what the server was still missing");
+        Assert.InRange(chunkFrames, chunks, chunks + 5);
+    }
+
+    /// <summary>
+    /// The chunks that were in flight when the connection went are not assumed lost.
+    ///
+    /// <para>A resume asks rather than remembering where it got to, and those are different answers:
+    /// a chunk written to a socket that then died may well have arrived and been verified. Asking
+    /// costs one round trip and is the only way to know; assuming would resend whatever was in flight,
+    /// which on a slow link is the most expensive thing to be wrong about.</para>
+    ///
+    /// <para>Pinned here by the fact that the file lands correctly at all: a server that had accepted
+    /// a chunk the client then re-sent must take the duplicate without complaint, because the bytes
+    /// are the ones it already holds. Rejecting it as "already have that" would fail this upload.</para>
+    /// </summary>
+    [Fact]
+    public async Task AResumedUploadMayResendAChunkTheServerAlreadyHas()
+    {
+        var cutting = new CuttingTransport(_transport);
+        await using var alice = await BanterClient.ConnectAsync(cutting, _server.Endpoint, "alice", "pw-a");
+        await alice.JoinAsync("#grace-dupes");
+
+        var content = new byte[6 * 64 * 1024];
+        Random.Shared.NextBytes(content);
+
+        // Cut mid-transfer, then send every chunk the server says it wants - including any it took
+        // from the dying connection, which the client cannot distinguish.
+        cutting.CutAfter(3);
+
+        var info = await alice
+            .UploadFileAsync("#grace-dupes", "dupes.bin", content, "application/octet-stream")
             .WaitAsync(Timeout);
 
         Assert.Equal(content, await alice.DownloadFileAsync(info.FileId));

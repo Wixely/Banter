@@ -27,14 +27,93 @@ public sealed class FileStoreException(string code, string message) : Exception(
 /// </summary>
 public sealed class FileStore(BanterDatabase database, FileStoreOptions options) : IAsyncDisposable
 {
-    private sealed class PendingUpload(string uploader, FilePutStartPayload request, string tmpPath)
+    /// <summary>
+    /// An upload in flight, in one of two shapes (PLAN §5a).
+    ///
+    /// <para><b>Append-only</b>, when the client sent no manifest: a write-only stream and a running
+    /// hash, chunks strictly in order, nothing verified until the end. <b>Verified</b>, when it did:
+    /// a read-write stream written at each chunk's own offset, every chunk checked against its hash
+    /// as it lands, and a record of which have been accepted — so order stops mattering and an
+    /// interrupted upload can be told what it still owes.</para>
+    ///
+    /// <para>The verified path is <c>ReliquaryDiskAssembler</c>'s job description, and that class is
+    /// deliberately not used: it needs an <c>ICryptoSuite</c>, which would put CupriNet.Alembic and a
+    /// crypto provider into a project that knows no transport, to compute the SHA-256 that
+    /// <see cref="SHA256"/> is already here for. The manifest CONCEPT is shared with the download
+    /// side on purpose; the twenty lines that act on it are not worth a dependency.</para>
+    /// </summary>
+    private sealed class PendingUpload
     {
-        public string Uploader { get; } = uploader;
-        public FilePutStartPayload Request { get; } = request;
-        public string TmpPath { get; } = tmpPath;
-        public FileStream Stream { get; } = new(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None);
-        public IncrementalHash Hash { get; } = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        public PendingUpload(string uploader, FilePutStartPayload request, string tmpPath)
+        {
+            Uploader = uploader;
+            Request = request;
+            TmpPath = tmpPath;
+
+            if (request.HasManifest)
+            {
+                // Read-write and pre-sized: chunks arrive at their own offsets, in any order, and the
+                // whole-file hash is streamed back out of this same handle at the end.
+                Stream = new FileStream(tmpPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+                Stream.SetLength(request.Size);
+                Received = new bool[request.ChunkHashes!.Count];
+            }
+            else
+            {
+                Stream = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                Hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            }
+        }
+
+        public string Uploader { get; }
+        public FilePutStartPayload Request { get; }
+        public string TmpPath { get; }
+        public FileStream Stream { get; }
+
+        /// <summary>Running hash, append-only path only — a verified upload hashes at the end, out of
+        /// the scratch file, because it was not written in order.</summary>
+        public IncrementalHash? Hash { get; }
+
+        /// <summary>Which chunks have been accepted, verified path only.</summary>
+        public bool[]? Received { get; }
+
+        /// <summary>Bytes accepted. On the append-only path this is also the only offset a chunk may
+        /// arrive at; on the verified path it is a count, and says nothing about where.</summary>
         public long BytesWritten { get; set; }
+
+        public bool IsVerified => Received is not null;
+
+        public bool IsComplete => Received is null
+            ? BytesWritten == Request.Size
+            : Array.TrueForAll(Received, r => r);
+
+        public IReadOnlyList<int> Missing()
+        {
+            if (Received is null)
+            {
+                return [];
+            }
+
+            var missing = new List<int>();
+            for (var i = 0; i < Received.Length; i++)
+            {
+                if (!Received[i])
+                {
+                    missing.Add(i);
+                }
+            }
+
+            return missing;
+        }
+
+        /// <summary>How long chunk <paramref name="index"/> must be: the chunk size, except the last
+        /// one, which is whatever is left. Hashing a padded buffer would produce a manifest that
+        /// never verifies on its final chunk.</summary>
+        public int ExpectedLength(int index)
+        {
+            var offset = (long)index * Request.ChunkBytes;
+            return (int)Math.Min(Request.ChunkBytes, Request.Size - offset);
+        }
     }
 
     private readonly ConcurrentDictionary<string, PendingUpload> _pending = new();
@@ -84,6 +163,11 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         }
 
         var sha = NormalizeSha(request.Sha256);
+        if (request.HasManifest)
+        {
+            RequireCoherentManifest(request);
+        }
+
         await using var connection = await database.OpenAsync().ConfigureAwait(false);
 
         var roomBytes = await connection.ExecuteScalarAsync<long>(
@@ -146,6 +230,12 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
             throw new FileStoreException("CHUNK_TOO_LARGE", $"Chunks are capped at {options.MaxChunkBytes} bytes.");
         }
 
+        if (pending.IsVerified)
+        {
+            await AcceptVerifiedChunkAsync(pending, chunk).ConfigureAwait(false);
+            return;
+        }
+
         if (chunk.Offset != pending.BytesWritten)
         {
             throw new FileStoreException("BAD_OFFSET", $"Expected offset {pending.BytesWritten}, got {chunk.Offset}.");
@@ -158,16 +248,108 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         }
 
         await pending.Stream.WriteAsync(chunk.Data).ConfigureAwait(false);
-        pending.Hash.AppendData(chunk.Data);
+        pending.Hash!.AppendData(chunk.Data);
         pending.BytesWritten += chunk.Data.Length;
+    }
+
+    /// <summary>
+    /// Takes one chunk of a manifested upload: checked against its own hash, written at its own
+    /// offset, in any order, and re-sendable.
+    ///
+    /// <para>The offset names the chunk rather than the append point, which is the whole difference.
+    /// It must therefore be chunk-aligned — an offset that is not is a client disagreeing with the
+    /// manifest it sent, and guessing which chunk it meant would corrupt the file quietly.</para>
+    ///
+    /// <para><b>A bad chunk is rejected, not fatal.</b> The append-only path aborts the whole upload
+    /// on a surprise because it cannot tell a bad byte from a lost one. Here the manifest says exactly
+    /// what was expected, so the only thing wrong is this chunk: the sender can send it again, and
+    /// nothing already accepted is lost. That is what makes the difference between per-chunk integrity
+    /// and a hash check at the end worth having.</para>
+    ///
+    /// <para>Re-accepting a chunk already held is deliberately allowed rather than an error. A resume
+    /// races the chunks that were in flight when the connection went, and a duplicate that verifies
+    /// carries exactly the bytes already on disk.</para>
+    /// </summary>
+    private static async Task AcceptVerifiedChunkAsync(PendingUpload pending, FilePutChunkPayload chunk)
+    {
+        var chunkBytes = pending.Request.ChunkBytes;
+        if (chunk.Offset < 0 || chunk.Offset % chunkBytes != 0)
+        {
+            throw new FileStoreException(
+                "BAD_OFFSET", $"Offset {chunk.Offset} is not a multiple of the manifest's {chunkBytes}-byte chunk.");
+        }
+
+        var index = (int)(chunk.Offset / chunkBytes);
+        var received = pending.Received!;
+        if (index >= received.Length)
+        {
+            throw new FileStoreException("BAD_OFFSET", $"Offset {chunk.Offset} is past the end of this upload.");
+        }
+
+        var expectedLength = pending.ExpectedLength(index);
+        if (chunk.Data.Length != expectedLength)
+        {
+            throw new FileStoreException(
+                "BAD_CHUNK", $"Chunk {index} must be {expectedLength} bytes, not {chunk.Data.Length}.");
+        }
+
+        if (!SHA256.HashData(chunk.Data).SequenceEqual(pending.Request.ChunkHashes![index]))
+        {
+            throw new FileStoreException("BAD_CHUNK", $"Chunk {index} does not match the hash the manifest gave for it.");
+        }
+
+        pending.Stream.Position = chunk.Offset;
+        await pending.Stream.WriteAsync(chunk.Data).ConfigureAwait(false);
+
+        if (!received[index])
+        {
+            received[index] = true;
+            pending.BytesWritten += chunk.Data.Length;
+        }
+    }
+
+    /// <summary>
+    /// Which chunks of an upload in flight are still owed, so a reconnecting client sends those and
+    /// not the file (PLAN §5a).
+    ///
+    /// <para>Only a manifested upload can answer: without one the server appended blindly and knows a
+    /// byte count rather than which chunks are good, and offering that count as a resume point would
+    /// be offering to trust bytes nothing ever checked.</para>
+    /// </summary>
+    public Task<IReadOnlyList<int>> MissingChunksAsync(string uploader, string fileId)
+    {
+        var pending = GetPending(uploader, fileId);
+        if (!pending.IsVerified)
+        {
+            throw new FileStoreException(
+                "NOT_RESUMABLE", "This upload was started without a manifest and cannot be resumed.");
+        }
+
+        return Task.FromResult(pending.Missing());
     }
 
     public async Task<(FileInfoPayload Info, string Room, bool Quiet)> FinalizeAsync(string uploader, string fileId)
     {
         var pending = GetPending(uploader, fileId);
+
+        // Named before the hash is even computed, because the two failures deserve different answers:
+        // an upload still missing chunks is unfinished and can be continued, where one whose bytes do
+        // not match its hash is wrong and has to start over.
+        if (pending.IsVerified && !pending.IsComplete)
+        {
+            throw new FileStoreException(
+                "INCOMPLETE",
+                $"{pending.Missing().Count} of {pending.Received!.Length} chunks are still missing; ask FILE_PUT_RESUME which.");
+        }
+
+        // A verified upload was written out of order, so there is no running hash to finish - the
+        // whole-file check streams back out of the scratch file it just filled.
+        var computed = pending.IsVerified
+            ? await HashScratchAsync(pending).ConfigureAwait(false)
+            : Convert.ToHexStringLower(pending.Hash!.GetHashAndReset());
+
         await pending.Stream.DisposeAsync().ConfigureAwait(false);
 
-        var computed = Convert.ToHexStringLower(pending.Hash.GetHashAndReset());
         if (pending.BytesWritten != pending.Request.Size || computed != pending.Request.Sha256)
         {
             await AbortAsync(fileId).ConfigureAwait(false);
@@ -359,6 +541,21 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         return info;
     }
 
+    /// <summary>
+    /// The SHA-256 of everything accepted, read back out of the scratch file.
+    ///
+    /// <para>Every chunk was already verified on the way in, so this is not a second opinion about the
+    /// chunks — it is the check that they were the chunks of THIS file. A manifest lists hashes; it
+    /// cannot say that the list belongs to the content the uploader claimed, and the declared
+    /// whole-file hash is what closes that.</para>
+    /// </summary>
+    private static async Task<string> HashScratchAsync(PendingUpload pending)
+    {
+        await pending.Stream.FlushAsync().ConfigureAwait(false);
+        pending.Stream.Position = 0;
+        return Convert.ToHexStringLower(await SHA256.HashDataAsync(pending.Stream).ConfigureAwait(false));
+    }
+
     private PendingUpload GetPending(string uploader, string fileId)
     {
         if (!_pending.TryGetValue(fileId, out var pending))
@@ -382,6 +579,42 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
             if (File.Exists(pending.TmpPath))
             {
                 File.Delete(pending.TmpPath);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Refuses a manifest that cannot describe this file, before a single byte is accepted.
+    ///
+    /// <para>All three checks are about the same failure: a manifest the server believes and then
+    /// cannot satisfy. A chunk count that disagrees with the size means some chunk has no hash or no
+    /// bytes; a chunk larger than the store will hand back in one read means the download side could
+    /// never serve what was stored; a hash of the wrong length means the client is not speaking
+    /// SHA-256. Each would otherwise surface much later as an upload that cannot be completed, or —
+    /// worse — one that completes and cannot be read back.</para>
+    /// </summary>
+    private void RequireCoherentManifest(FilePutStartPayload request)
+    {
+        if (request.ChunkBytes < 1 || request.ChunkBytes > options.MaxChunkBytes)
+        {
+            throw new FileStoreException(
+                "BAD_MANIFEST", $"Chunk size must be between 1 and {options.MaxChunkBytes} bytes.");
+        }
+
+        var expected = (int)((request.Size + request.ChunkBytes - 1) / request.ChunkBytes);
+        var hashes = request.ChunkHashes!;
+        if (hashes.Count != expected)
+        {
+            throw new FileStoreException(
+                "BAD_MANIFEST",
+                $"A {request.Size}-byte file in {request.ChunkBytes}-byte chunks needs {expected} hashes, not {hashes.Count}.");
+        }
+
+        foreach (var hash in hashes)
+        {
+            if (hash is not { Length: 32 })
+            {
+                throw new FileStoreException("BAD_MANIFEST", "Every chunk hash must be 32 bytes of SHA-256.");
             }
         }
     }

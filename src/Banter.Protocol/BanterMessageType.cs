@@ -60,6 +60,10 @@ public enum BanterMessageType : ushort
     /// Authorisation stays here; the transfer does not.</summary>
     FileRelic = 50,
 
+    /// <summary>Asks which chunks of an upload in flight the server is still missing, so an
+    /// interrupted upload continues rather than starting again (PLAN §5a).</summary>
+    FilePutResume = 51,
+
     // Agent control, server-op only (60–69) — payloads land in Phase 5
     AgentList = 60,
     AgentMove = 61,
