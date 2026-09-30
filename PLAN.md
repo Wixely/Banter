@@ -669,11 +669,19 @@ server is still missing and sends those. This used to start again from the begin
 chunks were keyed to a file id the dead session opened and the server knew a byte count rather than
 which bytes were good — a manifest is what changed that, and the pending upload was always kept
 against the account rather than the session, so it was there to be continued all along. Interrupted
-uploads are routine either way, which in turn exposed that each one leaves an open handle on its
-`.part` file —
-`FileStore` closes them on disposal, but an upload abandoned on a server that keeps running still
-holds one, because pending uploads are attributed to a *user* rather than a session and one user
-may legitimately be uploading from two devices at once.
+uploads are routine either way, and **they are now reaped** (2026-09-30): an upload left untouched for
+`AbandonedUploadLifetime` — thirty minutes of idleness, not of total time, so a slow transfer that
+keeps arriving is never reclaimed — has its handle closed, its scratch file deleted and its incomplete
+row removed. That row is the part nobody would have noticed, being filtered out of every listing and
+counting toward no quota. The sweep reclaims only uploads the store holds in memory, because a
+database can be shared: one that trusted the rows alone would reclaim another server's live uploads,
+so rows orphaned by a server that crashed are deliberately left behind.
+
+That leak was the price of resume, and they are the same mechanism: a pending upload is attributed to
+an *account* rather than to a session — one user may legitimately be uploading from two devices at
+once — which is exactly what lets a reconnecting client continue one, and therefore means nothing
+ends one when a connection does. `FileStore` had always closed them on disposal; what was missing was
+anything that ended one on a server that keeps running.
 
 **What this means elsewhere.** Every design in this plan that assumes a long-lived session should
 be read as assuming a session that is repeatedly re-established: always-listening (§6, Phase 4)

@@ -36,6 +36,7 @@ public sealed class BanterServer(
     private IBanterListener? _listener;
     private Task? _acceptLoop;
     private Task? _leaseSweep;
+    private Task? _uploadSweep;
     private readonly bool _tasksEnabled = tasks is not null;
     private bool _disposed;
 
@@ -56,6 +57,42 @@ public sealed class BanterServer(
         if (_tasksEnabled)
         {
             _leaseSweep = Task.Run(LeaseSweepAsync, CancellationToken.None);
+        }
+
+        // Unconditional, unlike the lease sweep: abandoned uploads hold an open file handle whether
+        // or not this deployment uses the work ledger.
+        _uploadSweep = Task.Run(UploadSweepAsync, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Periodically gives up on uploads nobody is feeding. The timer lives here because the server
+    /// owns the lifecycle; what counts as abandoned, and what clearing it up means, belongs to the
+    /// file store.
+    /// </summary>
+    private async Task UploadSweepAsync()
+    {
+        // A tenth of the lifetime, so an upload is reclaimed reasonably promptly after it lapses
+        // rather than up to a whole lifetime late, and floored so a short lifetime in a test cannot
+        // turn this into a spin.
+        var every = TimeSpan.FromMilliseconds(
+            Math.Max(250, files.AbandonedUploadLifetime.TotalMilliseconds / 10));
+
+        using var timer = new PeriodicTimer(every);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_stopping.Token).ConfigureAwait(false))
+            {
+                await files.SweepAbandonedUploadsAsync(_stopping.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
+        }
+        catch (Exception)
+        {
+            // A sweep that cannot reach its database must not take the server down with it. The cost
+            // of losing one is a handle held until the next tick.
         }
     }
 
@@ -122,6 +159,11 @@ public sealed class BanterServer(
         if (_acceptLoop is not null)
         {
             await _acceptLoop.ConfigureAwait(false);
+        }
+
+        if (_uploadSweep is not null)
+        {
+            await _uploadSweep.ConfigureAwait(false);
         }
 
         if (_leaseSweep is not null)

@@ -322,6 +322,99 @@ public sealed class VerifiedUploadTests : IAsyncLifetime
         var caught = await Assert.ThrowsAsync<FileStoreException>(() => _files.FinalizeAsync("alice", info.FileId));
         Assert.Equal("HASH_MISMATCH", caught.Code);
     }
+    /// <summary>
+    /// Swaps in a store that gives up on an idle upload in milliseconds, so the sweep can be tested
+    /// without sitting out a realistic lifetime. Disposes the one it replaces, or its open handles
+    /// keep the data directory from being removed on Windows.
+    /// </summary>
+    private async Task ImpatientAsync(TimeSpan abandonedAfter)
+    {
+        await _files.DisposeAsync();
+        _files = new FileStore(
+            _database,
+            new FileStoreOptions { DataDirectory = _dataDir, AbandonedUploadLifetime = abandonedAfter });
+    }
+
+    /// <summary>
+    /// Uploads nobody is feeding are given up on — the handle, the scratch file and the rows.
+    ///
+    /// <para>The leak this closes is the price of resume. A pending upload is attributed to an account
+    /// rather than a session precisely so a reconnecting client can continue it, which means nothing
+    /// ends one when a connection does: it holds an open handle on its <c>.part</c> file and an
+    /// incomplete row in the database until the process exits. The row is the part that would never
+    /// have been noticed — it is filtered out of every listing and counts toward no quota.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnAbandonedUploadIsGivenUpOnEntirely()
+    {
+        await ImpatientAsync(TimeSpan.FromMilliseconds(50));
+        var content = Noise(2 * ChunkBytes);
+        var (info, _) = await _files.StartUploadAsync("alice", Start(content));
+        await SendAsync(info.FileId, content, 0);
+
+        var part = Path.Combine(_dataDir, "tmp", $"{info.FileId}.part");
+        Assert.True(File.Exists(part), $"no scratch file at {part}");
+        Assert.NotNull(await _files.GetInfoAsync(info.FileId));
+
+        await Task.Delay(120);
+        Assert.Equal(1, await _files.SweepAbandonedUploadsAsync());
+
+        // The handle is closed, which on Windows is what deleting the file proves.
+        Assert.False(File.Exists(part), "the scratch file survived the sweep");
+
+        // And the row went with it, so nothing is left claiming a file that will never arrive.
+        Assert.Null(await _files.GetInfoAsync(info.FileId));
+
+        // Asking about it now says what a client needs to hear: open a new one.
+        var gone = await Assert.ThrowsAsync<FileStoreException>(
+            () => _files.MissingChunksAsync("alice", info.FileId));
+        Assert.Equal("UPLOAD_NOT_FOUND", gone.Code);
+    }
+
+    /// <summary>
+    /// An upload still being fed is not swept, however long it has been going.
+    ///
+    /// <para>Idle time rather than total time, and this is the case that makes the difference matter:
+    /// a large file over a slow link can easily outlive any lifetime worth setting, and reclaiming one
+    /// mid-transfer would turn a slow upload into an impossible one.</para>
+    /// </summary>
+    [Fact]
+    public async Task AnUploadStillBeingFedIsNotSwept()
+    {
+        await ImpatientAsync(TimeSpan.FromMilliseconds(80));
+        var content = Noise(4 * ChunkBytes);
+        var (info, _) = await _files.StartUploadAsync("alice", Start(content));
+
+        // Four chunks, each arriving after the whole lifetime has passed since the last.
+        for (var index = 0; index < 4; index++)
+        {
+            await Task.Delay(100);
+            await SendAsync(info.FileId, content, index);
+            Assert.Equal(0, await _files.SweepAbandonedUploadsAsync());
+        }
+
+        var (done, _, _) = await _files.FinalizeAsync("alice", info.FileId);
+        Assert.Equal(content, await ReadAllAsync(done.FileId));
+    }
+
+    /// <summary>
+    /// The sweep leaves completed files alone, which is the guard on deleting rows at all.
+    /// </summary>
+    [Fact]
+    public async Task TheSweepNeverTouchesAFinishedFile()
+    {
+        await ImpatientAsync(TimeSpan.FromMilliseconds(50));
+        var content = Noise(ChunkBytes);
+        var (info, _) = await _files.StartUploadAsync("alice", Start(content));
+        await SendAsync(info.FileId, content, 0);
+        var (done, _, _) = await _files.FinalizeAsync("alice", info.FileId);
+
+        await Task.Delay(120);
+        Assert.Equal(0, await _files.SweepAbandonedUploadsAsync());
+
+        Assert.NotNull(await _files.GetInfoAsync(done.FileId));
+        Assert.Equal(content, await ReadAllAsync(done.FileId));
+    }
 }
 
 /// <summary>

@@ -12,6 +12,16 @@ public sealed record FileStoreOptions
     public long MaxFileBytes { get; init; } = 32 * 1024 * 1024;
     public long RoomQuotaBytes { get; init; } = 1024L * 1024 * 1024;
     public int MaxChunkBytes { get; init; } = 256 * 1024;
+
+    /// <summary>
+    /// How long an upload may sit untouched before it is given up on.
+    ///
+    /// <para>Idle time, not total time: a genuinely slow transfer of a large file keeps resetting it,
+    /// and the thing being reclaimed is an upload nobody is feeding. Generous, because the whole point
+    /// of a resumable upload is that a client may be away for a while — a phone in someone's pocket
+    /// between reconnects is the normal case, not a suspicious one.</para>
+    /// </summary>
+    public TimeSpan AbandonedUploadLifetime { get; init; } = TimeSpan.FromMinutes(30);
 }
 
 /// <summary>A file operation the client got wrong; <see cref="Code"/> goes into the wire error.</summary>
@@ -69,6 +79,9 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         public FilePutStartPayload Request { get; }
         public string TmpPath { get; }
         public FileStream Stream { get; }
+
+        /// <summary>When a chunk was last accepted, or when the upload opened. What the sweep reads.</summary>
+        public DateTimeOffset LastActivity { get; set; } = DateTimeOffset.UtcNow;
 
         /// <summary>Running hash, append-only path only — a verified upload hashes at the end, out of
         /// the scratch file, because it was not written in order.</summary>
@@ -138,6 +151,9 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
     private string TmpDirectory => Path.Combine(options.DataDirectory, "tmp");
 
     public int MaxChunkBytes => options.MaxChunkBytes;
+
+    /// <summary>How long an upload may sit untouched, for whoever drives the sweep.</summary>
+    public TimeSpan AbandonedUploadLifetime => options.AbandonedUploadLifetime;
 
     /// <summary>
     /// Closes every upload still in flight. Each one holds an open handle on its <c>.part</c>
@@ -246,6 +262,8 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         {
             throw new FileStoreException("CHUNK_TOO_LARGE", $"Chunks are capped at {options.MaxChunkBytes} bytes.");
         }
+
+        pending.LastActivity = DateTimeOffset.UtcNow;
 
         if (pending.IsVerified)
         {
@@ -651,6 +669,66 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
         }
 
         return pending;
+    }
+
+    /// <summary>
+    /// Gives up on uploads nobody is feeding, returning how many were reclaimed.
+    ///
+    /// <para><b>Why this has to exist.</b> A pending upload is attributed to an ACCOUNT rather than to
+    /// a session, which is exactly what makes it resumable across the reconnect a phone forces — and
+    /// therefore means nothing ends it when a connection does. Each one holds an open handle on its
+    /// <c>.part</c> file and an incomplete row in the database, so without this a long-running server
+    /// accumulates both for every upload anyone ever abandoned. "Resumable" and "never goes away" are
+    /// the same mechanism; this is the other half of it.</para>
+    ///
+    /// <para>The rows go too, not just the handle. An incomplete row is invisible — it is filtered out
+    /// of listings and counts toward no quota — which is precisely why it would never be noticed.</para>
+    ///
+    /// <para><b>What this deliberately does not do</b> is look for incomplete rows in the database and
+    /// clean those up. It reclaims only uploads THIS store is holding in memory, which are the ones it
+    /// can be sure nobody else is feeding. A database can be shared — the storage options support
+    /// Postgres — so a sweep that trusted the rows alone would reclaim another server's live uploads.
+    /// Rows orphaned by a server that crashed or stopped are therefore left behind, and reaping them
+    /// safely needs something that knows which server owns which upload.</para>
+    /// </summary>
+    public async Task<int> SweepAbandonedUploadsAsync(CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow - options.AbandonedUploadLifetime;
+        var reclaimed = 0;
+
+        foreach (var (fileId, pending) in _pending)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (pending.LastActivity > cutoff)
+            {
+                continue;
+            }
+
+            await AbortAsync(fileId).ConfigureAwait(false);
+            await ForgetIncompleteAsync(fileId).ConfigureAwait(false);
+            reclaimed++;
+        }
+
+        return reclaimed;
+    }
+
+    /// <summary>
+    /// Removes the rows an unfinished upload left behind.
+    ///
+    /// <para>Guarded on <c>complete = 0</c> rather than trusted: this is only ever called for an
+    /// upload being given up on, and that guard is what makes it impossible for a bug in the caller to
+    /// delete a file somebody already has.</para>
+    /// </summary>
+    private async Task ForgetIncompleteAsync(string fileId)
+    {
+        await using var connection = await database.OpenAsync().ConfigureAwait(false);
+        await connection.ExecuteAsync(
+            """
+            DELETE FROM file_grants WHERE file_id = @FileId
+              AND EXISTS (SELECT 1 FROM files WHERE file_id = @FileId AND complete = @Incomplete);
+            DELETE FROM files WHERE file_id = @FileId AND complete = @Incomplete;
+            """,
+            new { FileId = fileId, Incomplete = false }).ConfigureAwait(false);
     }
 
     private async Task AbortAsync(string fileId)
