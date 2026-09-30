@@ -37,6 +37,8 @@ public sealed class CodecTests
             "#main", "cat.png", "image/png", 4, "abc123", "a cat", Quiet: false,
             ChunkBytes: 2, ChunkHashes: [new byte[32], new byte[32]]),
         FilePutResumePayload.Request("file-1"),
+        FileManifestPayload.Request("file-1"),
+        new FileManifestPayload("file-1", 70_000, 65_536, [new byte[32], new byte[32]]),
         new FilePutResumePayload("file-1", [3, 7, 11]),
         new FilePutChunkPayload("file-1", 0, [1, 2, 3, 4]),
         new FilePutEndPayload("file-1"),

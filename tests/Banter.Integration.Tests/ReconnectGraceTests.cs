@@ -251,6 +251,42 @@ public sealed class ReconnectGraceTests : IAsyncLifetime
         Assert.Equal(content, await alice.DownloadFileAsync(info.FileId));
     }
 
+    /// <summary>
+    /// A download cut part way through asks for the REMAINDER, not the file again.
+    ///
+    /// <para>The mirror of the upload case, and until manifests reached the frame pipe it was the one
+    /// that could not be fixed: without a hash per chunk, bytes already received could not be trusted
+    /// to be right, so the only safe answer was to throw them away and start over. With one, the
+    /// chunks that verified are kept and only the rest are asked for.</para>
+    ///
+    /// <para>Counted rather than timed, for the same reason as the upload: starting again also ends
+    /// with the right file, so what separates the two is how many FILE_GETs crossed the wire. Twenty
+    /// chunks, cut once the download is under way — resuming asks about twenty times and starting
+    /// again asks about thirty.</para>
+    /// </summary>
+    [Fact]
+    public async Task ADownloadCutPartWayThroughAsksOnlyForTheRemainder()
+    {
+        var cutting = new CuttingTransport(_transport);
+        await using var alice = await BanterClient.ConnectAsync(cutting, _server.Endpoint, "alice", "pw-a");
+        await alice.JoinAsync("#grace-download");
+
+        const int chunks = 20;
+        var content = new byte[chunks * 64 * 1024];
+        Random.Shared.NextBytes(content);
+        var info = await alice
+            .UploadFileAsync("#grace-download", "fetched.bin", content, "application/octet-stream")
+            .WaitAsync(Timeout);
+
+        // FILE_MANIFEST and ten chunk requests get through; the eleventh is cut.
+        cutting.CutAfter(11);
+
+        var fetched = await alice.DownloadFileAsync(info.FileId).WaitAsync(Timeout);
+
+        Assert.Equal(content, fetched);
+        Assert.InRange(cutting.Sent(BanterMessageType.FileGet), chunks, chunks + 5);
+    }
+
     [Fact]
     public async Task ASendStillFailsWhenTheConnectionNeverComesBack()
     {

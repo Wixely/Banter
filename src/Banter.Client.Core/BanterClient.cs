@@ -587,13 +587,18 @@ public sealed partial class BanterClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Fetches a stored file whole.
+    /// Fetches a stored file whole, verified against the server's own description of it.
     ///
-    /// <para>Takes the relic path when the transport has one (PLAN §2.5) and the frame-by-frame path
-    /// otherwise. The difference is not speed: a relic verifies every chunk against a manifest as it
-    /// lands and the whole file before returning it, and it travels on its own logical stream, so a
-    /// large download does not sit in front of the room's chat. Falling back is not a degraded mode
-    /// either — it is what every transport but the mesh has always done.</para>
+    /// <para>Three paths, and all three end with bytes that were checked. A <b>relic</b> where the
+    /// transport has one — chunk by chunk against a manifest, on its own logical stream, so a large
+    /// download does not sit in front of the room's chat. Otherwise a <b>manifested</b> FILE_GET loop,
+    /// which verifies the same way over the frame pipe and resumes from what it already holds if the
+    /// connection goes. And where the server cannot describe the file, the <b>plain</b> loop this
+    /// method has always had: bytes in order, trusted, begun again from nothing.</para>
+    ///
+    /// <para>The plain path is the only one that was ever here, and it verified nothing at all — a
+    /// truncated or corrupted download was indistinguishable from a short file. It survives because
+    /// some server, somewhere, is older than the manifest.</para>
     /// </summary>
     public async Task<byte[]> DownloadFileAsync(string fileId, CancellationToken cancellationToken = default)
     {
@@ -606,6 +611,84 @@ public sealed partial class BanterClient : IAsyncDisposable
             }
         }
 
+        FileManifestPayload? manifest;
+        try
+        {
+            manifest = await RequestAsync<FileManifestPayload>(
+                FileManifestPayload.Request(fileId), cancellationToken).ConfigureAwait(false);
+        }
+        catch (BanterErrorException error) when (error.Code is "NO_MANIFEST" or "UNSUPPORTED")
+        {
+            // A file too big to describe inside this connection's frames, or a server that predates
+            // FILE_MANIFEST. Neither is a fault, and the bytes are still reachable.
+            manifest = null;
+        }
+
+        return manifest is null
+            ? await GetUnverifiedAsync(fileId, cancellationToken).ConfigureAwait(false)
+            : await GetVerifiedAsync(manifest, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Fetches every chunk the manifest names, checking each against its hash, and resuming rather
+    /// than restarting when the connection goes.
+    ///
+    /// <para>Held as one buffer of the declared size and filled at each chunk's own offset, so a
+    /// resume needs no bookkeeping beyond which chunks have landed — and a chunk that arrives twice
+    /// overwrites itself with the same bytes.</para>
+    ///
+    /// <para>A chunk that fails its hash is <b>fatal</b>, and deliberately not retried — which is the
+    /// opposite of the upload side, for a reason. There, a bad chunk is bytes that went wrong in
+    /// flight and the sender still holds the right ones. Here the server is serving what it has, so a
+    /// mismatch says its stored copy no longer matches the manifest it published for it: asking again
+    /// gets the same wrong bytes. Returning them would be worse than failing, and looping would hide
+    /// it, so it surfaces as an exception naming the chunk.</para>
+    /// </summary>
+    private async Task<byte[]> GetVerifiedAsync(FileManifestPayload manifest, CancellationToken cancellationToken)
+    {
+        var content = new byte[manifest.Size];
+        var have = new bool[manifest.ChunkHashes.Count];
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                for (var index = 0; index < have.Length; index++)
+                {
+                    if (have[index])
+                    {
+                        continue;
+                    }
+
+                    var offset = (long)index * manifest.ChunkBytes;
+                    var expected = (int)Math.Min(manifest.ChunkBytes, manifest.Size - offset);
+                    var chunk = await RequestAsync<FileChunkPayload>(
+                        new FileGetPayload(manifest.FileId, offset, expected), cancellationToken).ConfigureAwait(false);
+
+                    if (chunk.Data.Length != expected
+                        || !System.Security.Cryptography.SHA256.HashData(chunk.Data)
+                            .SequenceEqual(manifest.ChunkHashes[index]))
+                    {
+                        throw new BanterClientException(
+                            $"Chunk {index} of '{manifest.FileId}' does not match the manifest the server gave for it.");
+                    }
+
+                    chunk.Data.CopyTo(content, (int)offset);
+                    have[index] = true;
+                }
+
+                return content;
+            }
+            catch (BanterDisconnectedException) when (attempt < 3)
+            {
+                // Round again, keeping every chunk that already verified.
+            }
+        }
+    }
+
+    /// <summary>The loop this method had before manifests: offsets in order, nothing checked.</summary>
+    private async Task<byte[]> GetUnverifiedAsync(string fileId, CancellationToken cancellationToken)
+    {
         using var buffer = new MemoryStream();
         long offset = 0;
         while (true)

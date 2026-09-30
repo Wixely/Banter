@@ -387,11 +387,15 @@ data blobs. Small files only, not repos; the durable "Banter memory" for a room.
   point: the server verifies each chunk as it lands, takes them in any order, and answers
   `FILE_PUT_RESUME` with the indices it is still missing, so an interrupted upload sends the
   remainder rather than the file. A client or server without the manifest falls back to the old
-  append-only path, which cannot be resumed and says so. **Downloads** take CupriNet's Relic rite wherever the transport has
-  one, which is every mesh head, and are verified chunk by chunk against a manifest on a logical
-  stream of their own; `FILE_GET` frames remain the path on TCP and WebSocket and the fallback
-  everywhere. Either way the transport's encryption covers it. §2.5 has the whole argument,
-  including why the relic *name* is what carries the authorisation.
+  append-only path, which cannot be resumed and says so. **Downloads** are verified the same way on
+  every path: CupriNet's Relic rite where the transport has one, which is every mesh head, and
+  otherwise `FILE_MANIFEST` plus the ordinary `FILE_GET` loop — the server describes the file, the
+  client checks each chunk as it lands and keeps what verified, so a dropped download also costs the
+  remainder rather than the file. The chunk size is the server's choice there, because only it knows
+  both bounds: a chunk must come back in one `FILE_GET` and the manifest must fit one frame.
+  `NO_MANIFEST` means it cannot, and the caller gets the old unverified loop. Either way the
+  transport's encryption covers it. §2.5 has the whole argument, including why the relic *name* is
+  what carries the authorisation.
 - **Chat integration:** uploading with a target room emits a `MSG` carrying the file reference,
   so shares appear in the timeline; clients render images/audio inline (audio playback = voice
   notes for free). Files can also be uploaded "quietly" (grant only, no message) for reference
@@ -1758,6 +1762,16 @@ Reading the rite first changed the shape of the answer twice, and both are worth
   twenty lines that act on it were not worth the dependency. The whole-file hash is still computed
   at the end, because a manifest can only say the chunks are the chunks it lists — not that the list
   belongs to the file the uploader named.
+
+  **And the same for downloads on every path** (2026-09-30). Relics left an asymmetry: uploads were
+  verified everywhere while downloads were verified only on the mesh, so a `FILE_GET` loop on TCP —
+  what the CLI and any non-mesh deployment use — checked *nothing at all*, and a truncated download
+  was indistinguishable from a short file. `FILE_MANIFEST` closes it with the manifest that already
+  existed, and the loop that was already there. A chunk that fails is fatal rather than retried,
+  which is the opposite of the upload side and for a reason: on an upload the sender still holds the
+  right bytes, where here the server is serving what it has, so asking again returns the same wrong
+  bytes. Chunk hashes are cached by the blob's own content hash, so the extra pass over the file is
+  paid once per chunking rather than once per reader — which also made the relic path cheaper.
 - **The rite carries no caller identity, and its source is node-wide.** `IRelicSource` is asked
   `ResolveAsync(name)` — no account, no session, no rooms — and `SiteBuilder.ServeRelics` registers
   one source for the whole node, not one per visit. Banter files are visible through room

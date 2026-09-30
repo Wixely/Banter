@@ -64,6 +64,10 @@ public enum BanterMessageType : ushort
     /// interrupted upload continues rather than starting again (PLAN §5a).</summary>
     FilePutResume = 51,
 
+    /// <summary>Asks for a stored file's chunk hashes, so a download over the frame pipe is verified
+    /// as it arrives and resumable — what a relic gives on the mesh, on every other path.</summary>
+    FileManifest = 52,
+
     // Agent control, server-op only (60–69) — payloads land in Phase 5
     AgentList = 60,
     AgentMove = 61,

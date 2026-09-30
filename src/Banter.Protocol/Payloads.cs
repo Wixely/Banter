@@ -388,6 +388,34 @@ public sealed record FileListPayload(
     [property: Key(0)] string Room,
     [property: Key(1)] IReadOnlyList<FileInfoPayload> Files);
 
+/// <summary>
+/// A stored file's chunk hashes, so a download over the frame pipe can be verified as it arrives and
+/// resumed if it is interrupted.
+///
+/// <para>As a request, only <see cref="FileId"/> matters; use <see cref="Request"/>. The reply is the
+/// same promise an upload's manifest makes, in the other direction: with it, a
+/// <see cref="FileGetPayload"/> loop checks every chunk as it lands and knows exactly which chunks it
+/// already holds — so a dropped connection costs the remainder rather than the file. Without it, the
+/// loop is what it always was: bytes appended in order, trusted, and begun again from nothing.</para>
+///
+/// <para><b>The server chooses the chunk size</b>, and it is not negotiable: the manifest has to fit
+/// one frame, and how big a frame is differs by path. A caller asks and is told. <c>NO_MANIFEST</c>
+/// means the file cannot be described inside this connection's frame ceiling even at the largest
+/// chunk the store will read — a fallback signal, not a failure.</para>
+///
+/// <para>On the mesh this is not the path taken: a relic carries its own manifest and its own stream
+/// (see <see cref="FileRelicPayload"/>). This is how every other transport gets the same guarantee.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record FileManifestPayload(
+    [property: Key(0)] string FileId,
+    [property: Key(1)] long Size,
+    [property: Key(2)] int ChunkBytes,
+    [property: Key(3)] IReadOnlyList<byte[]> ChunkHashes)
+{
+    public static FileManifestPayload Request(string fileId) => new(fileId, 0, 0, []);
+}
+
 /// <summary>File metadata. As a request, only <see cref="FileId"/> matters — use
 /// <see cref="Request"/>.</summary>
 [MessagePackObject]

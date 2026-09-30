@@ -117,6 +117,23 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
     }
 
     private readonly ConcurrentDictionary<string, PendingUpload> _pending = new();
+
+    /// <summary>
+    /// Chunk hashes already computed, keyed by content hash and chunk size.
+    ///
+    /// <para>Keyed by the BLOB's sha rather than by file id, which is not a detail: blobs are stored
+    /// by content, so the same bytes granted to five rooms under five file ids are one entry. Hashing
+    /// is a full pass over the file, and both callers ask repeatedly — a relic ticket per reader, a
+    /// manifest per download — so without this a busy room re-reads the same attachment from disk
+    /// every time anyone opens it.</para>
+    ///
+    /// <para>Cleared wholesale when it grows past its bound rather than evicted cleverly. The entries
+    /// are cheap to rebuild and an LRU here would be machinery in aid of nothing: the working set is
+    /// "attachments people are currently opening", which is small and changes slowly.</para>
+    /// </summary>
+    private readonly ConcurrentDictionary<(string Sha, int ChunkBytes), IReadOnlyList<byte[]>> _chunkHashes = new();
+
+    private const int MaxCachedChunkings = 256;
     private string BlobsDirectory => Path.Combine(options.DataDirectory, "blobs");
     private string TmpDirectory => Path.Combine(options.DataDirectory, "tmp");
 
@@ -470,6 +487,11 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
             throw new FileStoreException("NOT_FOUND", "No such file.");
         }
 
+        if (_chunkHashes.TryGetValue((info.Sha256, chunkSize), out var cached))
+        {
+            return cached;
+        }
+
         var hashes = new List<byte[]>();
         var buffer = new byte[chunkSize];
         await using var stream = new FileStream(
@@ -491,8 +513,68 @@ public sealed class FileStore(BanterDatabase database, FileStoreOptions options)
             }
         }
 
+        if (_chunkHashes.Count >= MaxCachedChunkings)
+        {
+            _chunkHashes.Clear();
+        }
+
+        _chunkHashes[(info.Sha256, chunkSize)] = hashes;
         return hashes;
     }
+
+    /// <summary>
+    /// Describes a stored file for a download that wants to verify it, at the largest chunk that lets
+    /// the manifest fit one frame of <paramref name="maxFrameBytes"/>.
+    ///
+    /// <para>The chunk size is the server's choice rather than the caller's because only the server
+    /// knows the two limits that bound it: a chunk must be returnable in one <c>FILE_GET</c>, so it
+    /// cannot exceed this store's read ceiling, and the manifest itself is a frame, so 32 bytes per
+    /// chunk must fit inside one. Those pull in opposite directions — a bigger chunk means fewer
+    /// hashes — which is why this doubles the chunk until the manifest fits rather than picking a
+    /// number.</para>
+    ///
+    /// <para>Half the frame, not all of it, because the manifest is not the only thing in the message:
+    /// the envelope, the file id and the MessagePack framing all ride with it. Refusing with
+    /// <c>NO_MANIFEST</c> when even the largest chunk will not do is the honest answer — the caller
+    /// downloads the way it always did.</para>
+    /// </summary>
+    public async Task<(long Size, int ChunkBytes, IReadOnlyList<byte[]> Hashes)> DescribeForDownloadAsync(
+        string fileId,
+        int maxFrameBytes,
+        CancellationToken cancellationToken = default)
+    {
+        var info = await GetInfoAsync(fileId).ConfigureAwait(false);
+        if (info is null || !info.Complete)
+        {
+            throw new FileStoreException("NOT_FOUND", "No such file.");
+        }
+
+        var budget = Math.Max(1024, maxFrameBytes / 2);
+        var chunkBytes = Math.Min(DefaultDownloadChunkBytes, options.MaxChunkBytes);
+
+        while (ManifestBytes(info.Size, chunkBytes) > budget && chunkBytes < options.MaxChunkBytes)
+        {
+            chunkBytes = (int)Math.Min((long)chunkBytes * 2, options.MaxChunkBytes);
+        }
+
+        if (ManifestBytes(info.Size, chunkBytes) > budget)
+        {
+            throw new FileStoreException(
+                "NO_MANIFEST",
+                $"A {info.Size}-byte file needs more than {budget} bytes of hashes even at {chunkBytes}-byte chunks.");
+        }
+
+        var hashes = await ChunkHashesAsync(fileId, chunkBytes, cancellationToken).ConfigureAwait(false);
+        return (info.Size, chunkBytes, hashes);
+    }
+
+    /// <summary>What a manifest for this size at this chunking would weigh: a SHA-256 per chunk.</summary>
+    private static long ManifestBytes(long size, int chunkBytes) => ((size + chunkBytes - 1) / chunkBytes) * 32;
+
+    /// <summary>Where the chunk search starts, and what it stays at for any ordinary file: the same
+    /// 64 KiB the upload side uses, so a file uploaded and downloaded is chunked the same way and one
+    /// cached chunking serves both.</summary>
+    private const int DefaultDownloadChunkBytes = 64 * 1024;
 
     public async Task GrantAsync(string requester, string fileId, string room)
     {

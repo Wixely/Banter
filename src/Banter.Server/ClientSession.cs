@@ -645,7 +645,7 @@ internal sealed class ClientSession(
     private static bool IsFilePayload(object payload) => payload is FilePutStartPayload or FilePutChunkPayload
         or FilePutEndPayload or FileGetPayload or FileListPayload or FileInfoPayload
         or FileGrantPayload or FileRevokePayload or FileDeletePayload or FileRelicPayload
-        or FilePutResumePayload;
+        or FilePutResumePayload or FileManifestPayload;
 
     private async Task HandleFileAsync(BanterEnvelope envelope, object payload)
     {
@@ -720,6 +720,17 @@ internal sealed class ClientSession(
                             ticket.Name,
                             ticket.Expires.ToUnixTimeMilliseconds(),
                             ticket.Length),
+                        replyTo: envelope.MsgId);
+                    return;
+
+                case FileManifestPayload manifestRequest:
+                    // The same access check FILE_GET makes, because this describes the file's content
+                    // and a hash of every chunk of it is not nothing.
+                    await RequireAccessAsync(manifestRequest.FileId).ConfigureAwait(false);
+                    var (size, chunkBytes, hashes) = await files
+                        .DescribeForDownloadAsync(manifestRequest.FileId, MaxFrameBytes).ConfigureAwait(false);
+                    Send(
+                        new FileManifestPayload(manifestRequest.FileId, size, chunkBytes, hashes),
                         replyTo: envelope.MsgId);
                     return;
 
