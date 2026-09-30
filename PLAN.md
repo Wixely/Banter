@@ -1587,6 +1587,40 @@ before anybody looked for the shared cause. And the plan itself had three lines 
 outstanding that its own later paragraphs recorded as done, which is the worse direction for a plan
 to be wrong in: it sends the next reader off to build something twice.
 
+***Shipped in v0.10.0 (2026-09-30) — the browser client, as something you can download.*** The
+web head is a released application rather than a thing in the repository. It moved to the
+NativeAOT-LLVM host and was trimmed first on the interpreted one (9.1 MB of brotli and 208
+assemblies to 5.3 MB and 50), a real browser now drives it over a real mesh on every push, and the
+mesh server ships with the client inside it — one zip, because the node carrying the mesh is also
+the origin handing out the page that dials it. Room files became relics on the conduit path, so a
+download over the mesh is verified chunk by chunk against a manifest and travels on its own stream.
+
+**Cutting it found that the release would have shipped none of that.** `publish-apps` carries the
+TCP server and the desktop client; `banter-nodestar` was built in CI and thrown away, and the
+published client went nowhere. So the notes would have described a web head nobody could obtain —
+and nothing would have failed, because the assets that *were* built were the same nine as always.
+The lesson is the one already written down as "ask what applications ship, not what packages
+changed": it needs asking at the START of a release, because by the time there is a tag to push,
+the shape of the artefacts is the last thing anybody is looking at.
+
+Two defects stood between the zip and a working one, and neither would have shown up in a build.
+`AppContext.BaseDirectory` was the wrong anchor for the default client directory: the release zips
+are single-file publishes with `IncludeAllContentForSelfExtract`, which makes that the *extraction*
+directory under the user's temp folder, so the server started fine and served nothing. And the
+framework-dependent leg could not be built at all — `Banter.Server` is `OutputType=Exe` because it
+is also the TCP server's entry point, and `ValidateExecutableReferences` refuses that pair whenever
+the two disagree about self-containedness (NETSDK1151), so the self-contained legs were fine and
+the other two were impossible. Both were found by publishing the four legs and RUNNING two of them,
+including the linux-x64 binary under WSL — which is the same lesson as the line-ending failure in
+0.8.0, one step further along: "it compiles" was never the claim worth making about an artefact.
+
+The tag itself went out clean on the first run, and was then checked the same way: the published
+`Banter.Server.Mesh` zip was downloaded from the release page, unzipped, run, and asked for its own
+pages over HTTP — the app at `/_nodestar/app` with the right `<base href>`, the 19 MB of wasm behind
+it, and `intonation.json`, which is the endpoint that removes the signalling server. Thirteen assets
+now rather than nine, and the count is asserted so a quietly failed matrix leg cannot ship a release
+missing a platform.
+
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 
