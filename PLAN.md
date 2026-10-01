@@ -1640,6 +1640,30 @@ it, and `intonation.json`, which is the endpoint that removes the signalling ser
 now rather than nine, and the count is asserted so a quietly failed matrix leg cannot ship a release
 missing a platform.
 
+***Shipped in v0.11.0 (2026-10-01) — files arrive whole, or you are told.*** Every transfer is now
+checked chunk by chunk against a manifest both ends agree on, in both directions, on every transport.
+Only mesh downloads were before: a relic carried its own hashes and everything else trusted what
+turned up — an upload verified once at the end, after the whole file had crossed, and a `FILE_GET`
+loop on TCP verified nothing at all. The second consequence is the one people will notice: a transfer
+cut part way through now sends or asks for the remainder instead of starting again. Abandoned uploads
+are reaped too, which was the price of making them resumable.
+
+**A bad chunk means different things in the two directions, and that is the design.** Uploading, the
+sender still holds the right bytes, so a failed chunk is refused and simply re-sent with nothing
+already accepted lost. Downloading, the server is serving what it has, so a mismatch says its stored
+copy no longer matches the manifest it published — asking again returns the same wrong bytes, so it
+fails and names the chunk. Getting that backwards either way would be a worse bug than having no
+verification: a fatal upload throws away good work, and a retried download loops on rot.
+
+**The release itself was uneventful, which is the point of the last one.** v0.10.0's packaging work
+meant the mesh server and its browser client were already assets, so nothing had to be built to ship
+them — and `publish-mesh` running clean on its second-ever tag is what that bought. Verified the same
+way: the published zip downloaded from the release page, unzipped, run, and asked for its own pages
+over HTTP. One process note worth keeping, because it cost a cycle: the watcher waiting on CI was
+polling a seven-character SHA, which the commits API will not match, so it would have waited for ever
+while looking exactly like a run that had not finished. A filter that cannot match is indistinguishable
+from a condition that has not happened.
+
 **Phase 2.5 — web head:** the same CupriApp as WASM served from Banter.Server (text-first;
 CupriNet.WebRtc DataChannel, WebSocket fallback).
 
