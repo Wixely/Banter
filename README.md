@@ -9,6 +9,7 @@ IRC-style room server, with first-class voice (TTS/STT) on desktop, Android, and
 
 - **Architecture & build plan:** [PLAN.md](PLAN.md)
 - **Client UI decision (CupriFace):** [CUPRIFACE-PLAN.md](CUPRIFACE-PLAN.md)
+- **How this compares to Buzz and Paperclip:** [comparisons/](comparisons/README.md)
 
 ## Status — Phase 0 → 1
 
