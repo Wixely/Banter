@@ -545,10 +545,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   </div>
                   <cupri-button class="mgmt-remove settings-close">Close</cupri-button>
                 </div>
-                <!-- Sections, because the list below does not scroll: CupriFace ignores the wheel
-                     on an overflow box (measured on 0.18.0 and again on 0.34.0), so the card height
-                     is a hard ceiling and the settings had already grown about 340px past it. What
-                     was below the fold was unreachable rather than merely out of sight. -->
+                <!-- Sections, from when the list below could not scroll: the card height was a
+                     hard ceiling and the settings had grown about 340px past it, so what was below
+                     the fold was unreachable rather than merely out of sight. On 0.34.0 an overflow
+                     box does take the wheel (EngineConstraintTests), so these are a grouping people
+                     may well still want rather than something the engine forces. -->
                 <div class="settings-tabs">
                   <div class="{{RowClass}}" data-repeat="SettingsSections" data-settings-section="{{Value}}">{{Label}}</div>
                 </div>
@@ -1812,8 +1813,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            can exist, not a starting point - adding two fields here pushed Zoom off the bottom
            where nothing could reach it, which is how this was found.
 
-           Re-measured on 0.34.0: unchanged. EngineConstraintTests pins it, so the day the engine
-           scrolls one of these, a test says so and this height can go. */
+           Re-measured on 0.34.0: NOT SO ANY MORE. A plain overflow box takes the wheel both ways
+           (EngineConstraintTests). The original measurement scrolled up at the top of the box,
+           which moves nothing in any browser either. So this height is a layout choice now rather
+           than a ceiling, and the sections below could become one scrolling list. */
         .settings-card { flex: 0 0 720px; height: 620px; }
         .settings-tabs { display: flex; flex-direction: row; flex-wrap: wrap; padding-top: 12px; }
         .settings-tab { padding: 5px 12px; margin-right: 6px; font-size: 12px; color: #8d97a6;

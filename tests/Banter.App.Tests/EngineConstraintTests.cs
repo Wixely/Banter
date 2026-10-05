@@ -5,12 +5,11 @@ using Xunit.Abstractions;
 namespace Banter.App.Tests;
 
 /// <summary>
-/// Engine behaviour this application is shaped around.
+/// Engine behaviour this application is shaped around, measured rather than remembered.
 ///
-/// <para>Each of these pins a limitation rather than a feature, and each is here so that the day
-/// the engine stops having it, a test fails and says which piece of Banter can be deleted. The
-/// alternative is a workaround that outlives its reason by years because nobody thought to
-/// re-measure — which is how the comment that prompted this one came to cite CupriFace 0.18.0.</para>
+/// <para>These exist because a workaround outlives its reason quietly: the comment that prompted
+/// this file cited CupriFace 0.18.0 and was still being obeyed six versions later. A test says
+/// what is true today and fails the day it stops being true.</para>
 /// </summary>
 public sealed class EngineConstraintTests(ITestOutputHelper output)
 {
@@ -32,24 +31,34 @@ public sealed class EngineConstraintTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// A plain <c>overflow: scroll</c> box ignores the wheel; only <c>cupri-virtual</c> scrolls.
+    /// A plain <c>overflow: scroll</c> box takes the wheel, both ways, and stops at its ends.
     ///
-    /// <para><b>When this test fails, the engine has fixed it.</b> Two things in the settings page
-    /// exist only because of it and can then go: <c>.settings-card</c>'s fixed 620px height, which
-    /// is currently a hard ceiling on how many settings can exist at all, and the section tabs that
-    /// split the fields into card-sized groups.</para>
-    ///
-    /// <para>Measured on 0.18.0 when the ceiling was added, and again on 0.34.0 — unchanged.</para>
+    /// <para>Banter's settings page is built as though it does not: the card is a fixed 620px
+    /// because "the list below does not scroll", and the fields are split into sections to fit
+    /// inside that. On 0.34.0 that is simply not so — which makes the ceiling removable, and is
+    /// the thing this test is here to keep honest.</para>
     /// </summary>
     [Fact]
-    public void AnOverflowBoxStillIgnoresTheWheel()
+    public void AnOverflowBoxTakesTheWheel()
     {
         using var doc = new OverflowBox().CreateDocument();
         doc.BuildFrame(400, 300);
 
-        var handled = doc.DispatchWheel(50, 50, -120);
+        var box = doc.Root.Children[0];
+        Assert.True(box.IsScrollable, "the box should overflow: 9 rows of 40 in 100px");
 
-        output.WriteLine($"wheel over a plain overflow box: handled = {handled}");
-        Assert.False(handled, "the engine now scrolls a plain overflow box — see this test's notes");
+        // Down from the top. A wheel UP here moves nothing and is answered false — correctly, as a
+        // browser does, and the reason this was once measured as "the engine ignores the wheel".
+        Assert.False(doc.DispatchWheel(50, 50, -120), "already at the top");
+
+        Assert.True(doc.DispatchWheel(50, 50, 120), "a wheel down inside a scrollable box");
+        doc.BuildFrame(400, 300);
+        Assert.Equal(120, doc.Root.Children[0].ScrollY, 1);
+
+        Assert.True(doc.DispatchWheel(50, 50, -120), "and back up again");
+        doc.BuildFrame(400, 300);
+        Assert.Equal(0, doc.Root.Children[0].ScrollY, 1);
+
+        output.WriteLine("a plain overflow box scrolls on CupriFace 0.34.0");
     }
 }
