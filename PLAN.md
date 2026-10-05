@@ -1423,6 +1423,26 @@ connects the upstreams, and agents ask it to act.
   and a named `401`; Banter's key, granted `recipes__*` → `1/1 connected, 5 tools`** — the five it
   was granted and not the `users__*` or `permissions__*` it was not. That is the hub being
   authoritative, from Banter's side: it sees what MCPHub decided it may see.
+- **An upstream can enforce for itself** (`"perAgentIdentity": true`). Every agent then gets a user
+  and a key of its own there — minted by Banter through `users__create` and remembered in
+  `hub_identities` — its calls are made *as* that agent, and the upstream decides. Banter's own
+  grants do not apply to those tools, because two answers to one question is how they come to
+  disagree. Grants are set and read through `permissions__*` and never copied here: a local copy
+  would drift the moment somebody changed it in the hub's own UI.
+
+  The property this buys, and the reason for per-agent keys rather than one shared one: **an agent
+  that goes around Banter gains nothing.** Measured, with `dagger` granted `recipes__list` and
+  `recipes__get` *in the hub* and nothing at all in Banter:
+
+  | | |
+  | --- | --- |
+  | `--tools-for dagger` (through Banter) | `hub__recipes__get, hub__recipes__list` |
+  | dagger's own key, straight to the hub | `recipes__get, recipes__list` |
+  | dagger calling `users__list` direct | refused — and as *unknown*, not as forbidden |
+
+  `--tools-for <agent>` answers "what can this agent actually see" without starting an agent, a
+  room or a client; for a self-enforcing upstream it opens that agent's own session, so the answer
+  is the upstream's rather than this server's.
 - **Grants are per agent account and default to nothing.** A new agent inherits no access. An
   ungranted tool is *absent* from that agent's `TOOL_LIST` rather than refused on call, and the
   refusal text is identical whether a tool is ungranted or simply not connected — otherwise an

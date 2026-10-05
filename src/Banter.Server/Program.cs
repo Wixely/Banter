@@ -147,7 +147,8 @@ var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = d
 // with this process; agents only ever ask it to act.
 var mcpConfig = Arg("--mcp") ?? Environment.GetEnvironmentVariable("BANTER_MCP_CONFIG") ?? "mcp.json";
 var mcpOptions = McpConfigFile.Load(mcpConfig);
-await using var toolBroker = new McpToolBroker(mcpOptions, new ToolGrantStore(database));
+await using var toolBroker = new McpToolBroker(
+    mcpOptions, new ToolGrantStore(database), new HubIdentityStore(database));
 if (mcpOptions.Upstreams.Count > 0)
 {
     await toolBroker.StartAsync();
@@ -166,6 +167,23 @@ if (mcpOptions.Upstreams.Count > 0)
             $"mcp: '{failed.Key}' is {failed.State}"
             + (failed.LastError is { Length: > 0 } why ? $": {why}" : "."));
     }
+}
+
+// "What can this agent actually see?" — answered without starting an agent, a room, or a client.
+// Worth a flag of its own because the answer is no longer only this server's to give: for an
+// upstream that enforces for itself, it opens that agent's own session and prints what the
+// upstream offered it, which is also what the agent would get going there directly.
+if (Arg("--tools-for") is { Length: > 0 } inspecting)
+{
+    var visible = await toolBroker.ToolsForAsync(inspecting);
+    Console.WriteLine($"{inspecting}: {visible.Count} tool(s)");
+    foreach (var group in visible.GroupBy(t => t.ServerKey).OrderBy(g => g.Key, StringComparer.Ordinal))
+    {
+        Console.WriteLine($"  {(group.Key.Length > 0 ? group.Key : "(unattributed)")}: "
+            + string.Join(", ", group.Select(t => t.Name).Order(StringComparer.Ordinal)));
+    }
+
+    return 0;
 }
 
 // The scheme picks the transport, exactly as it does on the client. ws:// is what a browser
