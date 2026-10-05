@@ -1,6 +1,7 @@
 using Banter.Server;
 using Banter.Server.Files;
 using Banter.Server.Persistence;
+using Banter.Server.Tools;
 using System.Net;
 using Banter.Transport.Shrine;
 using CupriNet.Nodestar;
@@ -83,6 +84,19 @@ if (adminPassword == "admin")
 }
 
 var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = dataDir });
+
+// Tools, on the same terms as the socket server - which is the point of calling ToolHost rather
+// than wiring a broker here. This head ran with no tool broker at all until now: every agent on
+// the mesh saw nothing to call however the deployment was configured, and nothing said so,
+// because an agent with no grants and an agent on a server with no broker look identical from
+// the room. --mcp and BANTER_MCP_CONFIG mean here what they mean there.
+await using var toolBroker = await ToolHost.StartAsync(database, Arg("--mcp"));
+
+if (Arg("--tools-for") is { Length: > 0 } inspecting)
+{
+    await ToolHost.DescribeToolsForAsync(toolBroker, inspecting);
+    return 0;
+}
 
 var builder = NodestarApplication.CreateBuilder(args);
 builder.Node.Concordium = concordium;
@@ -204,6 +218,7 @@ await using var server = new BanterServer(
     new DbServerStore(database),
     fileStore,
     tasks: new TaskStore(database),
+    tools: toolBroker,
     // The same identity model as the TCP server: this is the mesh's front door, not a different
     // idea of who an agent is.
     identities: new AgentIdentityStore(database),

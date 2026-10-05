@@ -1,5 +1,6 @@
 using Banter.Protocol;
 using Banter.Warden;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace Banter.Server.Tests;
@@ -174,12 +175,20 @@ public sealed class FleetConfigTests
         Assert.DoesNotContain(names, n => n is "password" or "secret" or "apikey" or "token");
     }
 
+    /// <summary>
+    /// The shipped sample, found from THIS FILE rather than by counting directories up from the
+    /// binaries: where the binaries land is a build argument, and a run redirected out of a locked
+    /// bin reported "samples/fleet.json not found at C:\Users\&lt;user&gt;\AppData\samples\fleet.json"
+    /// - a failure about the output path wearing the sample's name.
+    /// </summary>
+    private static string SampleFleet([CallerFilePath] string here = "") =>
+        Path.Combine(Path.GetDirectoryName(here)!, "..", "..", "samples", "fleet.json");
+
     [Fact]
     public void TheShippedSampleFleetIsValid()
     {
         // The sample is documentation, and documentation that does not work is worse than none.
-        var path = Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..", "samples", "fleet.json");
+        var path = SampleFleet();
 
         Assert.True(File.Exists(path), $"samples/fleet.json not found at {Path.GetFullPath(path)}");
         Assert.Empty(FleetConfig.Load(path).Validate());

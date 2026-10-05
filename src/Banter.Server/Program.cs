@@ -144,45 +144,15 @@ var dataDir = Arg("--data") ?? Environment.GetEnvironmentVariable("BANTER_DATA")
 var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = dataDir });
 
 // Tools run here, on the server, never on the agent (PLAN §8). The upstream credentials live
-// with this process; agents only ever ask it to act.
-var mcpConfig = Arg("--mcp") ?? Environment.GetEnvironmentVariable("BANTER_MCP_CONFIG") ?? "mcp.json";
-var mcpOptions = McpConfigFile.Load(mcpConfig);
-await using var toolBroker = new McpToolBroker(
-    mcpOptions, new ToolGrantStore(database), new HubIdentityStore(database));
-if (mcpOptions.Upstreams.Count > 0)
-{
-    await toolBroker.StartAsync();
-
-    // Connected, not merely registered: the registry keeps an entry for an upstream that failed,
-    // so counting entries reported every deployment as fully connected — including one that had
-    // just been refused for presenting no key.
-    var connected = toolBroker.Upstreams.Count(u => u.State == MCPHub.Proxy.UpstreamState.Connected);
-    Console.WriteLine(
-        $"MCP: {connected}/{mcpOptions.Upstreams.Count} upstream(s) connected, " +
-        $"{toolBroker.AllTools().Count} tool(s) available to grant.");
-
-    foreach (var failed in toolBroker.Upstreams.Where(u => u.State != MCPHub.Proxy.UpstreamState.Connected))
-    {
-        Console.Error.WriteLine(
-            $"mcp: '{failed.Key}' is {failed.State}"
-            + (failed.LastError is { Length: > 0 } why ? $": {why}" : "."));
-    }
-}
+// with this process; agents only ever ask it to act. ToolHost rather than thirty lines here,
+// because the mesh server has to do exactly the same thing and did not.
+await using var toolBroker = await ToolHost.StartAsync(database, Arg("--mcp"));
 
 // "What can this agent actually see?" — answered without starting an agent, a room, or a client.
-// Worth a flag of its own because the answer is no longer only this server's to give: for an
-// upstream that enforces for itself, it opens that agent's own session and prints what the
-// upstream offered it, which is also what the agent would get going there directly.
+// Worth a flag of its own because the answer is no longer only this server's to give.
 if (Arg("--tools-for") is { Length: > 0 } inspecting)
 {
-    var visible = await toolBroker.ToolsForAsync(inspecting);
-    Console.WriteLine($"{inspecting}: {visible.Count} tool(s)");
-    foreach (var group in visible.GroupBy(t => t.ServerKey).OrderBy(g => g.Key, StringComparer.Ordinal))
-    {
-        Console.WriteLine($"  {(group.Key.Length > 0 ? group.Key : "(unattributed)")}: "
-            + string.Join(", ", group.Select(t => t.Name).Order(StringComparer.Ordinal)));
-    }
-
+    await ToolHost.DescribeToolsForAsync(toolBroker, inspecting);
     return 0;
 }
 
