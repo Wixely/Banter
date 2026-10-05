@@ -1816,7 +1816,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            Re-measured on 0.34.0: NOT SO ANY MORE. A plain overflow box takes the wheel both ways
            (EngineConstraintTests). The original measurement scrolled up at the top of the box,
            which moves nothing in any browser either. So this height is a layout choice now rather
-           than a ceiling, and the sections below could become one scrolling list. */
+           than a ceiling, and the sections below could become one scrolling list.
+
+           620 is the comfortable size, not a promise the window can keep. The card is centred, so
+           in a viewport shorter than it the card hung off BOTH ends at once - head and foot gone
+           together, 51px each at 1280x520, the Close button among the casualties. The short-window
+           rule below is what bounds it; a `max-height` here looked like the tidier answer and is
+           not, because the engine clamps the box AFTER laying its items out against the taller
+           height, so the fields box stayed 495 tall inside a 458 card and overflowed the window
+           anyway. TheCardNeverGrowsPastTheWindow holds all of it. */
         .settings-card { flex: 0 0 720px; height: 620px; }
         .settings-tabs { display: flex; flex-direction: row; flex-wrap: wrap; padding-top: 12px; }
         .settings-tab { padding: 5px 12px; margin-right: 6px; font-size: 12px; color: #8d97a6;
@@ -2040,6 +2048,33 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
              settings input vanished. Measured as CF0071 at 412, 800 and 915 — a box 372 wide and
              0 tall. Stacked, it wants to be as tall as what is in it and no taller. */
           .mgmt-control { flex: 0 0 auto; }
+        }
+
+        /* ── A short window ───────────────────────────────────────────────────────────────────
+           Height, not width, and the only rule here keyed on it. The settings card is a hard 620
+           with 32 of margin above and below, so it needs 684 of window; it is CENTRED, so a
+           window shorter than that does not clip the bottom, it clips both ends at once - at
+           1280x520 the card ran 51px off the top and 51px off the bottom, taking the Close button
+           with it. Nothing could scroll to any of it, because the card itself was never the thing
+           that scrolls.
+
+           A card with a margin says "this is on top of the page"; at this height it is the page,
+           same as on a phone, and the two panes do not need to stack because the width is fine.
+           Giving it the window's height is also what makes `.mgmt-fields` useful: flex:1 of a
+           definite height is a real box, so the fields scroll inside it instead of running past
+           the end of it. (`max-height` is the answer that looks tidier and is not: the engine
+           clamps the box after its items are laid out against the taller height, so the fields
+           box keeps the height it was given and overflows the shorter card.)
+
+           700 rather than 684 so the rule arrives a little before the clipping would.
+           Must match ShortHeight, which TheCardNeverGrowsPastTheWindow sizes its windows from.
+
+           No `flex` here, deliberately. A phone lying down is short AND narrow, so this rule and
+           the width block above both land on the same card, and this one is written later - a
+           flex-basis here beat the narrow rule's `flex: 1` and gave a 915-wide screen a 720-wide
+           card with the room showing down one side. Width is the width block's business. */
+        @media (max-height: 700px) {
+          .settings-card { height: 100%; margin: 0; border-radius: 0; border: 0; }
         }
 
         /* Explicit beats the media rule, in both directions. Without the first of these, choosing
@@ -2996,6 +3031,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// then checks what the CASCADE did, which fails if the two ever drift apart.</para>
     /// </summary>
     public const float NarrowWidth = 960f;
+
+    /// <summary>
+    /// At or below this height the settings card stops being a card and becomes the page.
+    ///
+    /// <para>It is the one breakpoint here that is about height, and it exists because that card
+    /// is the one fixed-height box in the app: 620 plus 32 of margin a side, centred, so a shorter
+    /// window clips its head and its foot together and nothing can scroll to either. 700 is that
+    /// 684 with a little air.</para>
+    ///
+    /// <para>Must match the <c>@media (max-height: …)</c> in <see cref="Css"/>, for the same
+    /// reason <see cref="NarrowWidth"/> must — the engine's media conditions take a length, not a
+    /// variable. <c>TheCardNeverGrowsPastTheWindow</c> is what holds the pair together: it builds
+    /// windows either side of this number and checks what the cascade did.</para>
+    /// </summary>
+    public const float ShortHeight = 700f;
 
     /// <summary>
     /// Copy the current selection. Falls back to the newest message when nothing is selected,
