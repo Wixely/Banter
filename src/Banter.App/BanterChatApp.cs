@@ -545,10 +545,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   </div>
                   <cupri-button class="mgmt-remove settings-close">Close</cupri-button>
                 </div>
-                <!-- Sections, because the list below does not scroll: CupriFace 0.18.0 ignores the
-                     wheel on an overflow box (measured), so the card height is a hard ceiling and
-                     the settings had already grown about 340px past it. What was below the fold
-                     was unreachable rather than merely out of sight. -->
+                <!-- Sections, because the list below does not scroll: CupriFace ignores the wheel
+                     on an overflow box (measured on 0.18.0 and again on 0.34.0), so the card height
+                     is a hard ceiling and the settings had already grown about 340px past it. What
+                     was below the fold was unreachable rather than merely out of sight. -->
                 <div class="settings-tabs">
                   <div class="{{RowClass}}" data-repeat="SettingsSections" data-settings-section="{{Value}}">{{Label}}</div>
                 </div>
@@ -1810,7 +1810,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            overflow:scroll box with content past its height ignores the wheel entirely, and only
            cupri-virtual actually scrolls. So this height is the real limit on how many settings
            can exist, not a starting point - adding two fields here pushed Zoom off the bottom
-           where nothing could reach it, which is how this was found. */
+           where nothing could reach it, which is how this was found.
+
+           Re-measured on 0.34.0: unchanged. EngineConstraintTests pins it, so the day the engine
+           scrolls one of these, a test says so and this height can go. */
         .settings-card { flex: 0 0 720px; height: 620px; }
         .settings-tabs { display: flex; flex-direction: row; flex-wrap: wrap; padding-top: 12px; }
         .settings-tab { padding: 5px 12px; margin-right: 6px; font-size: 12px; color: #8d97a6;
@@ -2066,10 +2069,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         body.cupri-coarse .loadmore { padding: 13px 18px; }
 
         /* One rule for every button the engine draws, because they differ only in their font size
-           and all of them were 30 to 36 tall. Padding rather than min-height: a cupri-button is an
-           inline-block, so a minimum would have left the label sitting against the top of a box
-           that had grown underneath it. */
-        body.cupri-coarse cupri-button { padding-top: 14px; padding-bottom: 14px; }
+           and all of them were 30 to 36 tall.
+
+           A minimum rather than padding, since CupriFace 0.32.0 made the cupri-* controls
+           border-box: padding stopped growing a button that declares its own height, and the three
+           composer buttons — which do — went back to 30 tall while their labels were squeezed
+           inside. A minimum clamps a declared height whatever the box-sizing, and 0.33.0's "a flex
+           box sized by min-height centres its children" is what makes it safe here: that was the
+           objection to using one before, and it has been answered. */
+        body.cupri-coarse cupri-button { min-height: 44px; }
 
         /* The close X is drawn from two rotated bars at fixed offsets inside a 30px box, so its
            box cannot grow without them being re-centred: (44-16)/2 across, (44-2)/2 down. Miss

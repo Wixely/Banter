@@ -678,8 +678,9 @@ public sealed partial class ChatModel
     /// The settings page's sections, and which fields each shows.
     ///
     /// <para>Sections rather than one long list because the list cannot scroll — an overflow box
-    /// ignores the wheel in CupriFace 0.18.0, so the card's height is the hard limit on what can
-    /// be reached at all, and the settings had already grown past it.</para>
+    /// ignores the wheel (measured on CupriFace 0.18.0 and again on 0.34.0), so the card's height
+    /// is the hard limit on what can be reached at all, and the settings had already grown past
+    /// it. <c>EngineConstraintTests</c> fails the day that changes.</para>
     /// </summary>
     public List<ChoiceRow> SettingsSections { get; set; } = [];
 
