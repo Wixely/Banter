@@ -370,5 +370,38 @@ public static class SchemaManifest
             // nothing in particular, and a room where every line had to is not a conversation.
             SqliteSql: "ALTER TABLE messages ADD COLUMN reply_to TEXT NULL;",
             PostgresSql: "ALTER TABLE messages ADD COLUMN reply_to TEXT NULL;"),
+
+        new(11,
+            "agent-hub-identities",
+            // Who an agent is on an MCP server that checks - MCPHub with per-user permissions on,
+            // where the hub decides what the agent may use and this server only carries the call.
+            // Keyed by upstream as well as agent: two hubs would issue two different keys to the
+            // same agent, and one row could only be right about one of them.
+            //
+            // The key is stored as issued. It is a live credential, and this is the same trust
+            // boundary that already holds every upstream token in mcp.json: anything that can read
+            // this table can read those too.
+            SqliteSql:
+            """
+            CREATE TABLE hub_identities (
+                upstream TEXT NOT NULL,
+                agent TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                token TEXT NOT NULL,
+                issued_at INTEGER NOT NULL,
+                PRIMARY KEY (upstream, agent)
+            );
+            """,
+            PostgresSql:
+            """
+            CREATE TABLE hub_identities (
+                upstream TEXT NOT NULL,
+                agent TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                token TEXT NOT NULL,
+                issued_at BIGINT NOT NULL,
+                PRIMARY KEY (upstream, agent)
+            );
+            """),
     ];
 }
