@@ -1410,6 +1410,14 @@ connects the upstreams, and agents ask it to act.
   entry in `mcp.json` can point at a running MCPHub and pick up its whole aggregated catalogue.
   Measured against the desktop MCPHub on this machine: **453 tools from one upstream.** One
   upstream failing to connect does not take away the others.
+- **Banter authenticates as a user** (MCPHub v0.14.0, 2026-10-05). An HTTP upstream entry may carry
+  `Token`, `TokenFile` or `TokenEnvironmentVariable` — exactly one — and it is sent as
+  `Authorization: Bearer`. That is what lets Banter talk to an MCPHub with per-user permissions on,
+  where it is a user like any other and what it may reach is decided *there*. A token that is named
+  and missing skips that upstream rather than connecting without it: a server told to expect a key
+  either refuses Banter, which reads as the server being down, or serves it anonymously and hands
+  over whatever an unauthenticated caller gets. A stdio entry may carry `Environment` for the same
+  reason MCPHub does — anything on a command line is visible to any process listing.
 - **Grants are per agent account and default to nothing.** A new agent inherits no access. An
   ungranted tool is *absent* from that agent's `TOOL_LIST` rather than refused on call, and the
   refusal text is identical whether a tool is ungranted or simply not connected — otherwise an

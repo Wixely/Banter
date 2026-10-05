@@ -15,6 +15,27 @@ public sealed record McpUpstreamConfig
     public string? Url { get; init; }
     public string? Command { get; init; }
     public List<string> Arguments { get; init; } = [];
+
+    /// <summary>
+    /// The bearer token for an HTTP upstream that checks who is calling — MCPHub with per-user
+    /// permissions on, say, where this is the key issued to Banter's user and what it may reach is
+    /// decided there. Exactly one of this, <see cref="TokenFile"/> or
+    /// <see cref="TokenEnvironmentVariable"/>; see <see cref="McpUpstreamCredentials"/>.
+    /// </summary>
+    public string? Token { get; init; }
+
+    /// <inheritdoc cref="Token"/>
+    public string? TokenFile { get; init; }
+
+    /// <inheritdoc cref="Token"/>
+    public string? TokenEnvironmentVariable { get; init; }
+
+    /// <summary>
+    /// Environment for a stdio upstream, applied on top of the one this process inherited. The
+    /// right place for that server's own secrets: anything on a command line is visible to any
+    /// process listing on the box.
+    /// </summary>
+    public Dictionary<string, string?> Environment { get; init; } = [];
 }
 
 public sealed record McpOptions
@@ -85,10 +106,17 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
             {
                 if (upstream.Url is { Length: > 0 } url)
                 {
+                    // Resolved before connecting, and a failure here skips this upstream rather
+                    // than connecting without it: a server that was told to expect a key either
+                    // refuses Banter — which reads as the server being down — or serves it
+                    // anonymously and hands over whatever an unauthenticated caller gets.
+                    var headers = McpUpstreamCredentials.Headers(McpUpstreamCredentials.Resolve(upstream));
+
                     await _registry.ConnectAsync(
                         upstream.Key,
                         upstream.DisplayName.Length > 0 ? upstream.DisplayName : upstream.Key,
                         new Uri(url),
+                        headers,
                         cancellationToken).ConfigureAwait(false);
                 }
                 else if (upstream.Command is { Length: > 0 } command)
@@ -98,6 +126,7 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
                         upstream.DisplayName.Length > 0 ? upstream.DisplayName : upstream.Key,
                         command,
                         upstream.Arguments,
+                        upstream.Environment.Count > 0 ? upstream.Environment : null,
                         cancellationToken).ConfigureAwait(false);
                 }
             }
