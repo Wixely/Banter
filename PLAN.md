@@ -1418,6 +1418,11 @@ connects the upstreams, and agents ask it to act.
   either refuses Banter, which reads as the server being down, or serves it anonymously and hands
   over whatever an unauthenticated caller gets. A stdio entry may carry `Environment` for the same
   reason MCPHub does — anything on a command line is visible to any process listing.
+
+  Measured against a headless MCPHub with per-user permissions on: **no token → `0/1 connected`
+  and a named `401`; Banter's key, granted `recipes__*` → `1/1 connected, 5 tools`** — the five it
+  was granted and not the `users__*` or `permissions__*` it was not. That is the hub being
+  authoritative, from Banter's side: it sees what MCPHub decided it may see.
 - **Grants are per agent account and default to nothing.** A new agent inherits no access. An
   ungranted tool is *absent* from that agent's `TOOL_LIST` rather than refused on call, and the
   refusal text is identical whether a tool is ungranted or simply not connected — otherwise an

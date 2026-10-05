@@ -151,9 +151,21 @@ await using var toolBroker = new McpToolBroker(mcpOptions, new ToolGrantStore(da
 if (mcpOptions.Upstreams.Count > 0)
 {
     await toolBroker.StartAsync();
+
+    // Connected, not merely registered: the registry keeps an entry for an upstream that failed,
+    // so counting entries reported every deployment as fully connected — including one that had
+    // just been refused for presenting no key.
+    var connected = toolBroker.Upstreams.Count(u => u.State == MCPHub.Proxy.UpstreamState.Connected);
     Console.WriteLine(
-        $"MCP: {toolBroker.Upstreams.Count}/{mcpOptions.Upstreams.Count} upstream(s) connected, " +
+        $"MCP: {connected}/{mcpOptions.Upstreams.Count} upstream(s) connected, " +
         $"{toolBroker.AllTools().Count} tool(s) available to grant.");
+
+    foreach (var failed in toolBroker.Upstreams.Where(u => u.State != MCPHub.Proxy.UpstreamState.Connected))
+    {
+        Console.Error.WriteLine(
+            $"mcp: '{failed.Key}' is {failed.State}"
+            + (failed.LastError is { Length: > 0 } why ? $": {why}" : "."));
+    }
 }
 
 // The scheme picks the transport, exactly as it does on the client. ws:// is what a browser
