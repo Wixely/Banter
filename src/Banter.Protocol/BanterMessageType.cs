@@ -189,6 +189,13 @@ public enum BanterMessageType : ushort
     /// <summary>Server → room: an ask is settled, so every client can stop offering it.</summary>
     AskClosed = 112,
 
+    // The tool hubs this server defers to (113-119)
+    /// <summary>Admin: what hubs does this server use, and who has an identity on them?</summary>
+    HubInspect = 113,
+
+    /// <summary>Admin: the hubs, in reply to an inspect.</summary>
+    HubReport = 114,
+
 
     // Generic (250–255)
     Error = 250,

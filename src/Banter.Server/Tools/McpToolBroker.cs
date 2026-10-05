@@ -209,6 +209,65 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// What this server can say about the hubs it defers to: whether each is reachable, whether it
+    /// will let us manage it, and which agents have an identity there with what they hold.
+    ///
+    /// <para>For an operator, so the question "why can this agent not use that tool" has somewhere
+    /// to be answered. No keys: this server holds one per agent to call as them, and putting those
+    /// on the wire would scatter copies of a live credential to every admin client.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<HubPayload>> InspectHubsAsync(CancellationToken cancellationToken = default)
+    {
+        var hubs = new List<HubPayload>();
+        foreach (var upstream in _selfEnforcing)
+        {
+            var connected = _registry.Upstreams.FirstOrDefault(
+                u => string.Equals(u.Key, upstream.Key, StringComparison.Ordinal));
+
+            // Offered to the user THIS server connects as, which is the only sense in which this
+            // hub is administrable from here — somebody else's admin rights are no use to us.
+            var administrable = _registry.Catalog.Routes.ContainsKey(Qualify(upstream.Key, "users__create"));
+
+            var agents = new List<HubAgentPayload>();
+            if (_identities is not null)
+            {
+                foreach (var (agent, userId) in await _identities.AgentsAsync(upstream.Key, cancellationToken)
+                             .ConfigureAwait(false))
+                {
+                    var identity = await _identities.ForAgentAsync(upstream.Key, agent, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    IReadOnlyList<string> tools = [];
+                    try
+                    {
+                        tools = [.. (await ProvisionerFor(upstream.Key).GrantsAsync(agent, cancellationToken)
+                            .ConfigureAwait(false)).Select(t => Qualify(upstream.Key, t))];
+                    }
+                    catch (Exception)
+                    {
+                        // Unreachable or not administrable. Shown as no tools KNOWN rather than as
+                        // none granted — the hub's own state line above says which it is.
+                    }
+
+                    agents.Add(new HubAgentPayload(
+                        agent, userId, identity?.IssuedAtUtc.ToUnixTimeMilliseconds() ?? 0, tools));
+                }
+            }
+
+            hubs.Add(new HubPayload(
+                upstream.Key,
+                upstream.DisplayName.Length > 0 ? upstream.DisplayName : upstream.Key,
+                connected?.State.ToString() ?? "Unknown",
+                connected?.LastError ?? "",
+                connected?.ToolCount ?? 0,
+                administrable,
+                agents));
+        }
+
+        return hubs;
+    }
+
     private HubProvisioner ProvisionerFor(string upstreamKey) =>
         new(_hubAdmin(upstreamKey), _identities!, upstreamKey);
 

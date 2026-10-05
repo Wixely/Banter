@@ -760,6 +760,57 @@ public sealed record ToolGrantsPayload(
     [property: Key(1)] IReadOnlyList<string> Tools,
     [property: Key(2)] bool Replace = false);
 
+/// <summary>
+/// Admin: tell me about the tool hubs this server defers to. Sent empty; the reply carries them.
+/// </summary>
+[MessagePackObject]
+public sealed record HubInspectPayload();
+
+/// <summary>
+/// One agent's identity on a hub, as an operator sees it.
+///
+/// <para>No key. The hub shows one once and this server keeps it to call as that agent; putting it
+/// on the wire would scatter copies of a live credential to every admin client.</para>
+/// </summary>
+/// <param name="Agent">The agent account this identity belongs to.</param>
+/// <param name="UserId">The hub's own id for it, which is what its grants are keyed by there.</param>
+/// <param name="IssuedAtUnixMs">When the key was issued, so a rotation is visible.</param>
+/// <param name="Tools">What the hub grants this agent, named as this server advertises them — the
+/// same names the tool panel ticks, so the two views agree.</param>
+[MessagePackObject]
+public sealed record HubAgentPayload(
+    [property: Key(0)] string Agent,
+    [property: Key(1)] string UserId,
+    [property: Key(2)] long IssuedAtUnixMs,
+    [property: Key(3)] IReadOnlyList<string> Tools);
+
+/// <summary>
+/// One hub: what it is, whether this server can reach it, and who it knows.
+/// </summary>
+/// <param name="Key">The upstream's key here, which is also the prefix on every tool it offers.</param>
+/// <param name="DisplayName">What it calls itself.</param>
+/// <param name="State">The upstream's connection state, as the proxy reports it.</param>
+/// <param name="Detail">Why it is not connected, when it is not. Empty otherwise.</param>
+/// <param name="Administrable">Whether this hub offers its management tools to the user this
+/// server connects as. False is the state worth showing: everything looks healthy, and nothing
+/// about identities or grants can be changed from here.</param>
+/// <param name="ToolCount">How many tools it offers this server's own user.</param>
+/// <param name="Agents">The agents that have an identity on it.</param>
+[MessagePackObject]
+public sealed record HubPayload(
+    [property: Key(0)] string Key,
+    [property: Key(1)] string DisplayName,
+    [property: Key(2)] string State,
+    [property: Key(3)] string Detail,
+    [property: Key(4)] int ToolCount,
+    [property: Key(5)] bool Administrable,
+    [property: Key(6)] IReadOnlyList<HubAgentPayload> Agents);
+
+/// <summary>Admin: the hubs this server defers to, in reply to <see cref="HubInspectPayload"/>.</summary>
+[MessagePackObject]
+public sealed record HubReportPayload(
+    [property: Key(0)] IReadOnlyList<HubPayload> Hubs);
+
 // ---- Agent identities (PLAN §8a) ----
 
 /// <summary>

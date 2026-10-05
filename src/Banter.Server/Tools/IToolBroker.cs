@@ -24,4 +24,11 @@ public interface IToolBroker
 
     /// <summary>Replace an agent's grants wholesale. An empty list revokes everything.</summary>
     Task SetGrantsAsync(string agent, IReadOnlyList<string> tools, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The hubs this server defers to — those that decide for themselves what each agent may use —
+    /// with their reachability and the agents that have an identity on them. Empty when there are
+    /// none, which is every deployment that grants its tools here.
+    /// </summary>
+    Task<IReadOnlyList<HubPayload>> InspectHubsAsync(CancellationToken cancellationToken = default);
 }

@@ -87,6 +87,11 @@ public sealed class AgentToolTests : IAsyncLifetime
             _grants[agent] = tools;
             return Task.CompletedTask;
         }
+
+        /// <summary>No hubs: these tests are about this server's own rules, which is what a
+        /// deployment with no self-enforcing upstream has.</summary>
+        public Task<IReadOnlyList<HubPayload>> InspectHubsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<HubPayload>>([]);
     }
 
     public async Task InitializeAsync()

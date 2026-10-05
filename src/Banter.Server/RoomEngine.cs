@@ -321,6 +321,9 @@ internal sealed partial class RoomEngine(
             case ToolGrantsPayload grants:
                 await HandleToolGrantsAsync(session, envelope, grants).ConfigureAwait(false);
                 break;
+            case HubInspectPayload:
+                await HandleHubInspectAsync(session, envelope).ConfigureAwait(false);
+                break;
             default:
                 session.Send(new ErrorPayload("UNSUPPORTED", $"{envelope.Type} is not supported yet."), replyTo: envelope.MsgId);
                 break;
@@ -1100,6 +1103,32 @@ internal sealed partial class RoomEngine(
 
         var current = await _tools.GrantsForAsync(grants.Agent).ConfigureAwait(false);
         session.Send(new ToolGrantsPayload(grants.Agent, current, Replace: false), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// What the hubs this server defers to look like from here.
+    ///
+    /// <para>Admin-only for the same reason the grants are: it names every agent that has an
+    /// identity on a hub and what each holds, which is a map of the estate. It carries no keys —
+    /// those stay with the server that calls as the agents.</para>
+    /// </summary>
+    private async Task HandleHubInspectAsync(ClientSession session, BanterEnvelope envelope)
+    {
+        if (_tools is null)
+        {
+            session.Send(new ErrorPayload("NO_TOOLS", "This server has no tool backend."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAdmin)
+        {
+            session.Send(new ErrorPayload("NOT_ADMIN", "Only an admin may inspect the tool hubs."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var hubs = await _tools.InspectHubsAsync().ConfigureAwait(false);
+        session.Send(new HubReportPayload(hubs), replyTo: envelope.MsgId);
     }
 
     /// <summary>
