@@ -1443,6 +1443,13 @@ connects the upstreams, and agents ask it to act.
   `--tools-for <agent>` answers "what can this agent actually see" without starting an agent, a
   room or a client; for a self-enforcing upstream it opens that agent's own session, so the answer
   is the upstream's rather than this server's.
+
+  **`TOOL_GRANTS` writes to whichever authority owns the tool.** The existing operator panel edits
+  one list; underneath, a self-enforcing upstream's tools are granted *there* and everything else
+  here, and both are read back under the names this server advertises. Writing a hub tool into this
+  server's store instead would be a tick on that panel that changes nothing — the same class of
+  lie as the stale session it also invalidates, which would otherwise show an agent the set it had
+  before the save.
 - **Grants are per agent account and default to nothing.** A new agent inherits no access. An
   ungranted tool is *absent* from that agent's `TOOL_LIST` rather than refused on call, and the
   refusal text is identical whether a tool is ungranted or simply not connected — otherwise an

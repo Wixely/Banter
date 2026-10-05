@@ -91,19 +91,31 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly List<McpUpstreamConfig> _selfEnforcing = [];
+    private readonly Func<string, IHubAdmin> _hubAdmin;
     private bool _connected;
 
+    /// <param name="hubAdmin">How to reach a self-enforcing upstream's management tools. Supplied
+    /// by tests; by default they are called over the upstream this server has already connected.</param>
     public McpToolBroker(
         McpOptions options,
         ToolGrantStore grants,
         HubIdentityStore? identities = null,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        Func<string, IHubAdmin>? hubAdmin = null)
     {
         _options = options;
         _grants = grants;
         _identities = identities;
         _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
         _registry = new UpstreamRegistry(_loggerFactory);
+        _hubAdmin = hubAdmin ?? (key => new McpHubAdmin(_registry, key));
+
+        // Configuration, not connection state: which upstreams decide for themselves is known
+        // before anything is dialled, and grants are edited whether or not they are reachable.
+        if (identities is not null)
+        {
+            _selfEnforcing.AddRange(options.Upstreams.Where(u => u is { PerAgentIdentity: true, Url.Length: > 0 }));
+        }
     }
 
     /// <summary>An agent's own session with an upstream that enforces for itself.</summary>
@@ -116,14 +128,108 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
     public IReadOnlyList<ToolDescriptorPayload> AllTools() =>
         _registry.Catalog.Tools.Select(Describe).ToList();
 
-    /// <inheritdoc />
-    public Task<IReadOnlyList<string>> GrantsForAsync(string agent, CancellationToken cancellationToken = default) =>
-        _grants.ForAgentAsync(agent, cancellationToken);
+    /// <summary>
+    /// What this agent holds, from wherever the answer lives.
+    ///
+    /// <para>Two sources, because there are two kinds of upstream. The ones that have no idea who
+    /// is calling are granted here; the ones that decide for themselves are asked. Both come back
+    /// under the names this server advertises, so whatever is editing them — the client's tool
+    /// panel, an operator over the wire — sees one list and need not know the difference.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GrantsForAsync(
+        string agent, CancellationToken cancellationToken = default)
+    {
+        var held = new List<string>(await _grants.ForAgentAsync(agent, cancellationToken).ConfigureAwait(false));
 
-    /// <inheritdoc />
-    public Task SetGrantsAsync(
-        string agent, IReadOnlyList<string> tools, CancellationToken cancellationToken = default) =>
-        _grants.ReplaceAsync(agent, tools, cancellationToken);
+        foreach (var upstream in _selfEnforcing)
+        {
+            try
+            {
+                var theirs = await ProvisionerFor(upstream.Key).GrantsAsync(agent, cancellationToken)
+                    .ConfigureAwait(false);
+                held.AddRange(theirs.Select(t => Qualify(upstream.Key, t)));
+            }
+            catch (Exception ex)
+            {
+                // Unreachable or refusing. Reporting its grants as "none" would read as an agent
+                // holding nothing there, which is a different claim from not knowing.
+                Console.Error.WriteLine($"mcp: could not read '{upstream.Key}' grants for {agent}: {ex.Message}");
+            }
+        }
+
+        return held;
+    }
+
+    /// <summary>
+    /// Replace what this agent holds, sending each part where it is decided.
+    ///
+    /// <para>A tool belonging to an upstream that enforces for itself is granted <em>there</em> —
+    /// writing it here instead would store a grant nothing consults, and the tool panel would show
+    /// a tick that changes nothing. Everything else is this server's to grant, as before.</para>
+    /// </summary>
+    public async Task SetGrantsAsync(
+        string agent, IReadOnlyList<string> tools, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+
+        var mine = new List<string>();
+        var theirs = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var upstream in _selfEnforcing)
+        {
+            theirs[upstream.Key] = [];
+        }
+
+        foreach (var tool in tools)
+        {
+            if (OwnerOf(tool) is { } owner)
+            {
+                theirs[owner].Add(Unqualify(owner, tool));
+            }
+            else
+            {
+                mine.Add(tool);
+            }
+        }
+
+        // Theirs first: a failure there must not leave this server's half saved and the rest not,
+        // which would read on the panel as a save that worked.
+        foreach (var (key, granted) in theirs)
+        {
+            await ProvisionerFor(key).SetGrantsAsync(agent, granted, cancellationToken).ConfigureAwait(false);
+        }
+
+        await _grants.ReplaceAsync(agent, mine, cancellationToken).ConfigureAwait(false);
+
+        // An open session lists what it was told when it opened. Leaving it would show the agent
+        // the set it had before this save until something else closed it — the "tick that changes
+        // nothing" again, one layer down.
+        if (theirs.Count > 0)
+        {
+            await ForgetAgentAsync(agent).ConfigureAwait(false);
+        }
+    }
+
+    private HubProvisioner ProvisionerFor(string upstreamKey) =>
+        new(_hubAdmin(upstreamKey), _identities!, upstreamKey);
+
+    /// <summary>The self-enforcing upstream a tool belongs to, or null when it is this server's to grant.</summary>
+    private string? OwnerOf(string toolName) => _selfEnforcing
+        .FirstOrDefault(u => toolName.StartsWith(u.Key + ProxyConstants.NamespaceSeparator, StringComparison.Ordinal))
+        ?.Key;
+
+    /// <summary>
+    /// A tool name as this server advertises it, from the name its own upstream uses.
+    ///
+    /// <para>The two differ by exactly one prefix: an MCPHub proxied under <c>hub</c> calls a tool
+    /// <c>recipes__list</c> and this server calls it <c>hub__recipes__list</c>. Grants cross that
+    /// boundary in both directions, and getting it wrong means granting a tool nobody has.</para>
+    /// </summary>
+    private static string Qualify(string upstreamKey, string toolName) =>
+        upstreamKey + ProxyConstants.NamespaceSeparator + toolName;
+
+    /// <inheritdoc cref="Qualify"/>
+    private static string Unqualify(string upstreamKey, string toolName) =>
+        toolName[(upstreamKey.Length + ProxyConstants.NamespaceSeparator.Length)..];
 
     /// <summary>
     /// Connect the configured upstreams. One failing does not stop the others: losing a GitHub
@@ -167,19 +273,16 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
             }
         }
 
-        // Noted rather than acted on: an agent's own session with one of these is opened the first
-        // time that agent asks for anything, because most agents never will.
-        _selfEnforcing.AddRange(_options.Upstreams.Where(u => u is { PerAgentIdentity: true, Url.Length: > 0 }));
-        if (_selfEnforcing.Count > 0 && _identities is null)
+        // An agent's own session with a self-enforcing upstream is opened the first time that agent
+        // asks for anything, because most agents never will.
+        if (_identities is null
+            && _options.Upstreams.Any(u => u is { PerAgentIdentity: true, Url.Length: > 0 }))
         {
             // Configured to defer to an upstream with nowhere to remember who the agent is there.
             // Said once, loudly: the alternative is every agent silently getting no tools from it.
             Console.Error.WriteLine(
-                "mcp: "
-                + string.Join(", ", _selfEnforcing.Select(u => $"'{u.Key}'"))
-                + " asked for per-agent identities, but this server has no store for them; their tools "
-                + "will not be offered.");
-            _selfEnforcing.Clear();
+                "mcp: an upstream asked for per-agent identities, but this server has no store for "
+                + "them; its tools will not be offered.");
         }
 
         _connected = true;
@@ -205,8 +308,7 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
         {
             try
             {
-                var provisioner = new HubProvisioner(new McpHubAdmin(_registry, upstream.Key), _identities!, upstream.Key);
-                var identity = await provisioner.EnsureAsync(agent).ConfigureAwait(false);
+                var identity = await ProvisionerFor(upstream.Key).EnsureAsync(agent).ConfigureAwait(false);
 
                 var registry = new UpstreamRegistry(_loggerFactory);
                 await registry.ConnectAsync(
