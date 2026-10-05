@@ -814,6 +814,42 @@ Two things learned pointing it at a real code:
   what it finds goes into the field rather than straight into a connection — it is the one value on
   that screen nobody can check by reading it back.
 
+### 7d. Three things the phone gets wrong — to fix
+
+*Raised 2026-10-05, from using it.* None of these is a missing feature; all three are a feature
+that exists and does not survive contact with a phone.
+
+**Switching rooms is hidden, and then it is in the way.** The speech-bubble mark in the rail is the
+rooms toggle (`data-rooms-toggle`, §7 markup) and on a narrow screen it is the *only* way to change
+room — but nothing says so: it sits where every app puts a logo, unlabelled. Meanwhile the header
+names the current room and is not tappable, which is where a thumb goes and where every other chat
+app puts that control. Worse, picking a room leaves the overlay up: the `data-room` handler calls
+`SwitchTo` and stops, so the room just opened is still covered by the list, and there is no scrim
+or tap-outside to dismiss it. Every switch is three taps with the screen obscured in the middle.
+`TappingARoomInTheOverlaySwitchesToIt` asserts `ActiveRoom` changed, not that you can see it.
+
+- Close the overlay after a pick when narrow — `ResetRooms()` hands it back to the stylesheet,
+  which hides it there — for `data-room` and `data-join` alike.
+- Make the header's room name a second `data-rooms-toggle`, so the obvious target works.
+- Test: after tapping a room on a phone, the list is gone and the timeline is on screen.
+
+**The phone forgets the account every time.** `StoredCredentials` exists and does exactly this job
+— "kept so that starting it again does not mean typing a password again" — and only
+`Banter.App.Desktop/Program.cs` uses it. The Android head never saves or loads it, so every launch
+is a sign-in, on the device where typing a password is most expensive. It needs the head to supply
+an `ISecretProtector` (Android Keystore, or `ISecretProtector.None` plus the app's private
+storage, which is already per-app on Android) and to load on start as the desktop does.
+
+**Reconnecting spams every room.** §7a is the cause: Android destroys the socket on a trip out of
+the foreground, and `RemoveFromAllRoomsAsync` broadcasts a `PART` when the account's last session
+goes, with a `JOIN` on the way back in. On a desktop that is honest. On a phone it is a pocket's
+worth of "left the room / joined the room" in every room, for somebody who never went anywhere —
+and it is loudest for an admin who is in all of them. The per-user guard that stops a second device
+reading as a second person is the right idea applied at the wrong scale; it needs a *time* grace to
+match: hold the account present for a few seconds after its last session drops, and if a session
+returns within it, announce nothing at all. `BanterClientOptions.ReconnectGrace` is the same shape
+on the client side, so the two should be named and tuned together.
+
 ## 8. Agent integration
 
 Three paths, one outcome: an agent is a Banter user. Ordered by priority:
