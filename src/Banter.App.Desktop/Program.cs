@@ -161,6 +161,7 @@ var app = new BanterChatApp(vm)
     AgentRemoveAsync = name => session?.RemoveAgentIdentityAsync(name) ?? Task.CompletedTask,
     UsersListAsync = () => session?.LoadUsersAsync() ?? Task.CompletedTask,
     WorkListAsync = () => session?.LoadAllTasksAsync() ?? Task.CompletedTask,
+    HubsListAsync = () => session?.LoadHubsAsync() ?? Task.CompletedTask,
     UserCreateAsync = (name, admin) => session?.CreateUserAccountAsync(name, admin) ?? Task.CompletedTask,
     UserResetAsync = name => session?.ResetUserPasswordAsync(name) ?? Task.CompletedTask,
     UserSetAdminAsync = (name, admin) => session?.SetUserAdminAsync(name, admin) ?? Task.CompletedTask,

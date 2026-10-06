@@ -102,6 +102,28 @@ public sealed partial class BanterChatSession
         }
     }
 
+    /// <summary>
+    /// The hubs page. Read-only: this asks the hubs what they say about themselves and the
+    /// agents on them, and changing any of it is MCPHub's own job (the hub is the authority;
+    /// Banter manages it). A hub that cannot be reached still appears, with the reason - that is
+    /// the state the page exists to make visible.
+    /// </summary>
+    public async Task LoadHubsAsync()
+    {
+        try
+        {
+            var hubs = await _client.InspectHubsAsync().ConfigureAwait(false);
+            _vm.Post(() => _vm.SetHubs(hubs));
+        }
+        catch (BanterErrorException ex)
+        {
+            // NO_TOOLS lands here too, and is not a fault: a server with no tool backend has no
+            // hubs, and the page says so rather than showing an empty list that looks like a
+            // failed load.
+            _vm.Post(() => _vm.HubsUnavailable(ex.Message));
+        }
+    }
+
     // ---- The users tab ----
 
     public async Task LoadUsersAsync()

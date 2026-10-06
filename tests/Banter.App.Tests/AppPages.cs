@@ -13,7 +13,7 @@ namespace Banter.App.Tests;
 public static class AppPages
 {
     public static readonly string[] Names =
-        ["chat", "connect", "tools", "agents", "users", "work", "settings"];
+        ["chat", "connect", "tools", "agents", "users", "work", "hubs", "settings"];
 
     /// <summary>Density-independent pixels, which is what the Android host hands <c>Present</c>
     /// after dividing by density. A mid-size phone portrait, the same phone landscape, and a small
@@ -89,6 +89,13 @@ public static class AppPages
             case "agents": vm.ShowAgentsPanel(true); break;
             case "users": vm.ShowUsersPanel(true); break;
             case "work": vm.ShowWorkPanel(true); break;
+            case "hubs":
+                // With a hub selected, because the detail pane is most of this page and an empty
+                // one would hide every field these checks are here to look at.
+                vm.SetHubs([Hubs.Sample]);
+                vm.ShowHubsPanel(true);
+                vm.SelectHub(Hubs.Sample.Key);
+                break;
             case "settings":
                 vm.SetVoiceSettings(
                     "local", "en", "dagger", "http://localhost:1234", "localhost:10200",

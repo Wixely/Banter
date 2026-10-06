@@ -389,6 +389,18 @@ public sealed partial class BanterClient : IAsyncDisposable
         RequestAsync<ToolListPayload>(new ToolListPayload([]), cancellationToken);
 
     /// <summary>
+    /// The tool hubs this server defers to: whether it can reach each one, how much each offers,
+    /// and which agents hold an identity there.
+    ///
+    /// <para>Admin-only, because it is a map of the estate rather than a list of what you may
+    /// call. It carries no keys — an agent's hub key stays with the server that calls as it, and
+    /// is never put on the wire (see <c>HubAgentPayload</c>).</para>
+    /// </summary>
+    public async Task<IReadOnlyList<HubPayload>> InspectHubsAsync(CancellationToken cancellationToken = default) =>
+        (await RequestAsync<HubReportPayload>(new HubInspectPayload(), cancellationToken)
+            .ConfigureAwait(false)).Hubs;
+
+    /// <summary>
     /// Ask the server to run a tool. The server executes it — this client never holds the
     /// upstream's credentials (PLAN §8). Name the room and the call is announced there, so the
     /// operator watching can see what the agent reached for.

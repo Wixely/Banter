@@ -310,6 +310,51 @@ public sealed partial class RosterUserRow
     public string RowClass { get; set; } = "member";
 }
 
+/// <summary>One tool hub on the hubs page, as the list shows it.</summary>
+[CupriBindable]
+public sealed partial class AdminHubRow
+{
+    /// <summary>The upstream's key here, which is also the prefix on every tool it offers.</summary>
+    public string HubKey { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    /// <summary>"17 tools · 2 agents" — the size of it, without opening it.</summary>
+    public string Detail { get; set; } = "";
+
+    public string Initials { get; set; } = "";
+
+    /// <summary>What it is doing: "connected", or why it is not.</summary>
+    public string State { get; set; } = "";
+
+    public string StateClass { get; set; } = "mgmt-state";
+    public string RowClass { get; set; } = "mgmt-row";
+}
+
+/// <summary>
+/// One agent's identity on the selected hub.
+///
+/// <para>There is no key here and there never will be: the hub shows one once, the server keeps
+/// it to call as that agent, and putting it on the wire would scatter copies of a live credential
+/// to every admin client. What an operator needs is the hub's own id for the agent — that is what
+/// its grants are keyed by over there — and when the key was issued, so a rotation is visible.</para>
+/// </summary>
+[CupriBindable]
+public sealed partial class HubAgentRow
+{
+    public string Agent { get; set; } = "";
+    public string Initials { get; set; } = "";
+
+    /// <summary>The hub's id for this agent.</summary>
+    public string UserId { get; set; } = "";
+
+    /// <summary>When its key was issued, in words.</summary>
+    public string Issued { get; set; } = "";
+
+    /// <summary>What the hub grants it, named as this server advertises them.</summary>
+    public string Tools { get; set; } = "";
+}
+
 /// <summary>One task on the work page, as the list shows it.</summary>
 [CupriBindable]
 public sealed partial class AdminTaskRow
@@ -496,6 +541,8 @@ public sealed partial class ChatModel
     public string UsersPanelClass { get; set; } = "mgmt hidden";
     public string WorkButtonClass { get; set; } = "rail-button hidden";
     public string WorkPanelClass { get; set; } = "mgmt hidden";
+    public string HubsButtonClass { get; set; } = "rail-button hidden";
+    public string HubsPanelClass { get; set; } = "mgmt hidden";
     public string SettingsButtonClass { get; set; } = "rail-button";
     public string SettingsPanelClass { get; set; } = "mgmt hidden";
 
@@ -529,10 +576,28 @@ public sealed partial class ChatModel
     public string AgentsStatus { get; set; } = "";
     public string UsersStatus { get; set; } = "";
     public string WorkStatus { get; set; } = "";
+    public string HubsStatus { get; set; } = "";
 
     // The work page: every room's tasks, for an operator rather than a participant. The roster's
     // Work strip stays what it is — this room, title and state, glanceable — because the two
     // answer different questions.
+    // The hubs page: what this server defers to for tools, and who it knows there. Read-only -
+    // MCPHub is the authority and Banter manages it, so this page reports rather than decides.
+    public List<AdminHubRow> AdminHubs { get; set; } = [];
+    public string HubSelected { get; set; } = "";
+    public string HubDetailClass { get; set; } = "mgmt-detail hidden";
+    public string HubEmptyClass { get; set; } = "mgmt-empty";
+    public string HubDetailTitle { get; set; } = "";
+    public string HubDetailSubtitle { get; set; } = "";
+    public string HubState { get; set; } = "";
+    public string HubKey { get; set; } = "";
+    public string HubTools { get; set; } = "";
+    public string HubManagement { get; set; } = "";
+    public List<HubAgentRow> HubAgents { get; set; } = [];
+
+    /// <summary>Hidden when the hub knows nobody: an empty agent list reads as a failed load.</summary>
+    public string HubAgentsClass { get; set; } = "mgmt-field hidden";
+
     public List<AdminTaskRow> AdminTasks { get; set; } = [];
     public string TaskSelected { get; set; } = "";
     public string TaskDetailClass { get; set; } = "mgmt-detail hidden";

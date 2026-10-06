@@ -93,6 +93,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Reads every room's work. Admin-only on the server.</summary>
     public Func<Task> WorkListAsync { get; init; } = () => Task.CompletedTask;
 
+    /// <summary>
+    /// Asks the server about its tool hubs. Admin-only there, and read-only here: the page
+    /// reports what MCPHub says rather than offering to change it.
+    /// </summary>
+    public Func<Task> HubsListAsync { get; init; } = () => Task.CompletedTask;
+
     /// <summary>(username, isAdmin) — the reply's temporary password is the host's to show.</summary>
     public Func<string, bool, Task> UserCreateAsync { get; init; } = (_, _) => Task.CompletedTask;
 
@@ -315,6 +321,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <div class="clip-line clip-b"></div>
               </div>
             </div>
+            <!-- A plug: what is plugged INTO this server. Deliberately not another node graph -
+                 the agents icon is already one, and two graphs in one rail is two buttons nobody
+                 can tell apart. -->
+            <div class="{{HubsButtonClass}}" data-hubs-open="1">
+              <div class="icon-hub">
+                <div class="hub-prong hub-prong-left"></div>
+                <div class="hub-prong hub-prong-right"></div>
+                <div class="hub-body"></div>
+                <div class="hub-lead"></div>
+              </div>
+            </div>
             <div class="{{SettingsButtonClass}}" data-settings-open="1">
               <div class="icon-settings">
                 <div class="cog-tooth cog-a"></div>
@@ -534,6 +551,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           {{{AgentsPage}}}
           {{{UsersPage}}}
           {{{WorkPage}}}
+          {{{HubsPage}}}
           <div class="{{SettingsPanelClass}} settings-overlay">
             <div class="mgmt-backdrop" data-settings-close="1"></div>
             <div class="mgmt-card settings-card">
@@ -1040,6 +1058,90 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     </div>
     """;
 
+    private static readonly string HubRowBody = """
+    <div class="mgmt-row-inner">
+      <span class="mgmt-pfp">{{Initials}}</span>
+      <span class="mgmt-row-main">
+        <span class="mgmt-row-name">{{Name}}</span>
+        <span class="mgmt-row-detail">{{Detail}}</span>
+        <span class="{{StateClass}}">{{State}}</span>
+      </span>
+    </div>
+    """;
+
+    /// <summary>
+    /// Who the hub knows. Rows rather than a line of text because each one carries three separate
+    /// facts — the hub's own id for the agent, when its key was issued, and what the hub grants
+    /// it — and the third is a list that can be long.
+    ///
+    /// <para>No action on a row. Every other repeat in this app is clickable and this one is not,
+    /// which is the honest shape: there is nothing here this client may change (see
+    /// <c>ChatViewModel.Hubs</c>).</para>
+    /// </summary>
+    private static readonly string HubAgentRows = """
+    <div class="hub-rows">
+      <div class="hub-agent" data-repeat="HubAgents">
+        <div class="mgmt-row-inner">
+          <span class="mgmt-pfp">{{Initials}}</span>
+          <span class="mgmt-row-main">
+            <span class="mgmt-row-name">{{Agent}}</span>
+            <span class="mgmt-row-detail">{{UserId}} · {{Issued}}</span>
+            <span class="hub-grants">{{Tools}}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    """;
+
+    /// <summary>
+    /// The tool hubs this server defers to. The fourth instantiation of the management template,
+    /// and read-only like the work page: MCPHub is the authority and Banter manages it, so a page
+    /// that edited grants here would be a second place to decide the same thing — further from
+    /// where it is enforced, and free to disagree with it.
+    /// </summary>
+    private static string HubsPage => ManagementPage(
+        panelClass: "{{HubsPanelClass}}",
+        closeAction: "data-hubs-close",
+        listTitle: "MCPHub",
+        listSubtitle: "Where the tools come from.",
+        newLabel: "",
+        newAction: "data-hubs-none",
+        status: "{{HubsStatus}}",
+        rowsBinding: "AdminHubs",
+        rowAction: "data-admin-hub",
+        rowKey: "{{HubKey}}",
+        rowBody: HubRowBody,
+        emptyClass: "{{HubEmptyClass}}",
+        emptyText: "Choose a hub to see what it offers and who it knows.",
+        detailClass: "{{HubDetailClass}}",
+        detailTitle: "{{HubDetailTitle}}",
+        detailSubtitle: "{{HubDetailSubtitle}}",
+        removeClass: "mgmt-remove hidden",
+        removeLabel: "",
+        fields: string.Concat(
+            Field("Reachability", ReadOnlyControl("{{HubState}}"),
+                "A hub this server cannot reach offers nothing to anyone, whatever it holds."),
+            Field("Tools", ReadOnlyControl("{{HubTools}}"),
+                "What it offers the user this server connects as. An agent sees its own share of "
+                + "this, which is the Agents rows below."),
+            Field("Prefix", ReadOnlyControl("{{HubKey}}"),
+                "Every tool it offers is named under this, so a call can always be traced back "
+                + "to the hub that answers it."),
+            Field("Management", ReadOnlyControl("{{HubManagement}}"),
+                "Provisioning an agent means creating a user on the hub and granting it tools "
+                + "there. That takes the hub's own management tools, and it does not have to "
+                + "offer them."),
+            Field("Agents", HubAgentRows,
+                "What the HUB grants each agent, as the hub reports it. The tools panel shows "
+                + "what Banter grants; when the two disagree the hub wins, so both are worth "
+                + "being able to see.", "{{HubAgentsClass}}")),
+        dirtyClass: "mgmt-dirty hidden",
+        cancelClass: "mgmt-cancel-hub",
+        saveClass: "mgmt-save-hub hidden",
+        saveLabel: "",
+        newClass: "mgmt-new hidden",
+        footerClass: "mgmt-footer hidden");
+
     private static string UsersPage => ManagementPage(
         panelClass: "{{UsersPanelClass}}",
         closeAction: "data-users-close",
@@ -1206,6 +1308,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .net-edge-up { left: 11px; top: 4px; width: 2px; height: 7px; }
         .net-edge-left { left: 3px; top: 14px; width: 11px; height: 2px; transform: rotate(-41deg); }
         .net-edge-right { left: 11px; top: 14px; width: 11px; height: 2px; transform: rotate(41deg); }
+
+        /* A plug: two prongs, a body, and a lead going down out of it. The prongs are drawn
+           before the body so the body's own fill hides the ends that would otherwise show
+           through it - the same trick the chat tail and the node edges use. */
+        .icon-hub { position: relative; width: 22px; height: 22px; }
+        .hub-prong { position: absolute; top: 0px; width: 3px; height: 8px; border-radius: 2px;
+                     background: #bec5cf; }
+        .hub-prong-left { left: 5px; }
+        .hub-prong-right { left: 14px; }
+        .hub-body { position: absolute; left: 2px; top: 6px; width: 18px; height: 9px;
+                    border-radius: 3px; background: #bec5cf; }
+        .hub-lead { position: absolute; left: 9px; top: 14px; width: 4px; height: 8px;
+                    border-radius: 2px; background: #bec5cf; }
 
         /* A clipboard: a board, the clip across its top, and two lines of writing on it. */
         .icon-work { position: relative; width: 22px; height: 22px; }
@@ -1845,6 +1960,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            on .mgmt-rows: that rule carries flex:1, which in a column with no height of its own
            collapsed the list to nothing, and a compound selector did not reliably outrank it. */
         .voice-rows { height: 150px; overflow: scroll; padding-right: 10px; }
+
+        /* The hub's agents. Capped and scrolling for the same reason the voice list is: it grows
+           with the estate, and a hub with a dozen agents on it would otherwise push every field
+           below it off the bottom of the card. Taller than the voice list because each row here
+           carries three lines rather than two. */
+        .hub-rows { height: 190px; overflow: scroll; padding-right: 10px; }
+        .hub-agent { padding: 7px 8px; border-radius: 10px; background: #12161d;
+                     margin-bottom: 6px; }
+        /* The granted names, which is the longest thing on the row and the thing most worth
+           reading in full - so it wraps rather than being cut, and sits under the name it
+           belongs to. */
+        .hub-grants { font-size: 11px; color: #8d97a6; padding-top: 3px; }
         .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
 
         /* ── Confirming something destructive ──────────────────────────────────────────────
@@ -2308,6 +2435,42 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             ViewModel.ShowWorkPanel(false);
             doc.Refresh();
             return true;
+        });
+
+        // The hubs page. Read once on opening rather than polled like work: a hub's state and its
+        // grants change when an operator changes them, not on their own, and re-asking every few
+        // seconds would mean a round trip to every upstream for a page nobody is editing.
+        doc.OnAction("data-hubs-open", _unused =>
+        {
+            ViewModel.ShowHubsPanel(true);
+            _ = HubsListAsync();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-hubs-close", _unused =>
+        {
+            ViewModel.ShowHubsPanel(false);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-admin-hub", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.SelectHub(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnClick(".mgmt-cancel-hub", _unused =>
+        {
+            ViewModel.ClearHubDetail();
+            doc.Refresh();
         });
 
         doc.OnAction("data-admin-task", e =>

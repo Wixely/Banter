@@ -21,12 +21,13 @@ public sealed partial class ChatViewModel
 
     public void ShowWorkPanel(bool show)
     {
-        Model.WorkPanelClass = show ? "mgmt" : "mgmt hidden";
         if (show)
         {
-            Model.AgentsPanelClass = "mgmt hidden";
-            Model.UsersPanelClass = "mgmt hidden";
-            Model.SettingsPanelClass = "mgmt hidden";
+            OnlyPanel(Panel.Work);
+        }
+        else
+        {
+            Model.WorkPanelClass = "mgmt hidden";
         }
 
         ClearTaskDetail();

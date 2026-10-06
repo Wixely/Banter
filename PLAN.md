@@ -1474,9 +1474,19 @@ connects the upstreams, and agents ask it to act.
   until Save sends the complete set. The button only appears once a catalogue has actually come
   back, so an account that would only ever be refused never sees it.
 
-Still open: per-agent MCPHub tokens (grants live in Banter's own `tool_grants` table today, not in
-MCPHub's tenancy seam), and a persisted audit log — the audit is currently a room message plus a
-stderr line.
+- **The MCPHub panel** (rail, admin-only) is where the hub side is read: hubs down the left, and
+  for the selected one its reachability, how much it offers, whether it lets us manage it, and
+  every agent with an identity there — the hub's own id for each, when its key was issued, and
+  **what the hub grants it**, as the hub reports it. Read-only, deliberately: MCPHub is the
+  authority and Banter manages it, so a page that edited grants here would be a second place to
+  decide one thing, further from where it is enforced and free to disagree with it. The pairing is
+  the point — the tools panel shows what *Banter* grants, this shows what the *hub* grants, and an
+  operator can only notice they disagree if something shows both. A hub that cannot be reached is
+  still listed, with its state in words, because that state is the answer to "why can this agent
+  not use that tool". No key reaches the client: an agent's hub key stays on the server that calls
+  as it, and an integration test asserts it is absent from the serialised reply.
+
+Still open: a persisted audit log — the audit is currently a room message plus a stderr line.
 
 ### 8c-a. Structured asks: an agent asking a question it can be answered by clicking — ✅ shipped
 

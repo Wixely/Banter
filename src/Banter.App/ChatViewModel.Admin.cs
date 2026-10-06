@@ -30,18 +30,51 @@ public sealed partial class ChatViewModel
 
     // ── Opening and closing ──────────────────────────────────────────────────────────────────
 
+    /// <summary>The five pages the rail opens. One of them at a time — see <see cref="OnlyPanel"/>.</summary>
+    private enum Panel
+    {
+        Agents,
+        Users,
+        Work,
+        Hubs,
+        Settings,
+    }
+
+    /// <summary>
+    /// Opens one page and closes the rest, because the rail is a place you ARE rather than a set
+    /// of things you have open.
+    ///
+    /// <para>One method rather than a line per page in each of five openers, which is what this
+    /// was and which had already drifted: the agents page closed users and nothing else, work
+    /// closed three of the four, and settings closed two — so opening agents over work left both
+    /// cards stacked, and which one you got depended on the order you had clicked. Adding a page
+    /// meant remembering four other methods. Now it means adding a name to the enum.</para>
+    /// </summary>
+    private void OnlyPanel(Panel open)
+    {
+        Model.AgentsPanelClass = Class(Panel.Agents);
+        Model.UsersPanelClass = Class(Panel.Users);
+        Model.WorkPanelClass = Class(Panel.Work);
+        Model.HubsPanelClass = Class(Panel.Hubs);
+        Model.SettingsPanelClass = Class(Panel.Settings);
+
+        string Class(Panel p) => p == open ? "mgmt" : "mgmt hidden";
+    }
+
     /// <summary>
     /// Show or hide the agents page. Agents and users are separate pages rather than tabs in one:
     /// they are separate jobs — who may run in a room versus who may sign in — and each has its
-    /// own way into the rail. Opening either closes the other, because the rail is a place you
-    /// are, not a set of things you have open.
+    /// own way into the rail.
     /// </summary>
     public void ShowAgentsPanel(bool show)
     {
-        Model.AgentsPanelClass = show ? "mgmt" : "mgmt hidden";
         if (show)
         {
-            Model.UsersPanelClass = "mgmt hidden";
+            OnlyPanel(Panel.Agents);
+        }
+        else
+        {
+            Model.AgentsPanelClass = "mgmt hidden";
         }
 
         // Leaving a page drops what was on it: a half-typed form is not worth restoring, and a
@@ -52,10 +85,13 @@ public sealed partial class ChatViewModel
 
     public void ShowUsersPanel(bool show)
     {
-        Model.UsersPanelClass = show ? "mgmt" : "mgmt hidden";
         if (show)
         {
-            Model.AgentsPanelClass = "mgmt hidden";
+            OnlyPanel(Panel.Users);
+        }
+        else
+        {
+            Model.UsersPanelClass = "mgmt hidden";
         }
 
         ClearUserDetail();
@@ -66,12 +102,14 @@ public sealed partial class ChatViewModel
 
     public bool UsersPanelOpen => !Model.UsersPanelClass.Contains("hidden", StringComparison.Ordinal);
 
-    /// <summary>Both buttons appear only for an admin — for anyone else the verbs would be refused.</summary>
+    /// <summary>These buttons appear only for an admin — for anyone else the verbs would be refused.</summary>
     public void SetIsAdmin(bool isAdmin)
     {
-        Model.AgentsButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
-        Model.UsersButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
-        Model.WorkButtonClass = isAdmin ? "rail-button" : "rail-button hidden";
+        var shown = isAdmin ? "rail-button" : "rail-button hidden";
+        Model.AgentsButtonClass = shown;
+        Model.UsersButtonClass = shown;
+        Model.WorkButtonClass = shown;
+        Model.HubsButtonClass = shown;
     }
 
     // ── The one-shot secret banner ───────────────────────────────────────────────────────────
@@ -631,16 +669,18 @@ public sealed partial class ChatViewModel
 
     public void ShowSettingsPanel(bool show)
     {
-        Model.SettingsPanelClass = show ? "mgmt" : "mgmt hidden";
         if (show)
         {
-            Model.AgentsPanelClass = "mgmt hidden";
-            Model.UsersPanelClass = "mgmt hidden";
+            OnlyPanel(Panel.Settings);
 
             // Opening the page is what guarantees the sections exist: a head that never called
             // SetVoiceSettings would otherwise show a card with no tabs and no way to reach
             // anything but the first group.
             ShowSettingsSection(SettingsSection);
+        }
+        else
+        {
+            Model.SettingsPanelClass = "mgmt hidden";
         }
     }
 
