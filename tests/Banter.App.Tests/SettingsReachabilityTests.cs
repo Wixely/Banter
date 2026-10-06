@@ -83,22 +83,21 @@ public sealed class SettingsReachabilityTests(ITestOutputHelper output)
     /// A short window is the other way to lose a setting. The card is centred in the viewport, so
     /// a card taller than the viewport loses its head and its foot at once - the Close button at
     /// one end and the last field at the other, both off-screen with nothing to scroll, which is
-    /// what 1280x520 did before <see cref="BanterChatApp.ShortHeight"/> existed.
+    /// what 1280x520 did before the card was given a ceiling.
     ///
-    /// <para>The windows are picked from that constant rather than written out, so the test fails
-    /// if the number and the <c>@media</c> it has to match ever drift apart. All of them are wide
-    /// enough that the phone rules do not apply - this is the desktop card - and above the design
-    /// width Adaptive clamps at scale 1, so the logical viewport is the window's own short height.
-    /// </para>
+    /// <para>Every window here is wide enough that the phone rules do not apply - this is the
+    /// desktop card - and above the design width Adaptive clamps at scale 1, so the logical
+    /// viewport is the window's own short height. 684 is what the card asks for (620 and 32 of
+    /// margin a side), so the sizes step either side of it.</para>
     /// </summary>
     [Theory]
-    [InlineData(1600, 0.75f)]     // short and wide: the letterbox the width rules do not catch
-    [InlineData(1280, 0.98f)]     // just inside the breakpoint
-    [InlineData(1280, 1.02f)]     // and just outside it, where the card is a card again
-    [InlineData(1280, 1.5f)]      // the ordinary desktop window
-    public void TheCardNeverGrowsPastTheWindow(int w, float ofShortHeight)
+    [InlineData(1600, 525)]       // short and wide: the letterbox the width rules do not catch
+    [InlineData(1280, 520)]       // what used to hang 51px off each end
+    [InlineData(1280, 680)]       // a few px short of what the card wants
+    [InlineData(1280, 700)]       // a few px more than it wants
+    [InlineData(1280, 1050)]      // the ordinary desktop window
+    public void TheCardNeverGrowsPastTheWindow(int w, int h)
     {
-        var h = (int)MathF.Round(BanterChatApp.ShortHeight * ofShortHeight);
         var app = AppPages.Showing("settings");
         using var doc = app.CreateDocument();
         doc.Refresh();
