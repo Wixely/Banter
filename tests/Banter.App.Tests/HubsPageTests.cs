@@ -255,6 +255,116 @@ public sealed class HubsPageTests(ITestOutputHelper output)
         }
     }
 
+    // -- Acting on an identity ----------------------------------------------------------------
+
+    /// <summary>
+    /// A hub that will not be managed gets no buttons. Both would be refused by the hub, and a
+    /// control that cannot work is worse than no control: it reads as the hub being broken rather
+    /// than as this server not being allowed.
+    /// </summary>
+    [Theory]
+    [InlineData(true, "hub-acts")]
+    [InlineData(false, "hub-acts hidden")]
+    public void TheActionsFollowWhetherTheHubWillBeManaged(bool administrable, string expected)
+    {
+        var vm = Admin();
+        vm.SetHubs([new HubPayload("h", "H", "Connected", "", 4, administrable, [Hubs.Agent("scribe")])]);
+        vm.SelectHub("h");
+
+        Assert.Equal(expected, vm.Model.HubAgents[0].ActsClass);
+    }
+
+    /// <summary>
+    /// Rotation goes straight through. It is the remedy for a key that has leaked: the server
+    /// mints the replacement and keeps it, so the agent carries on and what stops working is the
+    /// copy somebody else has. A dialog in front of that is a dialog in somebody's way.
+    /// </summary>
+    [Fact]
+    public void RotatingNamesTheHubAndTheAgentAndAsksNothing()
+    {
+        var vm = Admin();
+        vm.SetHubs([Hubs.Sample]);
+        vm.SelectHub("mcphub");
+
+        Assert.Equal(("mcphub", "scribe"), vm.RotateTarget("scribe"));
+        Assert.False(vm.ConfirmOpen);
+    }
+
+    /// <summary>With no hub selected there is no identity to name, so the row cannot act.</summary>
+    [Fact]
+    public void NothingRotatesWithoutASelectedHub()
+    {
+        var vm = Admin();
+        vm.SetHubs([Hubs.Sample]);
+
+        Assert.Null(vm.RotateTarget("scribe"));
+        Assert.Null(vm.RotateTarget(""));
+    }
+
+    /// <summary>
+    /// Removal asks, names both subjects, and says what is actually lost - the hub deletes the
+    /// user's grants with the user, so this is not something an operator can put back by clicking
+    /// again.
+    /// </summary>
+    [Fact]
+    public void RemovingAnIdentityAsksFirstAndNamesBoth()
+    {
+        var vm = Admin();
+        vm.SetHubs([Hubs.Sample]);
+        vm.SelectHub("mcphub");
+
+        vm.ConfirmForgetHubIdentity("scribe");
+
+        Assert.True(vm.ConfirmOpen);
+        output.WriteLine($"{vm.Model.ConfirmTitle} / {vm.Model.ConfirmBody}");
+        Assert.Contains("scribe", vm.Model.ConfirmTitle, StringComparison.Ordinal);
+        Assert.Contains("MCPHub", vm.Model.ConfirmTitle, StringComparison.Ordinal);
+        Assert.Contains("granted to it there", vm.Model.ConfirmBody, StringComparison.Ordinal);
+
+        Assert.Equal(
+            new Confirmed(ConfirmAct.ForgetHubIdentity, "scribe", "mcphub"),
+            vm.TakeConfirmed());
+
+        // Taken once: a second click on a dialog already gone must not remove anything.
+        Assert.Null(vm.TakeConfirmed());
+    }
+
+    /// <summary>
+    /// The hub is remembered with the question rather than read when it is answered. A reply can
+    /// arrive and reselect in between, and "whatever is selected now" would then remove an
+    /// identity from a hub nobody asked about.
+    /// </summary>
+    [Fact]
+    public void TheQuestionRemembersWhichHubItWasAbout()
+    {
+        var vm = Admin();
+        vm.SetHubs([Hubs.Sample, new HubPayload("other", "Other", "Connected", "", 1, true, [])]);
+        vm.SelectHub("mcphub");
+        vm.ConfirmForgetHubIdentity("scribe");
+
+        // A refresh lands and the operator is looking at the other hub by the time they click.
+        vm.SelectHub("other");
+
+        Assert.Equal(
+            new Confirmed(ConfirmAct.ForgetHubIdentity, "scribe", "mcphub"),
+            vm.TakeConfirmed());
+    }
+
+    /// <summary>Cancelling removes nothing and forgets the subject with the question.</summary>
+    [Fact]
+    public void CancellingForgetsTheQuestion()
+    {
+        var vm = Admin();
+        vm.SetHubs([Hubs.Sample]);
+        vm.SelectHub("mcphub");
+        vm.ConfirmForgetHubIdentity("scribe");
+
+        vm.CancelConfirm();
+
+        Assert.False(vm.ConfirmOpen);
+        Assert.Null(vm.TakeConfirmed());
+    }
+
     /// <summary>
     /// The grants reach the screen. Every view-model check above would pass with the field never
     /// rendered, which is how a page comes to show nothing while the tests are green.

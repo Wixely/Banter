@@ -811,6 +811,34 @@ public sealed record HubPayload(
 public sealed record HubReportPayload(
     [property: Key(0)] IReadOnlyList<HubPayload> Hubs);
 
+/// <summary>
+/// Admin: issue this agent a new key on this hub, retiring the one it holds.
+///
+/// <para>For a key that has leaked, or an agent handed to somebody else. The hub retires the old
+/// one as it issues the new, so it is also the only honest way to cut off an agent that still has
+/// a copy. The agent's open sessions on that hub are dropped with it — they are authenticated as
+/// nobody the moment the key changes.</para>
+///
+/// <para>Answered with a <see cref="HubReportPayload"/>: the new key never leaves the server, so
+/// there is nothing else to hand back, and the page that asked needs the state it just changed.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record HubRotatePayload(
+    [property: Key(0)] string Hub,
+    [property: Key(1)] string Agent);
+
+/// <summary>
+/// Admin: remove this agent's identity from this hub.
+///
+/// <para>Deleted there as well as forgotten here: a user left behind on the hub holds a key this
+/// server no longer tracks. The hub drops its grants with the user, so nothing is left naming an
+/// id nobody holds.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record HubForgetPayload(
+    [property: Key(0)] string Hub,
+    [property: Key(1)] string Agent);
+
 // ---- Agent identities (PLAN §8a) ----
 
 /// <summary>

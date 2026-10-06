@@ -324,6 +324,14 @@ internal sealed partial class RoomEngine(
             case HubInspectPayload:
                 await HandleHubInspectAsync(session, envelope).ConfigureAwait(false);
                 break;
+            case HubRotatePayload rotate:
+                await HandleHubChangeAsync(session, envelope, rotate.Hub, rotate.Agent, rotate: true)
+                    .ConfigureAwait(false);
+                break;
+            case HubForgetPayload forget:
+                await HandleHubChangeAsync(session, envelope, forget.Hub, forget.Agent, rotate: false)
+                    .ConfigureAwait(false);
+                break;
             default:
                 session.Send(new ErrorPayload("UNSUPPORTED", $"{envelope.Type} is not supported yet."), replyTo: envelope.MsgId);
                 break;
@@ -1129,6 +1137,72 @@ internal sealed partial class RoomEngine(
 
         var hubs = await _tools.InspectHubsAsync().ConfigureAwait(false);
         session.Send(new HubReportPayload(hubs), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Rotating an agent's key on a hub, or removing its identity there. One handler because they
+    /// differ in a single call: everything around it - who may ask, what must be named, what the
+    /// hub refusing looks like, and what comes back - is the same, and the two drifting apart
+    /// would mean one of them quietly stopped being admin-only.
+    ///
+    /// <para>Answered with the fresh report rather than an Ok. The client that asked is showing
+    /// the state this just changed, and a second round trip to find out what it is now is a window
+    /// in which the page is wrong. There is also nothing else to hand back: a rotated key stays on
+    /// this server, which is the whole point of minting it here.</para>
+    /// </summary>
+    private async Task HandleHubChangeAsync(
+        ClientSession session, BanterEnvelope envelope, string hub, string agent, bool rotate)
+    {
+        var verb = rotate ? "rotate a key on" : "remove an identity from";
+
+        if (_tools is null)
+        {
+            session.Send(new ErrorPayload("NO_TOOLS", "This server has no tool backend."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAdmin)
+        {
+            session.Send(new ErrorPayload("NOT_ADMIN", $"Only an admin may {verb} a tool hub."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (hub.Length == 0 || agent.Length == 0)
+        {
+            session.Send(new ErrorPayload("BAD_AGENT", "Name the hub and the agent you mean."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        try
+        {
+            if (rotate)
+            {
+                await _tools.RotateHubKeyAsync(hub, agent).ConfigureAwait(false);
+            }
+            else
+            {
+                await _tools.RemoveHubIdentityAsync(hub, agent).ConfigureAwait(false);
+            }
+        }
+        catch (Tools.HubAdminException ex)
+        {
+            // Caught rather than left to the loop's catch-all, which logs and sends nothing: the
+            // client is waiting on a reply, and a page that never hears back shows the old state
+            // with no sign that anything failed. The message already carries the hub's remedy -
+            // HubAdminException folds it in - which matters because every one of these is fixed on
+            // the hub rather than here.
+            session.Send(new ErrorPayload("HUB_REFUSED", ex.Message), replyTo: envelope.MsgId);
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"hub: {session.Nick} {(rotate ? "rotated" : "removed")} {agent}'s identity on {hub}");
+
+        session.Send(
+            new HubReportPayload(await _tools.InspectHubsAsync().ConfigureAwait(false)),
+            replyTo: envelope.MsgId);
     }
 
     /// <summary>

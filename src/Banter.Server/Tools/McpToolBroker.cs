@@ -268,6 +268,60 @@ public sealed class McpToolBroker : IToolBroker, IAsyncDisposable
         return hubs;
     }
 
+    /// <summary>
+    /// Issues an agent a new key on one hub, retiring the one it held, and drops its open
+    /// sessions there - a rotated key leaves them authenticated as nobody.
+    /// </summary>
+    /// <exception cref="HubAdminException">No such hub here, or the hub refused.</exception>
+    public async Task RotateHubKeyAsync(
+        string hub, string agent, CancellationToken cancellationToken = default)
+    {
+        var upstream = SelfEnforcing(hub);
+        await ProvisionerFor(upstream.Key).RotateAsync(agent, cancellationToken).ConfigureAwait(false);
+        await ForgetAgentAsync(agent).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes an agent's identity from one hub - deleted there, forgotten here - and drops its
+    /// open sessions with it.
+    /// </summary>
+    /// <exception cref="HubAdminException">No such hub here, or the hub refused.</exception>
+    public async Task RemoveHubIdentityAsync(
+        string hub, string agent, CancellationToken cancellationToken = default)
+    {
+        var upstream = SelfEnforcing(hub);
+        await ProvisionerFor(upstream.Key).RemoveAsync(agent, cancellationToken).ConfigureAwait(false);
+        await ForgetAgentAsync(agent).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The hub this key names, or a refusal. Checked rather than assumed: these two act on a hub
+    /// named by a client, and an unknown key must not reach a provisioner that would dutifully
+    /// qualify tool names with it and ask an upstream that is not there.
+    ///
+    /// <para>A hub that exists but grants its tools HERE is refused too, and separately: there is
+    /// nothing on it to rotate, and saying "no such hub" about one the operator can see on the
+    /// page would be a lie about the thing in front of them.</para>
+    /// </summary>
+    private McpUpstreamConfig SelfEnforcing(string hub)
+    {
+        if (_selfEnforcing.FirstOrDefault(u => string.Equals(u.Key, hub, StringComparison.Ordinal))
+            is { } found)
+        {
+            return found;
+        }
+
+        if (_options.Upstreams.Any(u => string.Equals(u.Key, hub, StringComparison.Ordinal)))
+        {
+            throw new HubAdminException(
+                "hub.not_self_enforcing",
+                $"'{hub}' does not keep its own identities, so there is no key there to change.",
+                "Its tools are granted on this server instead - the tools panel is where those live.");
+        }
+
+        throw new HubAdminException("hub.no_such_hub", $"This server has no hub called '{hub}'.");
+    }
+
     private HubProvisioner ProvisionerFor(string upstreamKey) =>
         new(_hubAdmin(upstreamKey), _identities!, upstreamKey);
 

@@ -196,6 +196,16 @@ public enum BanterMessageType : ushort
     /// <summary>Admin: the hubs, in reply to an inspect.</summary>
     HubReport = 114,
 
+    /// <summary>Admin: issue an agent a new key on one hub, retiring the one it holds.</summary>
+    HubRotate = 115,
+
+    /// <summary>Admin: remove an agent's identity from one hub entirely.</summary>
+    HubForget = 116,
+
+    // Both of the above are answered with a HubReport rather than an Ok: the page that asked is
+    // showing the state they just changed, and a second round trip to find out what it is now is a
+    // window in which the page is wrong.
+
 
     // Generic (250–255)
     Error = 250,

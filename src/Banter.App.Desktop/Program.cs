@@ -162,6 +162,8 @@ var app = new BanterChatApp(vm)
     UsersListAsync = () => session?.LoadUsersAsync() ?? Task.CompletedTask,
     WorkListAsync = () => session?.LoadAllTasksAsync() ?? Task.CompletedTask,
     HubsListAsync = () => session?.LoadHubsAsync() ?? Task.CompletedTask,
+    HubRotateAsync = (hub, agent) => session?.RotateHubKeyAsync(hub, agent) ?? Task.CompletedTask,
+    HubForgetAsync = (hub, agent) => session?.ForgetHubIdentityAsync(hub, agent) ?? Task.CompletedTask,
     UserCreateAsync = (name, admin) => session?.CreateUserAccountAsync(name, admin) ?? Task.CompletedTask,
     UserResetAsync = name => session?.ResetUserPasswordAsync(name) ?? Task.CompletedTask,
     UserSetAdminAsync = (name, admin) => session?.SetUserAdminAsync(name, admin) ?? Task.CompletedTask,

@@ -558,16 +558,7 @@ public sealed partial class ChatViewModel
 
     // ── Confirming something destructive ─────────────────────────────────────────────────────
 
-    /// <summary>What the confirmation dialog is currently asking about, or none.</summary>
-    private enum PendingAct
-    {
-        None,
-        RemoveAgent,
-        RemoveUser,
-        SignOut,
-    }
-
-    private PendingAct _pendingAct = PendingAct.None;
+    private ConfirmAct? _pendingAct;
 
     /// <summary>
     /// Asks before removing the selected agent. Removal is instant and total on the server — the
@@ -581,7 +572,7 @@ public sealed partial class ChatViewModel
             return;
         }
 
-        _pendingAct = PendingAct.RemoveAgent;
+        _pendingAct = ConfirmAct.RemoveAgent;
         Model.ConfirmTitle = $"Remove {Model.AgentSelected}?";
         Model.ConfirmBody = "Its key stops working immediately, and any session it is holding open "
             + "ends. Enrolling it again means a new code and a new key.";
@@ -596,7 +587,7 @@ public sealed partial class ChatViewModel
             return;
         }
 
-        _pendingAct = PendingAct.RemoveUser;
+        _pendingAct = ConfirmAct.RemoveUser;
         Model.ConfirmTitle = $"Remove {Model.UserSelected}?";
         Model.ConfirmBody = "Their password stops working immediately and they are signed out. "
             + "The account cannot be restored — it would have to be created again.";
@@ -612,7 +603,7 @@ public sealed partial class ChatViewModel
     /// </summary>
     public void ConfirmSignOut()
     {
-        _pendingAct = PendingAct.SignOut;
+        _pendingAct = ConfirmAct.SignOut;
         Model.ConfirmTitle = $"Sign out of {Model.AccountServer}?";
         Model.ConfirmBody = "The saved password for this account is forgotten and the rooms close. "
             + "Signing back in - as this account or another - needs it again.";
@@ -620,43 +611,41 @@ public sealed partial class ChatViewModel
         Model.ConfirmClass = "confirm";
     }
 
-    /// <summary>
-    /// Whether the pending question was the sign-out one, clearing it if so. Separate from
-    /// <see cref="TakeConfirmed"/>, and asked first, because that one answers "which subject was
-    /// removed" and a sign-out has no subject to name. Leaves a pending removal untouched.
-    /// </summary>
-    public bool TakeConfirmedSignOut()
-    {
-        if (_pendingAct != PendingAct.SignOut)
-        {
-            return false;
-        }
-
-        CancelConfirm();
-        return true;
-    }
-
     public void CancelConfirm()
     {
-        _pendingAct = PendingAct.None;
+        _pendingAct = null;
         Model.ConfirmClass = "confirm hidden";
+        _pendingHub = "";
+        _pendingAgent = "";
     }
 
     public bool ConfirmOpen => !Model.ConfirmClass.Contains("hidden", StringComparison.Ordinal);
 
-    /// <summary>What was confirmed, and the subject it applies to. Clears the dialog either way,
-    /// so a second click cannot run the same removal twice.</summary>
-    public (bool IsAgent, string Subject)? TakeConfirmed()
+    /// <summary>
+    /// What was confirmed and what it applies to, or null when nothing was pending. Clears the
+    /// dialog either way, so a second click cannot run the same act twice.
+    ///
+    /// <para>One method answering with the act itself, rather than a bool per kind. It was two -
+    /// <c>TakeConfirmedSignOut</c> first because a sign-out has no subject to name, then
+    /// <c>TakeConfirmed</c> returning <c>(bool IsAgent, string Subject)</c> - and that shape could
+    /// express exactly two removals and no third. Forgetting an identity on a hub needs two
+    /// subjects (which hub, which agent), and a fourth act would have meant a third "ask this one
+    /// first" method with an ordering nothing enforces.</para>
+    /// </summary>
+    public Confirmed? TakeConfirmed()
     {
         var act = _pendingAct;
-        var subject = act == PendingAct.RemoveAgent ? Model.AgentSelected : Model.UserSelected;
-        CancelConfirm();
-        return act switch
+        var subject = act switch
         {
-            PendingAct.RemoveAgent => (true, subject),
-            PendingAct.RemoveUser => (false, subject),
-            _ => null,
+            ConfirmAct.RemoveAgent => Model.AgentSelected,
+            ConfirmAct.RemoveUser => Model.UserSelected,
+            ConfirmAct.ForgetHubIdentity => _pendingAgent,
+            _ => "",
         };
+
+        var hub = _pendingHub;
+        CancelConfirm();
+        return act is { } confirmed ? new Confirmed(confirmed, subject, hub) : null;
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────────────────────

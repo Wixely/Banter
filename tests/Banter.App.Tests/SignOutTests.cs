@@ -133,7 +133,7 @@ public sealed class SignOutTests
         // Cancelling leaves the session exactly as it was.
         vm.CancelConfirm();
         Assert.False(vm.ConfirmOpen);
-        Assert.False(vm.TakeConfirmedSignOut());
+        Assert.Null(vm.TakeConfirmed());
         Assert.False(vm.ConnectVisible);
     }
 
@@ -143,26 +143,26 @@ public sealed class SignOutTests
         var vm = SignedIn();
         vm.ConfirmSignOut();
 
-        Assert.True(vm.TakeConfirmedSignOut());
+        Assert.Equal(ConfirmAct.SignOut, vm.TakeConfirmed()?.Act);
 
         // A second click on a dialog that is already gone must not sign out again.
-        Assert.False(vm.TakeConfirmedSignOut());
+        Assert.Null(vm.TakeConfirmed());
         Assert.False(vm.ConfirmOpen);
     }
 
     [Fact]
     public void APendingRemovalIsNotMistakenForASignOut()
     {
-        // The two share one dialog, and the sign-out check runs first. It must decline anything
-        // that is not its own question rather than swallowing it.
+        // Every act shares one dialog, and what comes back has to name which one was asked. This
+        // used to be a bool per kind read in a fixed order, and a removal read as a sign-out if
+        // anything asked in the wrong one.
         var vm = SignedIn();
         vm.SetUsers([new UserAccountPayload("bob", false)]);
         vm.SelectAdminUser("bob");
         vm.ConfirmRemoveUser();
 
-        Assert.False(vm.TakeConfirmedSignOut());
         Assert.True(vm.ConfirmOpen);
-
-        Assert.Equal((false, "bob"), vm.TakeConfirmed());
+        Assert.Equal(new Confirmed(ConfirmAct.RemoveUser, "bob", ""), vm.TakeConfirmed());
+        Assert.False(vm.ConnectVisible);
     }
 }

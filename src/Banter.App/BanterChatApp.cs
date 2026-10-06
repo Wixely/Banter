@@ -94,10 +94,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public Func<Task> WorkListAsync { get; init; } = () => Task.CompletedTask;
 
     /// <summary>
-    /// Asks the server about its tool hubs. Admin-only there, and read-only here: the page
-    /// reports what MCPHub says rather than offering to change it.
+    /// Asks the server about its tool hubs. Admin-only there, and the page itself does not edit
+    /// grants: MCPHub owns those.
     /// </summary>
     public Func<Task> HubsListAsync { get; init; } = () => Task.CompletedTask;
+
+    /// <summary>(hub, agent) — a new key for this agent there, retiring the one it holds.</summary>
+    public Func<string, string, Task> HubRotateAsync { get; init; } = (_, _) => Task.CompletedTask;
+
+    /// <summary>(hub, agent) — remove this agent's identity there entirely.</summary>
+    public Func<string, string, Task> HubForgetAsync { get; init; } = (_, _) => Task.CompletedTask;
 
     /// <summary>(username, isAdmin) — the reply's temporary password is the host's to show.</summary>
     public Func<string, bool, Task> UserCreateAsync { get; init; } = (_, _) => Task.CompletedTask;
@@ -1089,6 +1095,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             <span class="hub-grants">{{Tools}}</span>
           </span>
         </div>
+        <!-- The two things this page may do, and the only two: the grants themselves belong to
+             the hub's own UI. Hidden on a hub that does not offer its management tools, because
+             it would refuse both. -->
+        <div class="{{ActsClass}}">
+          <cupri-button class="hub-act" data-hub-rotate="{{Agent}}">Rotate key</cupri-button>
+          <cupri-button class="hub-act hub-act-bad" data-hub-forget="{{Agent}}">Remove identity</cupri-button>
+        </div>
       </div>
     </div>
     """;
@@ -1972,6 +1985,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            reading in full - so it wraps rather than being cut, and sits under the name it
            belongs to. */
         .hub-grants { font-size: 11px; color: #8d97a6; padding-top: 3px; }
+        .hub-acts { display: flex; flex-direction: row; justify-content: flex-end;
+                    padding-top: 6px; }
+        .hub-acts.hidden { display: none; }
+        .hub-act { padding: 6px 12px; margin-left: 6px; font-size: 11px; background: #1b2029;
+                   color: #cfd6e0; border: 1px solid #333a46; border-radius: 9px; }
+        /* The destructive one is coloured, not hidden behind anything: it already asks. */
+        .hub-act-bad { color: #fca5a5; border-color: #4c1d1d; }
         .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
 
         /* ── Confirming something destructive ──────────────────────────────────────────────
@@ -2473,6 +2493,32 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             doc.Refresh();
         });
 
+        doc.OnAction("data-hub-rotate", e =>
+        {
+            // Straight through, no dialog: see ChatViewModel.RotateTarget for why the rotation is
+            // the one act here that should not be slowed down.
+            if (ViewModel.RotateTarget(e.Value ?? "") is not { } target)
+            {
+                return false;
+            }
+
+            _ = HubRotateAsync(target.Hub, target.Agent);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-hub-forget", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.ConfirmForgetHubIdentity(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
         doc.OnAction("data-admin-task", e =>
         {
             if (string.IsNullOrEmpty(e.Value))
@@ -2653,25 +2699,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         doc.OnClick(".confirm-go", _unused =>
         {
-            // Asked first: it is the one pending act with no subject to name, so it cannot be
-            // recognised by the removal path below.
-            if (ViewModel.TakeConfirmedSignOut())
+            // Taking it clears the dialog, so a second click cannot run the same act twice. The
+            // act itself says what to do - there is no order these have to be asked in any more.
+            if (ViewModel.TakeConfirmed() is { } confirmed)
             {
-                _ = SignOutAsync();
-                doc.Refresh();
-                return;
+                _ = confirmed switch
+                {
+                    { Act: ConfirmAct.SignOut } => SignOutAsync(),
+                    { Act: ConfirmAct.RemoveAgent, Subject.Length: > 0 } a => AgentRemoveAsync(a.Subject),
+                    { Act: ConfirmAct.RemoveUser, Subject.Length: > 0 } u => UserRemoveAsync(u.Subject),
+                    { Act: ConfirmAct.ForgetHubIdentity, Subject.Length: > 0, Hub.Length: > 0 } h =>
+                        HubForgetAsync(h.Hub, h.Subject),
+                    _ => Task.CompletedTask,
+                };
             }
 
-            // Taking it clears the dialog, so a second click cannot run the same removal twice.
-            if (ViewModel.TakeConfirmed() is not { } confirmed || confirmed.Subject.Length == 0)
-            {
-                doc.Refresh();
-                return;
-            }
-
-            _ = confirmed.IsAgent
-                ? AgentRemoveAsync(confirmed.Subject)
-                : UserRemoveAsync(confirmed.Subject);
             doc.Refresh();
         });
 

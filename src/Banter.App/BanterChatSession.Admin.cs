@@ -124,6 +124,36 @@ public sealed partial class BanterChatSession
         }
     }
 
+    /// <summary>
+    /// A new key for this agent on this hub. The reply IS the fresh listing, so the page cannot
+    /// sit showing the issue date it had a moment ago - the one field a rotation changes.
+    /// </summary>
+    public async Task RotateHubKeyAsync(string hub, string agent)
+    {
+        try
+        {
+            var hubs = await _client.RotateHubKeyAsync(hub, agent).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetHubs(hubs));
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
+    public async Task ForgetHubIdentityAsync(string hub, string agent)
+    {
+        try
+        {
+            var hubs = await _client.ForgetHubIdentityAsync(hub, agent).ConfigureAwait(false);
+            _vm.Post(() => _vm.SetHubs(hubs));
+        }
+        catch (BanterErrorException ex)
+        {
+            _vm.Post(() => _vm.AdminFailed(ex.Message));
+        }
+    }
+
     // ---- The users tab ----
 
     public async Task LoadUsersAsync()

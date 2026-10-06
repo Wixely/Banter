@@ -91,6 +91,8 @@ public static class PayloadRegistry
         [BanterMessageType.ToolGrants] = typeof(ToolGrantsPayload),
         [BanterMessageType.HubInspect] = typeof(HubInspectPayload),
         [BanterMessageType.HubReport] = typeof(HubReportPayload),
+        [BanterMessageType.HubRotate] = typeof(HubRotatePayload),
+        [BanterMessageType.HubForget] = typeof(HubForgetPayload),
         [BanterMessageType.Error] = typeof(ErrorPayload),
         [BanterMessageType.Ok] = typeof(OkPayload),
     };

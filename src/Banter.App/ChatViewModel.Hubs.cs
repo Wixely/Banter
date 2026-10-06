@@ -20,6 +20,12 @@ public sealed partial class ChatViewModel
 {
     private IReadOnlyList<HubPayload> _hubListing = [];
 
+    // Which identity a pending confirmation is about. Two fields because an identity is named by
+    // two things, and the hub is not simply "the selected one": a reply can arrive and reselect
+    // between the question being asked and answered.
+    private string _pendingHub = "";
+    private string _pendingAgent = "";
+
     public void ShowHubsPanel(bool show)
     {
         if (show)
@@ -125,6 +131,7 @@ public sealed partial class ChatViewModel
                 Tools = a.Tools.Count == 0
                     ? "nothing granted there yet"
                     : string.Join(", ", a.Tools.Order(StringComparer.Ordinal)),
+                ActsClass = hub.Administrable ? "hub-acts" : "hub-acts hidden",
             })];
 
         Model.HubAgentsClass = Model.HubAgents.Count > 0 ? "mgmt-field" : "mgmt-field hidden";
@@ -171,6 +178,44 @@ public sealed partial class ChatViewModel
         "unknown" or "" => "not started - this server has not tried to connect",
         var other => other,
     };
+
+    // ── Acting on an identity ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The hub and agent a rotate applies to, or none when the row names nobody.
+    ///
+    /// <para>Not confirmed first, unlike removal. A rotation is the SAFE act here: the server
+    /// mints the new key and keeps it, so the agent carries on working, and what stops working is
+    /// any copy of the old key held somewhere it should not be. Putting a dialog in front of the
+    /// remedy for a leaked key is a dialog in the way of somebody in a hurry.</para>
+    /// </summary>
+    public (string Hub, string Agent)? RotateTarget(string agent) =>
+        Model.HubSelected.Length > 0 && agent.Length > 0 ? (Model.HubSelected, agent) : null;
+
+    /// <summary>
+    /// Asks before removing an identity. Irreversible on the hub: the user is deleted there and
+    /// its grants go with it, so enrolling the agent again means a new user with nothing granted.
+    /// </summary>
+    public void ConfirmForgetHubIdentity(string agent)
+    {
+        if (Model.HubSelected.Length == 0 || agent.Length == 0)
+        {
+            return;
+        }
+
+        var hub = Model.AdminHubs
+            .FirstOrDefault(h => string.Equals(h.HubKey, Model.HubSelected, StringComparison.Ordinal));
+
+        _pendingAct = ConfirmAct.ForgetHubIdentity;
+        _pendingHub = Model.HubSelected;
+        _pendingAgent = agent;
+        Model.ConfirmTitle = $"Remove {agent} from {hub?.Name ?? Model.HubSelected}?";
+        Model.ConfirmBody = "Its user is deleted on the hub and everything granted to it there "
+            + "goes with it. The agent keeps its Banter account - it simply has no identity on "
+            + "this hub, and whatever it was calling through it stops.";
+        Model.ConfirmAction = "Remove identity";
+        Model.ConfirmClass = "confirm";
+    }
 
     private static string Count(int n, string noun) => n == 1 ? $"1 {noun}" : $"{n} {noun}s";
 

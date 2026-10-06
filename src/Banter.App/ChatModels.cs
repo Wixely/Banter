@@ -310,6 +310,25 @@ public sealed partial class RosterUserRow
     public string RowClass { get; set; } = "member";
 }
 
+/// <summary>
+/// What a confirmation dialog is asking about. Public because the act, not a boolean per kind, is
+/// what <see cref="ChatViewModel.TakeConfirmed"/> hands back - see the note there for why.
+/// </summary>
+public enum ConfirmAct
+{
+    RemoveAgent,
+    RemoveUser,
+    SignOut,
+
+    /// <summary>Remove an agent's identity from one hub: the only act here with two subjects.</summary>
+    ForgetHubIdentity,
+}
+
+/// <summary>A confirmed act and what it applies to. <paramref name="Hub"/> is empty for
+/// everything except <see cref="ConfirmAct.ForgetHubIdentity"/>, and <paramref name="Subject"/> is
+/// empty for a sign-out, which has nothing to name.</summary>
+public readonly record struct Confirmed(ConfirmAct Act, string Subject, string Hub);
+
 /// <summary>One tool hub on the hubs page, as the list shows it.</summary>
 [CupriBindable]
 public sealed partial class AdminHubRow
@@ -353,6 +372,16 @@ public sealed partial class HubAgentRow
 
     /// <summary>What the hub grants it, named as this server advertises them.</summary>
     public string Tools { get; set; } = "";
+
+    /// <summary>
+    /// Hidden on a hub that does not offer its management tools to the user this server connects
+    /// as - the hub would refuse both buttons, and a control that cannot work is worse than none.
+    ///
+    /// <para>On the ROW rather than on the page, because a repeat binds to its row: a class from
+    /// the surrounding model would have to resolve through the repeat, and whether it does is not
+    /// something this page should be relying on.</para>
+    /// </summary>
+    public string ActsClass { get; set; } = "hub-acts hidden";
 }
 
 /// <summary>One task on the work page, as the list shows it.</summary>

@@ -31,4 +31,15 @@ public interface IToolBroker
     /// none, which is every deployment that grants its tools here.
     /// </summary>
     Task<IReadOnlyList<HubPayload>> InspectHubsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Issue an agent a new key on one hub, retiring the one it holds, and drop whatever it has
+    /// open there. The new key never leaves the server.
+    /// </summary>
+    /// <exception cref="HubAdminException">No such hub here, or the hub refused.</exception>
+    Task RotateHubKeyAsync(string hub, string agent, CancellationToken cancellationToken = default);
+
+    /// <summary>Remove an agent's identity from one hub - deleted there, forgotten here.</summary>
+    /// <exception cref="HubAdminException">No such hub here, or the hub refused.</exception>
+    Task RemoveHubIdentityAsync(string hub, string agent, CancellationToken cancellationToken = default);
 }

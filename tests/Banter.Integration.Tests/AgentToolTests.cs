@@ -92,6 +92,15 @@ public sealed class AgentToolTests : IAsyncLifetime
         /// deployment with no self-enforcing upstream has.</summary>
         public Task<IReadOnlyList<HubPayload>> InspectHubsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<HubPayload>>([]);
+
+        // This broker has no hubs, so there is nothing here to rotate or forget. Throwing the
+        // hub's own refusal rather than doing nothing: a silent success would make a test that
+        // wandered in here pass while changing nothing.
+        public Task RotateHubKeyAsync(string hub, string agent, CancellationToken cancellationToken = default) =>
+            throw new HubAdminException("hub.no_such_hub", $"This server has no hub called '{hub}'.");
+
+        public Task RemoveHubIdentityAsync(string hub, string agent, CancellationToken cancellationToken = default) =>
+            throw new HubAdminException("hub.no_such_hub", $"This server has no hub called '{hub}'.");
     }
 
     public async Task InitializeAsync()

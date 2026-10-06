@@ -30,6 +30,7 @@ public sealed class HubInspectTests(ITestOutputHelper output) : IAsyncLifetime
     private BanterDatabase _database = null!;
     private DbAccountStore _accounts = null!;
     private McpToolBroker? _broker;
+    private FakeHub _hub = new();
     private BanterServer _server = null!;
 
     /// <summary>A hub that answers the management calls the broker makes while provisioning, so
@@ -40,20 +41,45 @@ public sealed class HubInspectTests(ITestOutputHelper output) : IAsyncLifetime
 
         public Dictionary<string, string[]> Grants { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>Every management tool this hub was asked for, in order - so a test can say
+        /// what the server actually did there rather than only what came back.</summary>
+        public List<string> Calls { get; } = [];
+
+        /// <summary>The keys this hub has issued, newest last. It only ever shows one once.</summary>
+        public List<string> Issued { get; } = [];
+
         public Task<JsonElement> CallAsync(
             string tool,
             IReadOnlyDictionary<string, object?>? arguments,
             CancellationToken cancellationToken = default)
         {
+            Calls.Add(tool);
             var json = tool switch
             {
-                "users__create" => $$"""{"user":{"id":"user-{{++_issued}}"},"key":"mcphub_k{{_issued}}"}""",
+                "users__create" => Mint($"user-{++_issued}"),
+                "users__rotate_key" => Mint((string)arguments!["user"]!),
+                "users__delete" => Delete(arguments!),
                 "permissions__set_grants" => Set(arguments!),
                 "permissions__list_grants" => List(),
                 _ => throw new HubAdminException("hub.unavailable", $"no such tool '{tool}'"),
             };
 
             return Task.FromResult(JsonDocument.Parse(json).RootElement.Clone());
+        }
+
+        /// <summary>A key for a user, new or existing. The id comes back with it because that is
+        /// the shape the provisioner reads, and a rotation keeps the id it was given.</summary>
+        private string Mint(string userId)
+        {
+            var key = $"mcphub_k{Issued.Count + 1}";
+            Issued.Add(key);
+            return $$"""{"user":{"id":"{{userId}}"},"key":"{{key}}"}""";
+        }
+
+        private string Delete(IReadOnlyDictionary<string, object?> arguments)
+        {
+            Grants.Remove((string)arguments["user"]!);
+            return """{"message":"deleted"}""";
         }
 
         private string Set(IReadOnlyDictionary<string, object?> arguments)
@@ -104,10 +130,10 @@ public sealed class HubInspectTests(ITestOutputHelper output) : IAsyncLifetime
                 ],
             };
 
-            var hub = new FakeHub();
+            _hub = new FakeHub();
             _broker = new McpToolBroker(
                 options, new ToolGrantStore(_database), new HubIdentityStore(_database),
-                loggerFactory: null, hubAdmin: _ => hub);
+                loggerFactory: null, hubAdmin: _ => _hub);
             await _broker.SetGrantsAsync("scribe", ["hub__recipes__list", "hub__recipes__get"]);
         }
 
@@ -192,5 +218,111 @@ public sealed class HubInspectTests(ITestOutputHelper output) : IAsyncLifetime
 
         output.WriteLine($"{refused.Code}: {refused.Message}");
         Assert.Equal("NO_TOOLS", refused.Code);
+    }
+
+    /// <summary>
+    /// Rotating asks the hub for a new key, keeps the same user there, and hands back the hubs as
+    /// they are afterwards - not an Ok the page would have to follow with a second question.
+    ///
+    /// <para>What the client gets back must still carry no key. That is the whole reason the
+    /// server mints them: a rotation that showed the new key to every admin client would have
+    /// moved the secret into the one place it was being kept out of.</para>
+    /// </summary>
+    [Fact]
+    public async Task RotatingIssuesANewKeyWithoutShowingAnyone()
+    {
+        await StartAsync(withTools: true);
+        await using var admin = await ConnectAsync("root", "pw");
+
+        var before = Assert.Single(await admin.InspectHubsAsync().WaitAsync(Patience)).Agents;
+        var userId = Assert.Single(before).UserId;
+
+        var after = await admin.RotateHubKeyAsync("hub", "scribe").WaitAsync(Patience);
+        var agent = Assert.Single(Assert.Single(after).Agents);
+        output.WriteLine($"hub saw: {string.Join(", ", _hub.Calls)}");
+        output.WriteLine($"issued: {string.Join(", ", _hub.Issued)}");
+
+        Assert.Contains("users__rotate_key", _hub.Calls);
+        Assert.Equal(userId, agent.UserId);          // the same user, a different key
+        Assert.Equal(2, _hub.Issued.Count);
+        Assert.DoesNotContain("mcphub_k", JsonSerializer.Serialize(after), StringComparison.Ordinal);
+
+        // And the grants it had there are untouched: rotating a key is not a change of access.
+        Assert.Equal(["hub__recipes__get", "hub__recipes__list"], agent.Tools.Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Removing deletes the user on the hub as well as forgetting the key here - a user left
+    /// behind holds a key this server no longer tracks - and the agent is gone from the report
+    /// that comes back.
+    /// </summary>
+    [Fact]
+    public async Task RemovingDeletesTheUserThereAndForgetsItHere()
+    {
+        await StartAsync(withTools: true);
+        await using var admin = await ConnectAsync("root", "pw");
+
+        var after = await admin.ForgetHubIdentityAsync("hub", "scribe").WaitAsync(Patience);
+
+        output.WriteLine($"hub saw: {string.Join(", ", _hub.Calls)}");
+        Assert.Contains("users__delete", _hub.Calls);
+        Assert.Empty(Assert.Single(after).Agents);
+
+        // Asked again from a clean read, in case the reply was merely built without it.
+        Assert.Empty(Assert.Single(await admin.InspectHubsAsync().WaitAsync(Patience)).Agents);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AMemberCanNeitherRotateNorRemove(bool rotate)
+    {
+        await StartAsync(withTools: true);
+        await using var member = await ConnectAsync("nell", "pw");
+
+        var refused = await Assert.ThrowsAsync<BanterErrorException>(
+            () => (rotate
+                ? member.RotateHubKeyAsync("hub", "scribe")
+                : member.ForgetHubIdentityAsync("hub", "scribe")).WaitAsync(Patience));
+
+        output.WriteLine($"{refused.Code}: {refused.Message}");
+        Assert.Equal("NOT_ADMIN", refused.Code);
+
+        // Refused before anything happened, not after.
+        Assert.DoesNotContain("users__rotate_key", _hub.Calls);
+        Assert.DoesNotContain("users__delete", _hub.Calls);
+    }
+
+    /// <summary>
+    /// A hub this server does not have is refused by name. These two verbs take a hub from the
+    /// client, so an unknown key must not reach a provisioner that would dutifully prefix tool
+    /// names with it and ask an upstream that is not there.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownHubIsRefusedByName()
+    {
+        await StartAsync(withTools: true);
+        await using var admin = await ConnectAsync("root", "pw");
+
+        var refused = await Assert.ThrowsAsync<BanterErrorException>(
+            () => admin.RotateHubKeyAsync("elsewhere", "scribe").WaitAsync(Patience));
+
+        output.WriteLine($"{refused.Code}: {refused.Message}");
+        Assert.Equal("HUB_REFUSED", refused.Code);
+        Assert.Contains("elsewhere", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Naming neither is a refusal rather than a no-op, because a client that sends an
+    /// empty agent has a bug and silence would hide it.</summary>
+    [Fact]
+    public async Task NamingNobodyIsRefused()
+    {
+        await StartAsync(withTools: true);
+        await using var admin = await ConnectAsync("root", "pw");
+
+        var refused = await Assert.ThrowsAsync<BanterErrorException>(
+            () => admin.RotateHubKeyAsync("hub", "").WaitAsync(Patience));
+
+        Assert.Equal("BAD_AGENT", refused.Code);
     }
 }

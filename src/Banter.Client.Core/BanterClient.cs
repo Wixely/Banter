@@ -401,6 +401,27 @@ public sealed partial class BanterClient : IAsyncDisposable
             .ConfigureAwait(false)).Hubs;
 
     /// <summary>
+    /// Issues an agent a new key on one hub, retiring the one it holds, and returns the hubs as
+    /// they are afterwards.
+    ///
+    /// <para>The key itself is not here and cannot be: it is minted by the server, kept there, and
+    /// used to call as that agent. Nothing a client holds could do anything with it anyway.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<HubPayload>> RotateHubKeyAsync(
+        string hub, string agent, CancellationToken cancellationToken = default) =>
+        (await RequestAsync<HubReportPayload>(new HubRotatePayload(hub, agent), cancellationToken)
+            .ConfigureAwait(false)).Hubs;
+
+    /// <summary>
+    /// Removes an agent's identity from one hub - deleted there, forgotten here - and returns the
+    /// hubs as they are afterwards.
+    /// </summary>
+    public async Task<IReadOnlyList<HubPayload>> ForgetHubIdentityAsync(
+        string hub, string agent, CancellationToken cancellationToken = default) =>
+        (await RequestAsync<HubReportPayload>(new HubForgetPayload(hub, agent), cancellationToken)
+            .ConfigureAwait(false)).Hubs;
+
+    /// <summary>
     /// Ask the server to run a tool. The server executes it — this client never holds the
     /// upstream's credentials (PLAN §8). Name the room and the call is announced there, so the
     /// operator watching can see what the agent reached for.

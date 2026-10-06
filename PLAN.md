@@ -1486,6 +1486,19 @@ connects the upstreams, and agents ask it to act.
   not use that tool". No key reaches the client: an agent's hub key stays on the server that calls
   as it, and an integration test asserts it is absent from the serialised reply.
 
+  Two things it may *do*, and only these two, because the grants belong to the hub's own UI:
+  **rotate** an agent's key there (`HUB_ROTATE`) and **remove** its identity (`HUB_FORGET`). Both
+  are admin-only, both drop whatever that agent has open on the hub — a rotated key leaves an open
+  session authenticated as nobody — and both are answered with the fresh report rather than an Ok,
+  because the page that asked is showing the state they just changed. Rotation asks nothing first:
+  it is the remedy for a key that has leaked, the server mints the replacement and keeps it, so the
+  agent carries on and what stops working is the copy somebody else has. Removal asks, because the
+  hub deletes the user's grants with the user. Both buttons are hidden on a hub that does not offer
+  its management tools, which would refuse them. A hub named by a client is checked against the
+  self-enforcing list before anything reaches a provisioner, and "exists but grants its tools here"
+  is refused separately from "no such hub" — saying the latter about a hub the operator can see on
+  the page would be a lie about the thing in front of them.
+
 Still open: a persisted audit log — the audit is currently a room message plus a stderr line.
 
 ### 8c-a. Structured asks: an agent asking a question it can be answered by clicking — ✅ shipped
