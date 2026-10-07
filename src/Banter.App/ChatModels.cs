@@ -570,6 +570,13 @@ public sealed partial class ChatModel
     public string UsersPanelClass { get; set; } = "mgmt hidden";
     public string WorkButtonClass { get; set; } = "rail-button hidden";
     public string WorkPanelClass { get; set; } = "mgmt hidden";
+    /// <summary>
+    /// The catcher behind the room/people overlay, so a tap that misses it closes it. Only on a
+    /// narrow screen, where the overlay is ON the chat rather than a column beside it - see
+    /// ChatViewModel.ToggleRooms.
+    /// </summary>
+    public string RoomsBackdropClass { get; set; } = "rooms-backdrop hidden";
+
     public string HubsButtonClass { get; set; } = "rail-button hidden";
     public string HubsPanelClass { get; set; } = "mgmt hidden";
     public string SettingsButtonClass { get; set; } = "rail-button";

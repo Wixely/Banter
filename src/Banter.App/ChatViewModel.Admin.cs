@@ -52,6 +52,11 @@ public sealed partial class ChatViewModel
     /// </summary>
     private void OnlyPanel(Panel open)
     {
+        // The room list is an overlay on a narrow screen, with a z-index that puts it over these
+        // pages: opening one while it was up left the page underneath the list of rooms. Going to
+        // a page is leaving the room list, whatever else it is.
+        ResetRooms();
+
         Model.AgentsPanelClass = Class(Panel.Agents);
         Model.UsersPanelClass = Class(Panel.Users);
         Model.WorkPanelClass = Class(Panel.Work);
@@ -699,6 +704,10 @@ public sealed partial class ChatViewModel
         // rooms without the members would leave a panel of people floating over the chat with
         // nothing to explain it. On a wide window these classes do nothing: see RosterClass.
         Model.RosterClass = showing ? "roster shut" : "roster open";
+
+        // The catcher goes up with the overlay and only where the overlay IS one: on a wide window
+        // these are columns, and a full-screen catcher over the chat would swallow every click.
+        Model.RoomsBackdropClass = !showing && narrow ? "rooms-backdrop" : "rooms-backdrop hidden";
     }
 
     /// <summary>
@@ -720,6 +729,7 @@ public sealed partial class ChatViewModel
     {
         Model.SidebarClass = "sidebar";
         Model.RosterClass = "roster";
+        Model.RoomsBackdropClass = "rooms-backdrop hidden";
     }
 
     public void SetZoom(float zoom)

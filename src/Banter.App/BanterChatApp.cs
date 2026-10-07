@@ -118,6 +118,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public float InitialZoom { get; init; } = 1f;
 
     /// <summary>
+    /// Whether two fingers on the glass zoom the page. A head that sets this false keeps the zoom
+    /// SETTING - the settings page assigns the zoom directly - and loses only the gesture.
+    ///
+    /// <para>Off on the phone. A chat is a column of text you scroll with one finger and a list
+    /// you tap, and the gesture's near neighbours are both of those: a two-finger scroll, or a
+    /// thumb landing while another finger is still on the screen, left the whole app at 1.37x with
+    /// no obvious way back. The ladder on the settings page is the deliberate way to change it,
+    /// and on a phone a deliberate way is the only one worth having.</para>
+    /// </summary>
+    public bool PinchZoomEnabled { get; init; } = true;
+
+    /// <summary>
     /// The system clipboard. Defaults to a no-op so the app runs headlessly; the desktop head
     /// supplies a real one.
     /// </summary>
@@ -321,6 +333,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               </div>
             </div>
           </div>
+          <!-- A tap that misses the room/people overlay closes it, the same way a click off a
+               management card does. Painted BEFORE the overlay so the overlay is on top and a tap
+               that lands here is one that missed. It starts to the right of the rail on purpose:
+               the rail is the only other thing on screen, and a tap on it should reach the button
+               it looks like rather than being eaten by a catcher nobody can see. -->
+          <div class="{{RoomsBackdropClass}}" data-rooms-close="1"></div>
           <div class="{{SidebarClass}}">
             <div class="workspace">
               <div class="workspace-name">Banter</div>
@@ -1361,6 +1379,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .sidebar { display: flex; flex-direction: column; width: 248px; background: #0e1116;
                    border-right: 1px solid #20262f; }
+
+        /* No catcher on a wide window: the room list is a column there, not something laid over
+           the chat, so there is nothing to miss. Declared HERE rather than after the media block,
+           because both selectors are one class and the later one wins - put last, this turned the
+           catcher off at every width and the narrow rule never got a say. */
+        .rooms-backdrop { display: none; }
         .workspace { height: 66px; padding: 0 16px; display: flex; flex-direction: column;
                      justify-content: center; border-bottom: 1px solid #20262f; }
         .workspace-name { font-size: 14px; font-weight: bold; }
@@ -1376,7 +1400,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .tab.active { background: #202530; color: #ffffff; }
         .hash { color: #667085; font-weight: bold; padding-right: 9px; }
         .tab.active .hash { color: #fb7185; }
-        .tab-name { flex: 1; }
+        /* Clipped, because a flex item's box shrinks and the GLYPHS do not: the engine lays the
+           text out at its own width and paints it, so a long room name ran straight across the
+           unread badge beside it and the two were drawn on top of each other. min-width lets the
+           box shrink in the first place; overflow is what stops what is in it painting out.
+           (No text-overflow in the engine, so this clips rather than ellipsises.) */
+        .tab-name { flex: 1; min-width: 0; overflow: hidden; }
         .badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
                  display: flex; align-items: center; justify-content: center;
                  font-size: 10px; font-weight: bold; background: #4c1d1d; color: #fecaca; }
@@ -1387,8 +1416,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .browse-row { display: flex; flex-direction: row; align-items: center; height: 32px;
                       padding: 0 10px; border-radius: 9px; cursor: pointer; }
         .browse-row:hover { background: #171b22; }
-        .browse-name { flex: 1; color: #8d97a6; font-size: 12px; }
-        .browse-members { color: #5d6572; font-size: 11px; }
+        /* The same pair, and this is the one somebody actually hit: "#a-rather-long-room-name"
+           and "12 members" printed over each other on a phone. */
+        .browse-name { flex: 1; min-width: 0; overflow: hidden; color: #8d97a6; font-size: 12px; }
+        /* Never squeezed to make room for the name - the count is short and the name is the part
+           with no bound, so the name is the one that gives. */
+        .browse-members { flex: 0 0 auto; padding-left: 8px; color: #5d6572; font-size: 11px; }
 
         .sidebar-footer { display: flex; flex-direction: row; align-items: center;
                           border-top: 1px solid #20262f; padding: 12px; background: #0b0e12; }
@@ -2113,6 +2146,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                           width: 232px; height: 56%; z-index: 20;
                           box-shadow: 0 0 40px #000000a8; }
 
+          /* Just under the overlay's z-index, and starting where the rail ends. Invisible rather
+             than dimmed: the chat behind is not being presented as unreachable, it is one tap
+             away, and dimming it would say otherwise. */
+          /* Width rather than `right: 0`: a fixed box here is not sized by its left and right
+             together - measured, it laid out 0 wide and caught nothing - so the width is stated,
+             and it is the window less the rail. */
+          .rooms-backdrop { display: block; position: fixed; left: 56px; top: 0;
+                            width: calc(100% - 56px); height: 100%; z-index: 19; }
+          .rooms-backdrop.hidden { display: none; }
+
           /* The rail stays. It is the only way to reach tools, agents, users, work and settings,
              and at 56px it costs less than any of them would cost as a menu. */
           .rail { width: 56px; padding: 10px 6px; }
@@ -2252,9 +2295,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         _doc = doc;
 
         // Page zoom is the mode that reflows rather than only magnifying, which is what makes a
-        // zoomed window still use its full width instead of scrolling sideways. Enabled here so
-        // it is the behaviour by default rather than something to discover.
-        doc.PageZoomEnabled = true;
+        // zoomed window still use its full width instead of scrolling sideways. On by default so
+        // it is the behaviour rather than something to discover; a head that does not want the
+        // GESTURE turns it off and keeps the setting (see PinchZoomEnabled).
+        doc.PageZoomEnabled = PinchZoomEnabled;
         doc.Zoom = InitialZoom;
         ViewModel.SetZoom(doc.Zoom);
 
@@ -2308,6 +2352,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 _ = RoomsListAsync();
             }
 
+            return true;
+        });
+
+        doc.OnAction("data-rooms-close", _unused =>
+        {
+            ViewModel.ResetRooms();
+            doc.Refresh();
             return true;
         });
 

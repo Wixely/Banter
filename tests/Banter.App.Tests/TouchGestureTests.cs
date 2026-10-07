@@ -375,4 +375,74 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         output.WriteLine($"{reads} reads after open, close, open");
         Assert.Equal(2, reads);
     }
+
+    /// <summary>
+    /// A tap that misses the overlay closes it. There was no way to dismiss it except picking a
+    /// room or finding the mark again, so somebody who opened it to look at who was in the room
+    /// had to make a choice to get rid of it.
+    /// </summary>
+    [Fact]
+    public void TappingAwayFromTheRoomListClosesIt()
+    {
+        var phone = OnAPhone();
+        var (markX, markY) = Middle(phone.Doc, "logo");
+        phone.Touch.Tap(markX, markY);
+        Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
+
+        // Far to the right of the overlay, which is 232 wide starting at the 56px rail.
+        var catcher = Walk(phone.Doc.Root).First(n =>
+            n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("rooms-backdrop") == true
+            && n.Node.Width > 0);
+        output.WriteLine($"catcher x={catcher.X:F0} w={catcher.Node.Width:F0}");
+
+        phone.Touch.Tap(catcher.X + catcher.Node.Width - 20, catcher.Y + (catcher.Node.Height / 2));
+        phone.Settle();
+
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+        Assert.Equal(0f, WidthOf(phone.Doc, "roster"), 1);
+    }
+
+    /// <summary>
+    /// The catcher starts where the rail ends, so the rail still answers while the list is up -
+    /// a full-width one would eat the tap and the button under it would never be reached.
+    /// </summary>
+    [Fact]
+    public void TheCatcherDoesNotCoverTheRail()
+    {
+        var phone = OnAPhone();
+        var (markX, markY) = Middle(phone.Doc, "logo");
+        phone.Touch.Tap(markX, markY);
+
+        var catcher = Walk(phone.Doc.Root).First(n =>
+            n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("rooms-backdrop") == true
+            && n.Node.Width > 0);
+
+        Assert.True(catcher.X >= markX, $"the catcher starts at {catcher.X:F0}, over a mark at {markX:F0}");
+    }
+
+    /// <summary>
+    /// Opening a page from the rail puts the room list away. The overlay's z-index is above those
+    /// pages, so one opened underneath it - the page was there, and what you could see was the
+    /// list of rooms on top of it.
+    /// </summary>
+    [Fact]
+    public void OpeningAPageFromTheRailClosesTheRoomList()
+    {
+        var phone = OnAPhone();
+        phone.Vm.SetIsAdmin(true);
+        phone.Settle();
+
+        var (markX, markY) = Middle(phone.Doc, "logo");
+        phone.Touch.Tap(markX, markY);
+        Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
+
+        // The settings cog, which every account has - no admin needed for it to be on screen.
+        var (cogX, cogY) = Middle(phone.Doc, "icon-settings");
+        phone.Touch.Tap(cogX, cogY);
+        phone.Settle();
+
+        Assert.True(phone.Vm.SettingsPanelOpen, "the settings page did not open");
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+        Assert.Equal(0f, WidthOf(phone.Doc, "roster"), 1);
+    }
 }
