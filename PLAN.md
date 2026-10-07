@@ -837,6 +837,11 @@ or tap-outside to dismiss it. Every switch is three taps with the screen obscure
   the header it came from, and the rail's mark at 56px is what stays reachable to close it.
   `TouchGestureTests` taps all of it on a 412x915 phone and measures what is over the room name
   afterwards.
+- ✅ **And joining goes to the room.** Found on an emulator, not in a test: joining never switched
+  — right for the joins a head makes at startup, looping over remembered rooms — but closing the
+  list on a pick turned that from a quiet oddity into a dead end, since the overlay went away and
+  nothing had changed. `JoinAndShowAsync` awaits the join (the room has to be in the model first)
+  and then switches.
 
 **The phone forgets the account every time — ✅ fixed.** `KeystoreSecretProtector` is the head's
 `ISecretProtector`: AES-GCM under a key the Android keystore holds and the process never sees, so

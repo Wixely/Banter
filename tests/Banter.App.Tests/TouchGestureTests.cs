@@ -39,7 +39,11 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         }
     }
 
-    private static Phone OnAPhone()
+    /// <param name="joinRoom">What the head does when a room is joined from the browse rows. The
+    /// default does nothing, which is every other test here; the one that cares passes a stand-in
+    /// for a session and adds the room to the model, because that is what a join really does and
+    /// what anything switching to it depends on.</param>
+    private static Phone OnAPhone(Func<ChatViewModel, string, Task>? joinRoom = null)
     {
         var vm = new ChatViewModel();
         vm.SetNick("alice");
@@ -56,7 +60,11 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
             vm.Append("#main", "dagger", $"message {i}", 0);
         }
 
-        var app = new BanterChatApp(vm);
+        var app = new BanterChatApp(vm)
+        {
+            JoinRoomAsync = room => joinRoom?.Invoke(vm, room) ?? Task.CompletedTask,
+        };
+
         var doc = app.CreateDocument();
         doc.InputProfile = InputProfile.Touch;
         doc.Refresh();
@@ -206,19 +214,38 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
     /// <summary>
     /// The same for a room being JOINED from the browse rows. It is a different handler, and a fix
     /// applied to one of the two is the kind that looks complete until somebody taps the other.
+    ///
+    /// <para>And joining goes TO the room. Joining never switched - that is right for the joins a
+    /// head makes at startup, looping over remembered rooms - but somebody who taps a room has
+    /// said where they want to be. On an emulator this was a dead end: the list closed and nothing
+    /// had changed, so the only way in was to open the list and tap the room a second time.</para>
     /// </summary>
     [Fact]
-    public void JoiningARoomPutsTheListAwayToo()
+    public async Task JoiningARoomPutsTheListAwayAndGoesThere()
     {
         var joined = new List<string>();
-        var phone = OnAPhone();
+        var phone = OnAPhone((vm, room) =>
+        {
+            joined.Add(room);
+
+            // What a session does: the room exists in the model after a join, which is what
+            // anything switching to it depends on.
+            vm.AddRoom(room);
+            return Task.CompletedTask;
+        });
+
         var (markX, markY) = Middle(phone.Doc, "logo");
         phone.Touch.Tap(markX, markY);
 
         var (joinX, joinY) = MiddleOf(phone.Doc, "data-join", "#notes");
         phone.Touch.Tap(joinX, joinY);
+
+        // The join is awaited before the switch, so one turn of the loop is not enough.
+        await Task.Delay(50);
         phone.Settle();
 
+        Assert.Equal(["#notes"], joined);
+        Assert.Equal("#notes", phone.Vm.Model.ActiveRoom);
         Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
         Assert.True(WidthOf(phone.Doc, "timeline") > 0f, "the timeline is not on screen");
     }

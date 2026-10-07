@@ -3020,7 +3020,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 return false;
             }
 
-            _ = JoinRoomAsync(e.Value);
+            _ = JoinAndShowAsync(e.Value);
             PickedARoom(doc);
             return true;
         });
@@ -3198,6 +3198,30 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         _nextWorkPoll = now + WorkPollInterval;
         _ = WorkListAsync();
+    }
+
+    /// <summary>
+    /// Joins a room and then goes to it.
+    ///
+    /// <para>Joining has never switched: <c>BanterChatSession.JoinAsync</c> adds the room and
+    /// loads its history, which is right for the joins a head makes at startup - looping over the
+    /// remembered rooms and landing in the last one would be nobody's idea of where to be. But
+    /// somebody who TAPS a room in the list has said where they want to be, and until now ended up
+    /// still in the room they were already in, with the one they asked for merely added to the
+    /// list behind them.</para>
+    ///
+    /// <para>Found on a phone, where closing the list on a pick turned a quiet oddity into a dead
+    /// end: the overlay went away and nothing had changed, so the only way into the room just
+    /// joined was to open the list again and tap it a second time.</para>
+    ///
+    /// <para>Awaited rather than posted alongside the join, because the room has to exist in the
+    /// model before anything can switch to it - and it is added inside that call.</para>
+    /// </summary>
+    private async Task JoinAndShowAsync(string room)
+    {
+        await JoinRoomAsync(room).ConfigureAwait(false);
+        ViewModel.Post(() => ViewModel.SwitchTo(room));
+        RoomSelected(room);
     }
 
     /// <summary>
