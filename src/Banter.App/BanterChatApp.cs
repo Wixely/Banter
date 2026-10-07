@@ -380,9 +380,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                0.18.0 and 0.19.0, measured), so with the pane up Tab moves nothing anywhere,
                including between the three fields of the sign-in form itself. -->
           <div class="{{MainClass}}">
+            <!-- The header's room name is also the rooms toggle, on a narrow screen only. The
+                 rail's mark is the only way to change room there and nothing says so - it sits
+                 where every app puts a logo - while the obvious target, the room name a thumb
+                 reaches for, did nothing at all. "header" rather than "1" so the handler can tell
+                 the two apart: on a wide window the list is a column that is already on screen,
+                 and a title that made it vanish would be a surprise rather than a control. -->
             <div class="header">
-              <div class="header-title">
-                <span class="room-name">{{ActiveRoom}}</span>
+              <div class="header-title" data-rooms-toggle="header">
+                <span class="room-name">{{ActiveRoom}}<span class="room-caret"></span></span>
                 <span class="topic">{{Topic}}</span>
               </div>
               <span class="dispatch">{{Dispatch}}</span>
@@ -1423,6 +1429,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   padding: 0 18px; border-bottom: 1px solid #20262f; }
         .header-title { display: flex; flex-direction: column; flex: 1; }
         .room-name { font-size: 14px; font-weight: bold; }
+        /* Hidden until the title is actually a control - see the narrow block. A chevron on a
+           desktop header would promise something that does nothing there. */
+        .room-caret { display: none; }
         .topic { color: #8d97a6; font-size: 11px; margin-top: 2px; }
         .dispatch { color: #8d97a6; font-size: 11px; }
 
@@ -2143,6 +2152,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           .dispatch { display: none; }
           .header { height: 52px; }
 
+          /* Says the room name is a button. Drawn rather than set as a glyph, for the reason the
+             rail icons are: no face is embedded, so a chevron character is whatever the host
+             machine resolves - or tofu. A square with two of its borders coloured, turned 45
+             degrees, is a chevron on every head. */
+          .room-caret { display: inline-block; width: 6px; height: 6px; margin-left: 7px;
+                        border-right: 2px solid #8d97a6; border-bottom: 2px solid #8d97a6;
+                        transform: rotate(45deg); }
+
           /* Enter/Shift+Enter/slash-commands/@names — four hints on a soft keyboard that has no
              Shift+Enter, above a composer that needs the height more. */
           .composer-hint { display: none; }
@@ -2297,9 +2314,19 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         // identical to a flag and opposite to the eye. doc.ViewportWidth is the size the cascade
         // was evaluated against — post-zoom — so the two can never disagree about which side of
         // the line we are on, which a width shadowed from Present() could.
-        doc.OnAction("data-rooms-toggle", _ =>
+        doc.OnAction("data-rooms-toggle", e =>
         {
-            ViewModel.ToggleRooms(doc.ViewportWidth <= NarrowWidth);
+            var narrow = doc.ViewportWidth <= NarrowWidth;
+
+            // The header only offers this where the list is hidden. On a wide window it is a
+            // column the user can already see, and a room name that put it away would be a
+            // control nobody asked for on a target everybody clicks.
+            if (e.Value == "header" && !narrow)
+            {
+                return false;
+            }
+
+            ViewModel.ToggleRooms(narrow);
             return true;
         });
 
@@ -2874,7 +2901,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 return false;
             }
 
-            ViewModel.Post(() => ViewModel.SwitchTo(room));
+            ViewModel.Post(() =>
+            {
+                ViewModel.SwitchTo(room);
+                PickedARoom(doc);
+            });
+
             RoomSelected(room);
             return true;
         });
@@ -2989,6 +3021,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             _ = JoinRoomAsync(e.Value);
+            PickedARoom(doc);
             return true;
         });
 
@@ -3165,6 +3198,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         _nextWorkPoll = now + WorkPollInterval;
         _ = WorkListAsync();
+    }
+
+    /// <summary>
+    /// A room was picked, so the list that was covering it goes away - on a narrow screen, where
+    /// the list is an overlay ON the chat rather than a column beside it.
+    ///
+    /// <para>Without this, every switch was three taps with the screen obscured in the middle: the
+    /// handler called SwitchTo and stopped, so the room just opened was still underneath the list
+    /// of rooms, and there was no scrim or tap-outside to dismiss it. The test that covered this
+    /// asserted ActiveRoom had changed, which was true and not the point.</para>
+    ///
+    /// <para><see cref="ChatViewModel.ResetRooms"/> rather than a close: it hands the list back to
+    /// the stylesheet, which hides it here and leaves it alone on a wide window. So this is safe
+    /// to call either way, and on a desktop a click on a room tab changes nothing about the
+    /// column it was in.</para>
+    /// </summary>
+    private void PickedARoom(CupriDocument doc)
+    {
+        if (doc.ViewportWidth <= NarrowWidth)
+        {
+            ViewModel.ResetRooms();
+        }
     }
 
     /// <summary>

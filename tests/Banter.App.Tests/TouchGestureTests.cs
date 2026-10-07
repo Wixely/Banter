@@ -47,6 +47,10 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         vm.AddRoom("#other");
         vm.SwitchTo("#main");
         vm.Connected("tcp://host:7770", "alice");
+
+        // One room worth joining, so the browse rows exist: picking one of those has to put the
+        // list away exactly as picking a joined room does.
+        vm.SetRoomListing([("#main", null, 2), ("#other", null, 1), ("#notes", null, 3)]);
         for (var i = 0; i < 40; i++)
         {
             vm.Append("#main", "dagger", $"message {i}", 0);
@@ -156,5 +160,152 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         phone.Settle();
 
         Assert.Equal("#other", phone.Vm.Model.ActiveRoom);
+    }
+
+    /// <summary>The middle of the first box carrying this attribute with this value.</summary>
+    private static (float X, float Y) MiddleOf(CupriDocument doc, string attribute, string value)
+    {
+        var hit = Walk(doc.Root).First(n =>
+            n.Node.Element?.GetAttribute(attribute) == value
+            && n.Node.Width > 0 && n.Node.Height > 0);
+        return (hit.X + (hit.Node.Width / 2), hit.Y + (hit.Node.Height / 2));
+    }
+
+    /// <summary>
+    /// Picking a room puts the list away. On this screen the list is an overlay ON the chat, so
+    /// leaving it up means the room just opened is underneath it - and there was no scrim and no
+    /// tap-outside either, which made every switch three taps with the screen obscured in the
+    /// middle of them.
+    ///
+    /// <para>The test that covered this asserted ActiveRoom had changed. It had. That was never
+    /// the complaint.</para>
+    /// </summary>
+    [Fact]
+    public void PickingARoomPutsTheListAway()
+    {
+        var phone = OnAPhone();
+        var (markX, markY) = Middle(phone.Doc, "logo");
+        phone.Touch.Tap(markX, markY);
+        Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
+
+        var (roomX, roomY) = MiddleOf(phone.Doc, "data-room", "#other");
+        phone.Touch.Tap(roomX, roomY);
+        phone.Settle();
+
+        output.WriteLine($"sidebar {WidthOf(phone.Doc, "sidebar"):F0} wide, "
+            + $"roster {WidthOf(phone.Doc, "roster"):F0}, timeline {WidthOf(phone.Doc, "timeline"):F0}");
+
+        Assert.Equal("#other", phone.Vm.Model.ActiveRoom);
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+        Assert.Equal(0f, WidthOf(phone.Doc, "roster"), 1);
+
+        // …and the room you asked for is what is on screen, which is the whole point of closing it.
+        Assert.True(WidthOf(phone.Doc, "timeline") > 0f, "the timeline is not on screen");
+    }
+
+    /// <summary>
+    /// The same for a room being JOINED from the browse rows. It is a different handler, and a fix
+    /// applied to one of the two is the kind that looks complete until somebody taps the other.
+    /// </summary>
+    [Fact]
+    public void JoiningARoomPutsTheListAwayToo()
+    {
+        var joined = new List<string>();
+        var phone = OnAPhone();
+        var (markX, markY) = Middle(phone.Doc, "logo");
+        phone.Touch.Tap(markX, markY);
+
+        var (joinX, joinY) = MiddleOf(phone.Doc, "data-join", "#notes");
+        phone.Touch.Tap(joinX, joinY);
+        phone.Settle();
+
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+        Assert.True(WidthOf(phone.Doc, "timeline") > 0f, "the timeline is not on screen");
+    }
+
+    /// <summary>
+    /// The room name in the header opens the list. It is where a thumb goes and where every other
+    /// chat app puts this control; before, it was the one thing on screen that named the room and
+    /// the one thing that did nothing when tapped, while the only control that worked was an
+    /// unlabelled mark sitting where apps put a logo.
+    ///
+    /// <para>It only ever OPENS, and that is geometry rather than a decision: <c>.sidebar.open</c>
+    /// is fixed at left 56 and 232 wide, so the open list covers the header it was opened from.
+    /// The rail is at 56px, which is the whole reason the mark stays reachable and remains the way
+    /// to put the list away without picking anything. The second half of this test asserted that
+    /// tapping the name again closed it, which could not work and did not - and passed in a run
+    /// whose output I had truncated.</para>
+    /// </summary>
+    [Fact]
+    public void TappingTheRoomNameOpensTheRooms()
+    {
+        var phone = OnAPhone();
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+
+        var (x, y) = Middle(phone.Doc, "header-title");
+        output.WriteLine($"the room name is at ({x:F0},{y:F0})");
+        phone.Touch.Tap(x, y);
+
+        Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "tapping the room name did not open the rooms");
+
+        // The list is now over that very point, so this is what a second tap would land on. Said
+        // as a measurement rather than left to the prose above, because it is the reason the mark
+        // is still the way out.
+        var under = Walk(phone.Doc.Root)
+            .Where(n => n.Node.Width > 0 && n.Node.Height > 0)
+            .Where(n => x >= n.X && x <= n.X + n.Node.Width && y >= n.Y && y <= n.Y + n.Node.Height)
+            .Select(n => n.Node.Element?.GetAttribute("class"))
+            .OfType<string>()
+            .ToList();
+        output.WriteLine($"over the room name now: {string.Join(" / ", under)}");
+        Assert.Contains(under, c => c.Contains("sidebar", StringComparison.Ordinal));
+
+        // The mark is left of it - the rail is 56 wide and the list starts there - so that is what
+        // closes it.
+        var (markX, markY) = Middle(phone.Doc, "logo");
+        Assert.True(markX < 56f, $"the mark is at {markX:F0}, which the open list would cover");
+        phone.Touch.Advance(1.0);
+        phone.Touch.Tap(markX, markY);
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+    }
+
+    /// <summary>
+    /// On a wide window the room name is just a room name. The list is a column already on screen
+    /// there, so a title that put it away would be a surprise on a target everybody clicks - and
+    /// the caret that says "this opens something" is not drawn there either.
+    /// </summary>
+    [Fact]
+    public void OnADesktopTheRoomNameIsNotAControl()
+    {
+        var vm = new ChatViewModel();
+        vm.SetNick("alice");
+        vm.AddRoom("#main");
+        vm.SwitchTo("#main");
+        vm.Connected("tcp://host:7770", "alice");
+
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+        doc.Refresh();
+        var p = BanterChatApp.Presentation(1280, 800);
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        var before = WidthOf(doc, "sidebar");
+        Assert.True(before > 0f, "the room list should be a column at this width");
+
+        var hit = Walk(doc.Root).First(n =>
+            n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("header-title") == true
+            && n.Node.Width > 0);
+        doc.DispatchClick(hit.X + (hit.Node.Width / 2), hit.Y + (hit.Node.Height / 2));
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        output.WriteLine($"sidebar was {before:F0}, now {WidthOf(doc, "sidebar"):F0}");
+        Assert.Equal(before, WidthOf(doc, "sidebar"), 1);
+
+        // The caret is a promise, so it is not made where the control does nothing.
+        var caret = Walk(doc.Root)
+            .Where(n => n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("room-caret") == true)
+            .Select(n => n.Node.Width)
+            .FirstOrDefault();
+        Assert.Equal(0f, caret, 1);
     }
 }

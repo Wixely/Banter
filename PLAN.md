@@ -828,10 +828,15 @@ app puts that control. Worse, picking a room leaves the overlay up: the `data-ro
 or tap-outside to dismiss it. Every switch is three taps with the screen obscured in the middle.
 `TappingARoomInTheOverlaySwitchesToIt` asserts `ActiveRoom` changed, not that you can see it.
 
-- Close the overlay after a pick when narrow — `ResetRooms()` hands it back to the stylesheet,
-  which hides it there — for `data-room` and `data-join` alike.
-- Make the header's room name a second `data-rooms-toggle`, so the obvious target works.
-- Test: after tapping a room on a phone, the list is gone and the timeline is on screen.
+- ✅ **Fixed.** `PickedARoom` calls `ResetRooms()` when narrow, from `data-room` and `data-join`
+  alike, which hands the list back to the stylesheet — hidden here, untouched on a wide window.
+  The header's room name is a second `data-rooms-toggle`, carrying `"header"` so the handler can
+  ignore it above the breakpoint, where the list is a column already on screen; a caret is drawn
+  next to the name only in the narrow block, because it is a promise not kept anywhere else.
+  It only ever *opens*: `.sidebar.open` is fixed at left 56 and 232 wide, so the open list covers
+  the header it came from, and the rail's mark at 56px is what stays reachable to close it.
+  `TouchGestureTests` taps all of it on a 412x915 phone and measures what is over the room name
+  afterwards.
 
 **The phone forgets the account every time.** `StoredCredentials` exists and does exactly this job
 — "kept so that starting it again does not mean typing a password again" — and only
