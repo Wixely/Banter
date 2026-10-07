@@ -43,7 +43,8 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
     /// default does nothing, which is every other test here; the one that cares passes a stand-in
     /// for a session and adds the room to the model, because that is what a join really does and
     /// what anything switching to it depends on.</param>
-    private static Phone OnAPhone(Func<ChatViewModel, string, Task>? joinRoom = null)
+    private static Phone OnAPhone(
+        Func<ChatViewModel, string, Task>? joinRoom = null, Action? roomsListed = null)
     {
         var vm = new ChatViewModel();
         vm.SetNick("alice");
@@ -63,6 +64,11 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         var app = new BanterChatApp(vm)
         {
             JoinRoomAsync = room => joinRoom?.Invoke(vm, room) ?? Task.CompletedTask,
+            RoomsListAsync = () =>
+            {
+                roomsListed?.Invoke();
+                return Task.CompletedTask;
+            },
         };
 
         var doc = app.CreateDocument();
@@ -334,5 +340,39 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
             .Select(n => n.Node.Width)
             .FirstOrDefault();
         Assert.Equal(0f, caret, 1);
+    }
+
+    /// <summary>
+    /// Opening the list asks the server what is in it. It was read at join and never again, so a
+    /// room another client made after you signed in was simply absent - no error and no empty
+    /// state, just a list that looked complete and was not. Found on an emulator, where a second
+    /// client created #notes and the phone could not see it until the app was restarted.
+    ///
+    /// <para>Closing asks nothing. Putting the list away is not a reason to read it, and on a
+    /// phone that would be a round trip for every dismissal.</para>
+    /// </summary>
+    [Fact]
+    public void OpeningTheRoomListReadsItAgain()
+    {
+        var reads = 0;
+        var phone = OnAPhone(roomsListed: () => reads++);
+        var (x, y) = Middle(phone.Doc, "logo");
+
+        phone.Touch.Tap(x, y);
+        Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
+        Assert.Equal(1, reads);
+
+        // …and away again, which asks nothing.
+        phone.Touch.Advance(1.0);
+        phone.Touch.Tap(x, y);
+        Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
+        Assert.Equal(1, reads);
+
+        // Opened from the room name too, since that is the other way in.
+        phone.Touch.Advance(1.0);
+        var (nameX, nameY) = Middle(phone.Doc, "header-title");
+        phone.Touch.Tap(nameX, nameY);
+        output.WriteLine($"{reads} reads after open, close, open");
+        Assert.Equal(2, reads);
     }
 }

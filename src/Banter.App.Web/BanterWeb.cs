@@ -46,6 +46,7 @@ public static class BanterWeb
 
             // The same four pages the desktop has. The browser is a real place to administer from
             // - it is the head the mesh server hands out - and it had none of them.
+            RoomsListAsync = () => _session?.RefreshRoomsAsync() ?? Task.CompletedTask,
             Admin = AdminHooks.For(() => _session),
 
             // The two preferences a reload should not cost you. The desktop head's reasoning for

@@ -98,6 +98,10 @@ public sealed class HeadAdminWiringTests(ITestOutputHelper output)
             var head = Path.GetFileName(Path.GetDirectoryName(path));
             output.WriteLine($"{head}: {construction!.Length} chars of initializer");
             Assert.Contains("Admin = ", construction);
+
+            // The room list is the same shape of mistake one size down: a head that does not wire
+            // it shows a list that was current when the session joined and silently stops there.
+            Assert.Contains("RoomsListAsync = ", construction);
         }
     }
 }

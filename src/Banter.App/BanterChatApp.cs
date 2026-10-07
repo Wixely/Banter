@@ -69,6 +69,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         (_, _) => Task.CompletedTask;
 
     /// <summary>
+    /// Re-read the server's room list. Called when the list is OPENED, because that is the moment
+    /// somebody is about to read it and the moment its staleness shows.
+    ///
+    /// <para>It was read at join and never again, so a room another client created after you
+    /// signed in simply did not exist as far as your list was concerned - no error, no empty
+    /// state, just a room missing from a list that looked complete. Found on an emulator, where a
+    /// second client made a room and the phone could not see it until the app was restarted.</para>
+    /// </summary>
+    public Func<Task> RoomsListAsync { get; init; } = () => Task.CompletedTask;
+
+    /// <summary>
     /// The four admin pages - agents, users, work and MCPHub - in one property. A head that wires
     /// it gets all of them; one that does not shows the rail buttons only to an admin (see
     /// ChatViewModel.SetIsAdmin) and the pages do nothing. See <see cref="AdminHooks"/> for why
@@ -2289,6 +2300,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             ViewModel.ToggleRooms(narrow);
+
+            // Only on the way OPEN. Putting the list away is not a reason to ask the server what
+            // is in it, and on a phone that would be a round trip for every dismissal.
+            if (ViewModel.RoomsShowing)
+            {
+                _ = RoomsListAsync();
+            }
+
             return true;
         });
 

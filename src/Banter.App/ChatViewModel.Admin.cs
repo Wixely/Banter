@@ -701,6 +701,17 @@ public sealed partial class ChatViewModel
         Model.RosterClass = showing ? "roster shut" : "roster open";
     }
 
+    /// <summary>
+    /// Whether the room list is being SHOWN because somebody asked for it.
+    ///
+    /// <para>Reads the class rather than a flag of its own, so it cannot disagree with what is on
+    /// screen. It answers "was it just opened", which is what a refresh hangs off; a wide window
+    /// with the list in its default column state is neither open nor shut by anybody's choice, and
+    /// correctly answers false - there the list has been visible all along and was refreshed when
+    /// the session joined.</para>
+    /// </summary>
+    public bool RoomsShowing => Model.SidebarClass.Contains("open", StringComparison.Ordinal);
+
     /// <summary>Puts the room list back under the stylesheet's control, whichever way it was
     /// forced. Called when the window crosses the breakpoint, so a choice made for one shape does
     /// not survive into the other — a sidebar forced open on a phone would otherwise still be

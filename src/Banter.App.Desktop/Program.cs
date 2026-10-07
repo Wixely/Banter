@@ -130,6 +130,7 @@ var app = new BanterChatApp(vm)
     // All four admin pages at once. `() => session` rather than the session itself: it is replaced
     // on every sign-in, and hooks closed over the one that existed when the app was built would go
     // on talking to a connection nobody has any more.
+    RoomsListAsync = () => session?.RefreshRoomsAsync() ?? Task.CompletedTask,
     Admin = AdminHooks.For(() => session),
     SignOutAsync = SignOutAsync,
 

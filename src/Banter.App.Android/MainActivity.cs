@@ -151,6 +151,7 @@ public sealed class MainActivity : CupriActivity
             // said so, because a page with no hook looks exactly like a page waiting on a server.
             // Session is a property that reads LiveConnection, which is what survives this
             // activity, so the hooks follow a reconnection rather than holding a dead one.
+            RoomsListAsync = () => Session?.RefreshRoomsAsync() ?? Task.CompletedTask,
             Admin = AdminHooks.For(() => Session),
             // The phone is the device with the camera and the photo library on it, and until now
             // it was the one head that could not send either: EnableAttach was called from the
