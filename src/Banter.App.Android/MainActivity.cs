@@ -44,6 +44,13 @@ public sealed class MainActivity : CupriActivity
     private BanterSettings _settings = new();
 
     /// <summary>
+    /// Where this phone's password is kept and what wraps it. The head's job, because the answer
+    /// is per platform: DPAPI on Windows, Android's keystore here - see
+    /// <see cref="KeystoreSecretProtector"/>.
+    /// </summary>
+    private readonly ISecretProtector _protector = new KeystoreSecretProtector();
+
+    /// <summary>
     /// Voice stays with the activity rather than moving to <see cref="LiveConnection"/>: a
     /// microphone held by a backgrounded app is a different promise from a socket held by one, and
     /// not one this makes. It is rebuilt when an activity is.
@@ -87,10 +94,22 @@ public sealed class MainActivity : CupriActivity
             _viewModel.SetStatus("Connected", connected: true);
             _viewModel.Connected(LiveConnection.Server, LiveConnection.User);
         }
+        else if (Remembered() is { } credential)
+        {
+            // The device where typing a password costs the most was the one that asked every
+            // launch: StoredCredentials has existed since the desktop head got it, and nothing
+            // here had ever loaded or saved it (PLAN 7d). Connecting straight away rather than
+            // filling the form in, because a form holding a password somebody did not type is a
+            // worse answer than not showing the form.
+            _viewModel.SetStatus("Connecting...", connected: false);
+            _ = ConnectAsync(
+                credential.Server, credential.User, credential.Password, fromRemembered: true);
+        }
         else
         {
             _viewModel.SetStatus("Not connected", connected: false);
-            _viewModel.ShowConnect(_settings.Server, _settings.User);
+            _viewModel.ShowConnect(
+                _settings.Server, _settings.User, KeystoreSecretProtector.StorageDescription);
         }
 
         // Shows the attach control. Direct rather than posted, like the two calls above: this runs
@@ -311,7 +330,35 @@ public sealed class MainActivity : CupriActivity
     /// onto that screen rather than thrown — the user is standing in front of the form that caused
     /// it, and it is the only place they can do anything about it.
     /// </summary>
-    private async Task ConnectAsync(string server, string user, string password)
+    /// <summary>
+    /// A failed connect, reported to whatever is actually on screen.
+    ///
+    /// <para>These are two different situations wearing one word. When somebody typed the
+    /// password the form is up and <c>ConnectFailed</c> puts the reason on it. When the credential
+    /// came off disk there is no form - the app went straight to connecting - and ConnectFailed
+    /// would set a status line on a screen nobody can see, leaving a signed-out app showing an
+    /// empty room with no way to sign in. <c>SignedOut</c> is what brings the form up with the
+    /// reason on it, which is what the desktop head does for the same case.</para>
+    /// </summary>
+    private void Failed(bool fromRemembered, string server, string user, string reason) =>
+        _viewModel.Post(() =>
+        {
+            if (fromRemembered)
+            {
+                _viewModel.SignedOut(server, user, reason);
+            }
+            else
+            {
+                _viewModel.ConnectFailed(reason);
+            }
+        });
+
+    /// <summary>What the connect form asks for: somebody typed this, so a refusal is theirs to
+    /// read and the credential on disk is not implicated.</summary>
+    private Task ConnectAsync(string server, string user, string password) =>
+        ConnectAsync(server, user, password, fromRemembered: false);
+
+    private async Task ConnectAsync(string server, string user, string password, bool fromRemembered)
     {
         try
         {
@@ -350,10 +397,16 @@ public sealed class MainActivity : CupriActivity
 
             await StayConnectedAsync(server).ConfigureAwait(false);
 
-            // Remembered only once it worked, and without the password — the settings file is
-            // plain JSON in the app's storage and is not a credential store.
+            // Remembered only once it worked, and in two places for two reasons: the settings
+            // file is plain JSON and takes everything EXCEPT the password, and the credential file
+            // takes the password wrapped by the keystore. Keeping them apart is what lets the
+            // rule for each be one sentence long.
             _settings = _settings with { Server = server, User = user };
             _settings.TrySave(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
+
+            new StoredCredentials(server, user, password).TrySave(
+                protector: _protector,
+                problem: p => global::Android.Util.Log.Warn(LogTag, $"credentials: {p}"));
 
             AttachVoice();
 
@@ -372,11 +425,21 @@ public sealed class MainActivity : CupriActivity
         }
         catch (BanterAuthException ex)
         {
-            _viewModel.Post(() => _viewModel.ConnectFailed($"Refused: {ex.Message}"));
+            // A REFUSAL means the stored password is wrong - reset by an admin, or changed
+            // elsewhere - so it is forgotten rather than retried on every launch for ever. Only a
+            // refusal: a network failure says nothing about the password, and discarding it
+            // because a train went into a tunnel would be the opposite of the point.
+            if (fromRemembered)
+            {
+                StoredCredentials.TryDelete(
+                    problem: p => global::Android.Util.Log.Warn(LogTag, $"credentials: {p}"));
+            }
+
+            Failed(fromRemembered, server, user, $"Refused: {ex.Message}");
         }
         catch (Exception ex)
         {
-            _viewModel.Post(() => _viewModel.ConnectFailed(ex.Message));
+            Failed(fromRemembered, server, user, ex.Message);
         }
     }
 
@@ -575,8 +638,24 @@ public sealed class MainActivity : CupriActivity
 
         await LiveConnection.EndAsync().ConfigureAwait(false);
 
+        // Signing out has to leave nothing behind, or the next launch signs straight back in with
+        // the credential the user just asked to be rid of.
+        StoredCredentials.TryDelete(problem: p => global::Android.Util.Log.Warn(LogTag, $"credentials: {p}"));
+
         _viewModel.Post(() => _viewModel.SignedOut(_settings.Server, _settings.User));
     }
+
+    /// <summary>
+    /// The credential this phone has kept, or null when there is nothing to use.
+    ///
+    /// <para>Unreadable counts as nothing. A keystore key that has gone - app data cleared, the
+    /// app reinstalled, a backup restored onto another device - leaves bytes that cannot be
+    /// decrypted, and the only thing to do about it is show the form. The reason goes to the log
+    /// for anyone looking, and the person in front of the phone just signs in.</para>
+    /// </summary>
+    private StoredCredentials? Remembered() => StoredCredentials.Load(
+        protector: _protector,
+        problem: p => global::Android.Util.Log.Warn(LogTag, $"credentials: {p}"));
 
     /// <summary>
     /// Wires voice once there is a session for a transcript to be sent through. Built here rather

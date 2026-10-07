@@ -838,12 +838,16 @@ or tap-outside to dismiss it. Every switch is three taps with the screen obscure
   `TouchGestureTests` taps all of it on a 412x915 phone and measures what is over the room name
   afterwards.
 
-**The phone forgets the account every time.** `StoredCredentials` exists and does exactly this job
-— "kept so that starting it again does not mean typing a password again" — and only
-`Banter.App.Desktop/Program.cs` uses it. The Android head never saves or loads it, so every launch
-is a sign-in, on the device where typing a password is most expensive. It needs the head to supply
-an `ISecretProtector` (Android Keystore, or `ISecretProtector.None` plus the app's private
-storage, which is already per-app on Android) and to load on start as the desktop does.
+**The phone forgets the account every time — ✅ fixed.** `KeystoreSecretProtector` is the head's
+`ISecretProtector`: AES-GCM under a key the Android keystore holds and the process never sees, so
+the file is useless off the device (a backup, or an adb pull from a rooted phone, decrypts to
+nothing). No user authentication on the key — the credential exists so that opening the app does
+not mean typing a password, and demanding a fingerprint first would swap one prompt for another.
+`MainActivity` loads it in `CreateApp` and connects straight away rather than filling the form in
+with a password nobody typed; saves it after a connect that worked; deletes it on sign-out; and
+deletes it when an auto-connect is *refused* — but not when it merely fails, since a tunnel says
+nothing about a password. A failure from a remembered credential reports through `SignedOut`
+rather than `ConnectFailed`, because there is no form on screen to put a status line on.
 
 **Reconnecting spams every room — ✅ fixed.** `PresenceLimits.ReconnectGrace` (10s, named and
 defaulted to match `BanterClientOptions.ReconnectGrace`) holds an account present in each room
