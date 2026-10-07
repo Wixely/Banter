@@ -17,11 +17,13 @@ internal sealed partial class RoomEngine(
     TaskStore? tasks = null,
     TaskLimits? taskLimits = null,
     Tools.IToolBroker? tools = null,
-    IAgentIdentityStore? identities = null)
+    IAgentIdentityStore? identities = null,
+    PresenceLimits? presence = null)
 {
     private readonly AgentGuardrails _guardrails = guardrails ?? AgentGuardrails.Default;
     private readonly TaskStore? _tasks = tasks;
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
+    private readonly PresenceLimits _presence = presence ?? PresenceLimits.Default;
     private readonly Tools.IToolBroker? _tools = tools;
 
     private readonly Channel<Func<ValueTask>> _commands = Channel.CreateUnbounded<Func<ValueTask>>(
@@ -49,6 +51,17 @@ internal sealed partial class RoomEngine(
         public string Name { get; } = name;
         public string? Topic { get; set; } = topic;
         public HashSet<ClientSession> Members { get; } = [];
+
+        /// <summary>
+        /// Accounts whose last session has dropped but which are still held present, and the
+        /// moment each stops being. A session returning before then cancels the departure and
+        /// nothing is ever said about it (<see cref="PresenceLimits"/>).
+        ///
+        /// <para>On the room rather than in one engine-wide map: leaving is per room, an account
+        /// can be in several, and a rejoin to one of them says nothing about the others.</para>
+        /// </summary>
+        public Dictionary<string, DateTimeOffset> Leaving { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Dispatch mode (PLAN §8a). Delegated is the default.</summary>
         public RoomDispatchMode Mode { get; set; } = RoomDispatchMode.Delegated;
@@ -357,10 +370,24 @@ internal sealed partial class RoomEngine(
         // alice / alice^mobile convention: identity is the account, and a session is one of its
         // connections, so a second device must not read as a second person arriving.
         var alreadyPresent = HasSessionInRoom(room, session.Nick);
+
+        // Back inside the grace, so nothing was ever said about leaving and nothing is said about
+        // arriving either. The pair is the point: announcing the return of somebody the room was
+        // never told had gone is the same noise with half the words.
+        var returning = room.Leaving.Remove(session.Nick);
+
         if (room.Members.Add(session) && !alreadyPresent)
         {
-            Broadcast(room, new JoinPayload(room.Name, session.Nick));
+            if (!returning)
+            {
+                Broadcast(room, new JoinPayload(room.Name, session.Nick));
+            }
 
+            // Outside that: only the ANNOUNCEMENT is held back for a return. The agent was taken
+            // out of the roster and the election re-run when its socket dropped, because a room
+            // with an absent dispatcher answers nothing - so a returning agent still has to be put
+            // back, and skipping this with the announcement would cost the room its delegator
+            // permanently.
             if (session.IsAgent)
             {
                 // An agent that has not announced still enters the roster, with Unknown
@@ -1206,6 +1233,45 @@ internal sealed partial class RoomEngine(
     }
 
     /// <summary>
+    /// Announce the departures whose grace has run out: accounts held present after their last
+    /// session dropped that have not come back (<see cref="PresenceLimits"/>).
+    ///
+    /// <para>On the engine loop like every other mutation, so a sweep cannot interleave with a
+    /// JOIN and announce somebody who has just arrived. Checked again here rather than trusted
+    /// from the record - a session can be back without having rejoined that room yet, and it is
+    /// the account having no session in the room that makes it gone.</para>
+    /// </summary>
+    public ValueTask SweepDeparturesAsync() =>
+        _commands.Writer.WriteAsync(() =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (var room in _rooms.Values)
+            {
+                if (room.Leaving.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (var (nick, due) in room.Leaving.Where(l => l.Value <= now).ToList())
+                {
+                    room.Leaving.Remove(nick);
+
+                    if (HasSessionInRoom(room, nick))
+                    {
+                        // Back, by some path that did not clear this. Nothing to say.
+                        continue;
+                    }
+
+                    // The announcement is all that is left to do: the roster and the election
+                    // were settled the moment the socket dropped.
+                    Broadcast(room, new PartPayload(room.Name, "disconnected", nick));
+                }
+            }
+
+            return ValueTask.CompletedTask;
+        });
+
+    /// <summary>
     /// Reclaim tasks whose lease lapsed. Runs on the engine loop like everything else, so a
     /// reclaim cannot interleave with a claim and hand the same task to two agents.
     /// </summary>
@@ -1759,10 +1825,23 @@ internal sealed partial class RoomEngine(
                 continue;
             }
 
-            Broadcast(room, new PartPayload(room.Name, reason, session.Nick));
+            // …and not even then, yet. The account is held present for a moment first, because a
+            // phone leaving the foreground drops its socket and comes back - see PresenceLimits.
+            // A grace of zero announces immediately, which is what this did before.
+            if (_presence.ReconnectGrace > TimeSpan.Zero)
+            {
+                room.Leaving[session.Nick] = DateTimeOffset.UtcNow + _presence.ReconnectGrace;
+            }
+            else
+            {
+                Broadcast(room, new PartPayload(room.Name, reason, session.Nick));
+            }
 
-            // A delegator whose socket drops would otherwise leave the room with a dispatcher
-            // that is not there, and every request unanswered.
+            // Immediately, grace or not: a delegator whose socket drops would otherwise leave the
+            // room with a dispatcher that is not there and every request unanswered. Only the
+            // ANNOUNCEMENT waits - who may answer is a question about now, not about whether
+            // somebody is coming back, so holding it would mean a room that quietly dispatches to
+            // a phone in somebody's pocket.
             if (room.Agents.Remove(session.Nick))
             {
                 await ReelectAsync(room).ConfigureAwait(false);

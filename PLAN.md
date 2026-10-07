@@ -845,7 +845,16 @@ is a sign-in, on the device where typing a password is most expensive. It needs 
 an `ISecretProtector` (Android Keystore, or `ISecretProtector.None` plus the app's private
 storage, which is already per-app on Android) and to load on start as the desktop does.
 
-**Reconnecting spams every room.** §7a is the cause: Android destroys the socket on a trip out of
+**Reconnecting spams every room — ✅ fixed.** `PresenceLimits.ReconnectGrace` (10s, named and
+defaulted to match `BanterClientOptions.ReconnectGrace`) holds an account present in each room
+after its last session drops; a session returning inside it cancels the departure and **neither**
+a PART nor a JOIN is said — announcing the return of somebody the room was never told had gone is
+the same noise with half the words. `RoomEngine.SweepDeparturesAsync` announces what did not come
+back, on the engine loop so it cannot race a join, driven by a timer in `BanterServer`. The roster
+and the delegator election still settle the moment a socket drops: who may answer is a question
+about now, not about whether somebody is coming back. A grace of zero is the old behaviour.
+
+*The original note, for the reasoning:* §7a is the cause: Android destroys the socket on a trip out of
 the foreground, and `RemoveFromAllRoomsAsync` broadcasts a `PART` when the account's last session
 goes, with a `JOIN` on the way back in. On a desktop that is honest. On a phone it is a pocket's
 worth of "left the room / joined the room" in every room, for somebody who never went anywhere —

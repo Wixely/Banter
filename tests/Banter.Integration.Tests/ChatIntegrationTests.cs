@@ -13,6 +13,17 @@ namespace Banter.Integration.Tests;
 public sealed class ChatIntegrationTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// The departure grace, shortened. A real one - the production default holds an account
+    /// present for ten seconds so a phone out of the foreground is never announced as leaving -
+    /// but a suite that waited that out per disconnect would not get run.
+    /// </summary>
+    private static readonly PresenceLimits Grace = new()
+    {
+        ReconnectGrace = TimeSpan.FromMilliseconds(400),
+        SweepInterval = TimeSpan.FromMilliseconds(50),
+    };
     private readonly TcpBanterTransport _transport = new();
     private readonly InMemoryAccountStore _accounts = new InMemoryAccountStore()
         .AddUser("alice", "pw-a")
@@ -33,7 +44,8 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         _database = new BanterDatabase(BanterStorageOptions.DefaultSqlite(_dbPath));
         await _database.InitializeAsync();
         _files = new Banter.Server.Files.FileStore(_database, new Banter.Server.Files.FileStoreOptions { DataDirectory = _dataDir });
-        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
+        _server = new BanterServer(
+            _transport, _accounts, new DbServerStore(_database), _files, presence: Grace);
         await _server.StartAsync(new Uri("tcp://127.0.0.1:0"));
     }
 
@@ -64,7 +76,8 @@ public sealed class ChatIntegrationTests : IAsyncLifetime
         await disconnected.Task.WaitAsync(Timeout);
 
         // Bring a new server up on the same port; the client should redial, re-auth, rejoin.
-        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
+        _server = new BanterServer(
+            _transport, _accounts, new DbServerStore(_database), _files, presence: Grace);
         await StartOnPortWithRetryAsync(_server, port);
         await reconnected.Task.WaitAsync(Timeout);
 

@@ -24,19 +24,22 @@ public sealed class BanterServer(
     IAccountAdminStore? accountAdmin = null,
     // Last, and optional, because a relic is a capability of one transport rather than of the
     // protocol: without it every file still transfers, over FILE_GET as it always has.
-    Files.FileRelics? relics = null) : IAsyncDisposable
+    Files.FileRelics? relics = null,
+    PresenceLimits? presence = null) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
+    private readonly PresenceLimits _presence = presence ?? PresenceLimits.Default;
     // The identity store reaches the engine so an announcement can be clamped to what the admin
     // decided: the machine running an agent is not the authority on how much the room trusts it.
-    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits, tools, identities);
+    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits, tools, identities, presence);
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, byte> _sessionTasks = new();
     private IBanterListener? _listener;
     private Task? _acceptLoop;
     private Task? _leaseSweep;
     private Task? _uploadSweep;
+    private Task? _presenceSweep;
     private readonly bool _tasksEnabled = tasks is not null;
     private bool _disposed;
 
@@ -62,6 +65,13 @@ public sealed class BanterServer(
         // Unconditional, unlike the lease sweep: abandoned uploads hold an open file handle whether
         // or not this deployment uses the work ledger.
         _uploadSweep = Task.Run(UploadSweepAsync, CancellationToken.None);
+
+        // Only when there is a grace to run out. At zero the engine announces a departure as it
+        // happens, so there is nothing for a timer to come back for.
+        if (_presence.ReconnectGrace > TimeSpan.Zero)
+        {
+            _presenceSweep = Task.Run(PresenceSweepAsync, CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -93,6 +103,31 @@ public sealed class BanterServer(
         {
             // A sweep that cannot reach its database must not take the server down with it. The cost
             // of losing one is a handle held until the next tick.
+        }
+    }
+
+    /// <summary>
+    /// Periodically announces the departures whose grace has run out. Like the lease sweep, it
+    /// only queues work onto the room engine, so the announcement is ordered against joins rather
+    /// than racing one.
+    /// </summary>
+    private async Task PresenceSweepAsync()
+    {
+        using var timer = new PeriodicTimer(_presence.SweepInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_stopping.Token).ConfigureAwait(false))
+            {
+                await _engine.SweepDeparturesAsync().ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
+        }
+        catch (ChannelClosedException)
+        {
+            // Engine stopped first; nothing left to sweep into.
         }
     }
 
@@ -169,6 +204,11 @@ public sealed class BanterServer(
         if (_leaseSweep is not null)
         {
             await _leaseSweep.ConfigureAwait(false);
+        }
+
+        if (_presenceSweep is not null)
+        {
+            await _presenceSweep.ConfigureAwait(false);
         }
 
         await Task.WhenAll(_sessionTasks.Keys).ConfigureAwait(false);
