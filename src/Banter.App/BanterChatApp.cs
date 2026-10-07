@@ -69,50 +69,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         (_, _) => Task.CompletedTask;
 
     /// <summary>
-    /// The agents page (admin only). A head that wires these gets agent management; one that does
-    /// not simply never shows the button, because the server would refuse a non-admin anyway.
+    /// The four admin pages - agents, users, work and MCPHub - in one property. A head that wires
+    /// it gets all of them; one that does not shows the rail buttons only to an admin (see
+    /// ChatViewModel.SetIsAdmin) and the pages do nothing. See <see cref="AdminHooks"/> for why
+    /// this is one property rather than fourteen.
     /// </summary>
-    public Func<Task> AgentsListAsync { get; init; } = () => Task.CompletedTask;
-
-    /// <summary>Creating an agent; the reply's one-time code is the host's to show.</summary>
-    public Func<AgentForm, Task> AgentCreateAsync { get; init; } = _ => Task.CompletedTask;
-
-    /// <summary>Saving an existing agent. Same form as the create, because a create is a save of
-    /// something that did not exist yet.</summary>
-    public Func<AgentForm, Task> AgentSaveAsync { get; init; } = _ => Task.CompletedTask;
-
-    /// <summary>A fresh code, retiring the key currently enrolled for this agent.</summary>
-    public Func<string, Task> AgentReissueAsync { get; init; } = _ => Task.CompletedTask;
-
-    /// <summary>Removes an identity. Its key stops working at once.</summary>
-    public Func<string, Task> AgentRemoveAsync { get; init; } = _ => Task.CompletedTask;
-
-
-    public Func<Task> UsersListAsync { get; init; } = () => Task.CompletedTask;
-
-    /// <summary>Reads every room's work. Admin-only on the server.</summary>
-    public Func<Task> WorkListAsync { get; init; } = () => Task.CompletedTask;
-
-    /// <summary>
-    /// Asks the server about its tool hubs. Admin-only there, and the page itself does not edit
-    /// grants: MCPHub owns those.
-    /// </summary>
-    public Func<Task> HubsListAsync { get; init; } = () => Task.CompletedTask;
-
-    /// <summary>(hub, agent) — a new key for this agent there, retiring the one it holds.</summary>
-    public Func<string, string, Task> HubRotateAsync { get; init; } = (_, _) => Task.CompletedTask;
-
-    /// <summary>(hub, agent) — remove this agent's identity there entirely.</summary>
-    public Func<string, string, Task> HubForgetAsync { get; init; } = (_, _) => Task.CompletedTask;
-
-    /// <summary>(username, isAdmin) — the reply's temporary password is the host's to show.</summary>
-    public Func<string, bool, Task> UserCreateAsync { get; init; } = (_, _) => Task.CompletedTask;
-
-    public Func<string, Task> UserResetAsync { get; init; } = _ => Task.CompletedTask;
-
-    public Func<string, bool, Task> UserSetAdminAsync { get; init; } = (_, _) => Task.CompletedTask;
-
-    public Func<string, Task> UserRemoveAsync { get; init; } = _ => Task.CompletedTask;
+    public AdminHooks Admin { get; init; } = AdminHooks.None;
 
     /// <summary>Told when the interface scale changes, so the head can remember it.</summary>
     public Action<float> ZoomChanged { get; init; } = _ => { };
@@ -2463,7 +2425,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-agents-open", _unused =>
         {
             ViewModel.ShowAgentsPanel(true);
-            _ = AgentsListAsync();
+            _ = Admin.AgentsListAsync();
             doc.Refresh();
             return true;
         });
@@ -2471,7 +2433,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-work-open", _unused =>
         {
             ViewModel.ShowWorkPanel(true);
-            _ = WorkListAsync();
+            _ = Admin.WorkListAsync();
             _nextWorkPoll = DateTimeOffset.UtcNow + WorkPollInterval;
             doc.Refresh();
             return true;
@@ -2490,7 +2452,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-hubs-open", _unused =>
         {
             ViewModel.ShowHubsPanel(true);
-            _ = HubsListAsync();
+            _ = Admin.HubsListAsync();
             doc.Refresh();
             return true;
         });
@@ -2529,7 +2491,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 return false;
             }
 
-            _ = HubRotateAsync(target.Hub, target.Agent);
+            _ = Admin.HubRotateAsync(target.Hub, target.Agent);
             doc.Refresh();
             return true;
         });
@@ -2561,7 +2523,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-task-scope", e =>
         {
             ViewModel.ChooseTaskScope(e.Value ?? "live");
-            _ = WorkListAsync();
+            _ = Admin.WorkListAsync();
             doc.Refresh();
             return true;
         });
@@ -2575,7 +2537,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-users-open", _unused =>
         {
             ViewModel.ShowUsersPanel(true);
-            _ = UsersListAsync();
+            _ = Admin.UsersListAsync();
             doc.Refresh();
             return true;
         });
@@ -2679,7 +2641,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 return;
             }
 
-            _ = ViewModel.AgentIsNew ? AgentCreateAsync(form) : AgentSaveAsync(form);
+            _ = ViewModel.AgentIsNew ? Admin.AgentCreateAsync(form) : Admin.AgentSaveAsync(form);
         });
 
         doc.OnClick(".mgmt-save-user", _unused =>
@@ -2691,8 +2653,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             _ = ViewModel.UserIsNew
-                ? UserCreateAsync(form.Username, form.IsAdmin)
-                : UserSetAdminAsync(form.Username, form.IsAdmin);
+                ? Admin.UserCreateAsync(form.Username, form.IsAdmin)
+                : Admin.UserSetAdminAsync(form.Username, form.IsAdmin);
         });
 
         doc.OnClick(".mgmt-cancel-agent", _unused =>
@@ -2733,10 +2695,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 _ = confirmed switch
                 {
                     { Act: ConfirmAct.SignOut } => SignOutAsync(),
-                    { Act: ConfirmAct.RemoveAgent, Subject.Length: > 0 } a => AgentRemoveAsync(a.Subject),
-                    { Act: ConfirmAct.RemoveUser, Subject.Length: > 0 } u => UserRemoveAsync(u.Subject),
+                    { Act: ConfirmAct.RemoveAgent, Subject.Length: > 0 } a => Admin.AgentRemoveAsync(a.Subject),
+                    { Act: ConfirmAct.RemoveUser, Subject.Length: > 0 } u => Admin.UserRemoveAsync(u.Subject),
                     { Act: ConfirmAct.ForgetHubIdentity, Subject.Length: > 0, Hub.Length: > 0 } h =>
-                        HubForgetAsync(h.Hub, h.Subject),
+                        Admin.HubForgetAsync(h.Hub, h.Subject),
                     _ => Task.CompletedTask,
                 };
             }
@@ -2874,11 +2836,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         {
             if (ViewModel.Model.AgentSelected.Length > 0)
             {
-                _ = AgentReissueAsync(ViewModel.Model.AgentSelected);
+                _ = Admin.AgentReissueAsync(ViewModel.Model.AgentSelected);
             }
             else if (ViewModel.Model.UserSelected.Length > 0)
             {
-                _ = UserResetAsync(ViewModel.Model.UserSelected);
+                _ = Admin.UserResetAsync(ViewModel.Model.UserSelected);
             }
         });
 
@@ -3197,7 +3159,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         _nextWorkPoll = now + WorkPollInterval;
-        _ = WorkListAsync();
+        _ = Admin.WorkListAsync();
     }
 
     /// <summary>

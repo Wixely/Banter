@@ -44,6 +44,10 @@ public static class BanterWeb
             ToolsOpenAsync = filter => _session?.LoadToolsAsync(filter) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
 
+            // The same four pages the desktop has. The browser is a real place to administer from
+            // - it is the head the mesh server hands out - and it had none of them.
+            Admin = AdminHooks.For(() => _session),
+
             // The two preferences a reload should not cost you. The desktop head's reasoning for
             // writing zoom the moment it changes applies here and then some: a browser reloads far
             // more often than a desktop app restarts, and since Ctrl+wheel started zooming

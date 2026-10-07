@@ -232,8 +232,8 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
         var app = new BanterChatApp(vm);
         var removed = new List<string>();
         app = page == "agents"
-            ? new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } }
-            : new BanterChatApp(vm) { UserRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+            ? new BanterChatApp(vm) { Admin = AdminHooks.None with { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } } }
+            : new BanterChatApp(vm) { Admin = AdminHooks.None with { UserRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } } };
 
         Open(vm, page);
         Select(vm, page, Existing(page));
@@ -264,8 +264,8 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
         var vm = Room();
         var removed = new List<string>();
         var app = page == "agents"
-            ? new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } }
-            : new BanterChatApp(vm) { UserRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+            ? new BanterChatApp(vm) { Admin = AdminHooks.None with { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } } }
+            : new BanterChatApp(vm) { Admin = AdminHooks.None with { UserRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } } };
 
         Open(vm, page);
         Select(vm, page, Existing(page));
@@ -291,7 +291,7 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
     {
         var vm = Room();
         var removed = new List<string>();
-        var app = new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+        var app = new BanterChatApp(vm) { Admin = AdminHooks.None with { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } } };
         vm.ShowAgentsPanel(true);
         vm.SelectAdminAgent("dagger");
 
@@ -312,7 +312,7 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
     {
         var vm = Room();
         var removed = new List<string>();
-        var app = new BanterChatApp(vm) { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } };
+        var app = new BanterChatApp(vm) { Admin = AdminHooks.None with { AgentRemoveAsync = n => { removed.Add(n); return Task.CompletedTask; } } };
         vm.ShowAgentsPanel(true);
         vm.SelectAdminAgent("dagger");
         vm.ConfirmRemoveAgent();

@@ -156,7 +156,10 @@ public sealed class WorkPageTests(ITestOutputHelper output)
         var loads = 0;
         var app = new BanterChatApp(vm)
         {
-            WorkListAsync = () => { loads++; return System.Threading.Tasks.Task.CompletedTask; },
+            Admin = AdminHooks.None with
+            {
+                WorkListAsync = () => { loads++; return System.Threading.Tasks.Task.CompletedTask; },
+            },
         };
 
         using var doc = app.CreateDocument();
@@ -177,7 +180,10 @@ public sealed class WorkPageTests(ITestOutputHelper output)
         var loads = 0;
         var app = new BanterChatApp(vm)
         {
-            WorkListAsync = () => { loads++; return System.Threading.Tasks.Task.CompletedTask; },
+            Admin = AdminHooks.None with
+            {
+                WorkListAsync = () => { loads++; return System.Threading.Tasks.Task.CompletedTask; },
+            },
         };
 
         using var doc = app.CreateDocument();

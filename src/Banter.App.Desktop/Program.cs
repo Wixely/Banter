@@ -126,6 +126,11 @@ if (!filePicker.IsSupported)
 var app = new BanterChatApp(vm)
 {
     ConnectAsync = (server, user, password) => SignInAsync(server, user, password, persist: true),
+
+    // All four admin pages at once. `() => session` rather than the session itself: it is replaced
+    // on every sign-in, and hooks closed over the one that existed when the app was built would go
+    // on talking to a connection nobody has any more.
+    Admin = AdminHooks.For(() => session),
     SignOutAsync = SignOutAsync,
 
     // Flash the taskbar when named, unless the window is already in front - which
@@ -154,20 +159,6 @@ var app = new BanterChatApp(vm)
     JoinRoomAsync = room => session?.JoinAsync(room, settings.HistoryPageSize) ?? Task.CompletedTask,
     ToolsOpenAsync = agent => session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
     ToolsSaveAsync = (agent, tools) => session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
-    AgentsListAsync = () => session?.LoadAgentIdentitiesAsync() ?? Task.CompletedTask,
-    AgentCreateAsync = name => session?.CreateAgentIdentityAsync(name) ?? Task.CompletedTask,
-    AgentSaveAsync = form => session?.SaveAgentIdentityAsync(form) ?? Task.CompletedTask,
-    AgentReissueAsync = name => session?.ReissueAgentIdentityAsync(name) ?? Task.CompletedTask,
-    AgentRemoveAsync = name => session?.RemoveAgentIdentityAsync(name) ?? Task.CompletedTask,
-    UsersListAsync = () => session?.LoadUsersAsync() ?? Task.CompletedTask,
-    WorkListAsync = () => session?.LoadAllTasksAsync() ?? Task.CompletedTask,
-    HubsListAsync = () => session?.LoadHubsAsync() ?? Task.CompletedTask,
-    HubRotateAsync = (hub, agent) => session?.RotateHubKeyAsync(hub, agent) ?? Task.CompletedTask,
-    HubForgetAsync = (hub, agent) => session?.ForgetHubIdentityAsync(hub, agent) ?? Task.CompletedTask,
-    UserCreateAsync = (name, admin) => session?.CreateUserAccountAsync(name, admin) ?? Task.CompletedTask,
-    UserResetAsync = name => session?.ResetUserPasswordAsync(name) ?? Task.CompletedTask,
-    UserSetAdminAsync = (name, admin) => session?.SetUserAdminAsync(name, admin) ?? Task.CompletedTask,
-    UserRemoveAsync = name => session?.RemoveUserAccountAsync(name) ?? Task.CompletedTask,
 
     Clipboard = new Banter.App.Desktop.SystemClipboard(),
     StayInTray = settings.StayInTray,

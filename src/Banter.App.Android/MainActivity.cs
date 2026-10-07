@@ -145,6 +145,13 @@ public sealed class MainActivity : CupriActivity
             JoinRoomAsync = room => Session?.JoinAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = agent => Session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => Session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
+
+            // Agents, users, work and MCPHub. This head wired none of them, so an admin signing in
+            // on a phone got four rail buttons opening four pages that did nothing - and nothing
+            // said so, because a page with no hook looks exactly like a page waiting on a server.
+            // Session is a property that reads LiveConnection, which is what survives this
+            // activity, so the hooks follow a reconnection rather than holding a dead one.
+            Admin = AdminHooks.For(() => Session),
             // The phone is the device with the camera and the photo library on it, and until now
             // it was the one head that could not send either: EnableAttach was called from the
             // desktop head alone, so the control never appeared here.

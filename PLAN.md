@@ -1492,7 +1492,11 @@ connects the upstreams, and agents ask it to act.
   byte-for-byte what it was before tools existed — some local servers reject an empty `tools`
   array.
 - **Management is in the client**, not a separate dashboard, because the server will eventually
-  serve this same UI as WASM from its own HTTP server. "Manage tools" (or `/tools <agent>`) opens
+  serve this same UI as WASM from its own HTTP server — and as of 0.12.0 all three heads wire it,
+  through one `AdminHooks` property rather than fourteen delegates. The Android and web heads had
+  wired none of them for as long as those pages existed: four rail buttons opening four pages that
+  did nothing, indistinguishable from pages waiting on a slow server. `HeadAdminWiringTests` reads
+  the source of every `new BanterChatApp(…)` under `src` and requires it. "Manage tools" (or `/tools <agent>`) opens
   an overlay: agents down the left, catalogue grouped by upstream on the right, edits held locally
   until Save sends the complete set. The button only appears once a catalogue has actually come
   back, so an account that would only ever be refused never sees it.
