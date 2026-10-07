@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -19,27 +18,6 @@ namespace Banter.Server.Tests;
 /// </summary>
 public sealed class HeadWiringTests(ITestOutputHelper output)
 {
-    /// <summary>
-    /// Walked up from THIS FILE, not from the test binaries. Where the binaries land is a build
-    /// argument (a locked bin forced a run out to the temp directory once, and a finder rooted at
-    /// AppContext.BaseDirectory then reported no repository at all); where this file sits is the
-    /// repository by definition.
-    /// </summary>
-    private static string RepoRoot([CallerFilePath] string here = "")
-    {
-        for (var directory = new DirectoryInfo(Path.GetDirectoryName(here)!);
-             directory is not null;
-             directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Banter.slnx")))
-            {
-                return directory.FullName;
-            }
-        }
-
-        throw new DirectoryNotFoundException($"no Banter.slnx above {here}");
-    }
-
     /// <summary>The arguments of the first <c>new BanterServer(…)</c>, parens balanced.</summary>
     private static string? Construction(string source)
     {
@@ -64,7 +42,7 @@ public sealed class HeadWiringTests(ITestOutputHelper output)
     public void EveryHeadHandsTheServerItsTools()
     {
         var heads = Directory
-            .GetFiles(Path.Combine(RepoRoot(), "src"), "Program.cs", SearchOption.AllDirectories)
+            .GetFiles(Path.Combine(Repo.Root(), "src"), "Program.cs", SearchOption.AllDirectories)
             .Select(path => (Path: path, Source: File.ReadAllText(path)))
             .Select(f => (f.Path, Construction: Construction(f.Source)))
             .Where(f => f.Construction is not null)
