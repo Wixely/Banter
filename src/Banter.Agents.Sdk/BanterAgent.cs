@@ -878,9 +878,16 @@ public abstract partial class BanterAgent : IAsyncDisposable
         {
             // A failed turn must not kill the agent — it stays in the room and answers the next
             // message. Reporting in-room is what makes a broken endpoint visible to humans.
+            //
+            // `[failed]` is a marker, like `[egress]` and `[tool]`: the client renders it as a
+            // chip with the reason one tap behind it. Before the marker this was a sentence of
+            // the agent's own plumbing - "(dagger failed to answer: Retry failed after 4 tries)" -
+            // printed across the middle of the conversation, which on a phone is most of a screen
+            // to say that something did not work. The nick is left out because the message
+            // already carries its sender.
             try
             {
-                await Client.SendMessageAsync(m.Room, $"({Nick} failed to answer: {ex.Message})").ConfigureAwait(false);
+                await Client.SendMessageAsync(m.Room, $"[failed] {ex.Message}").ConfigureAwait(false);
             }
             catch (Exception)
             {

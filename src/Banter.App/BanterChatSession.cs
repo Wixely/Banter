@@ -22,6 +22,23 @@ public sealed partial class BanterChatSession : IDisposable
     private bool _disposed;
 
     /// <summary>Try to claim the "loading older history" slot for a room.</summary>
+    /// <summary>
+    /// How far back this session has read in each room, owned HERE rather than read back out of
+    /// the view-model.
+    ///
+    /// <para>Every mutation of the view-model is queued and applied on the render thread, which is
+    /// right - but it means the cursor a reply carries is not visible to the next call until a
+    /// frame has run. A handler runs BEFORE the frame that drains the queue, so on any host whose
+    /// pump is driven by input - a phone - the second tap on "earlier messages" read the cursor
+    /// from before the first, asked the server for the page it already had, and prepended nothing.
+    /// Scrollback worked once and then appeared to stop.</para>
+    ///
+    /// <para>The view-model still gets the cursor, because it decides whether the control is shown
+    /// at all. This decides what to ASK for, which is a different question and one that cannot
+    /// wait for a frame.</para>
+    /// </summary>
+    private readonly Dictionary<string, string?> _history = new(StringComparer.OrdinalIgnoreCase);
+
     private bool BeginLoad(string room)
     {
         lock (_loadingRooms)
@@ -81,6 +98,10 @@ public sealed partial class BanterChatSession : IDisposable
 
         var page = await _client.GetHistoryAsync(room, limit: history, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
+
+        // The join's own cursor, recorded synchronously for the same reason the paged one is: the
+        // first "earlier messages" can be asked for before any frame has drained this.
+        _history[room] = page.NextCursor;
 
         _vm.Post(() =>
         {
@@ -186,7 +207,9 @@ public sealed partial class BanterChatSession : IDisposable
     /// </summary>
     public async Task LoadOlderAsync(string room, int limit = 100, CancellationToken cancellationToken = default)
     {
-        var cursor = _vm.HistoryCursor(room);
+        // The session's own cursor. The view-model's is the fallback for a room this session did
+        // not join itself - adopted into one by an agent, or restored by a head.
+        var cursor = _history.TryGetValue(room, out var mine) ? mine : _vm.HistoryCursor(room);
         if (cursor is null || !BeginLoad(room))
         {
             return;
@@ -201,6 +224,9 @@ public sealed partial class BanterChatSession : IDisposable
             var older = page.Messages
                 .Select(m => (Id: m.MessageId ?? "", m.Sender, m.Text, m.Timestamp, ReplyTo: m.ReplyTo ?? ""))
                 .ToList();
+
+            // Recorded here, synchronously, and not only through the queue. See _history.
+            _history[room] = page.NextCursor;
 
             _vm.Post(() =>
             {

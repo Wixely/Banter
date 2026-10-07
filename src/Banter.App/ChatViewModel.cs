@@ -224,19 +224,30 @@ public sealed partial class ChatViewModel
         string room, string sender, string text, long timestamp,
         string rowClass = "line", string id = "", string fileId = "", string replyTo = "")
     {
+        // A failed turn is a chip and a reason behind it, not a paragraph of somebody else's
+        // plumbing in the middle of the conversation.
+        var failure = FailureIn(text);
+
         var row = new MessageRow
         {
             Id = id,
             Sender = sender,
             // System lines have no author, so they get no avatar and sit inset instead.
             Initials = rowClass == "line system" ? "" : InitialsOf(sender),
-            Text = text,
+            Text = failure is null ? text : "",
+            FailClass = failure is null ? "fail hidden" : "fail",
+            FailDetail = failure ?? "",
+            // Collapsed when there is an id to toggle it with. Without one - a local line the
+            // server never gave a name to - the chip cannot be opened, so the reason is shown
+            // rather than hidden behind a control that does nothing.
+            FailDetailClass = failure is null || id.Length > 0 ? "fail-detail hidden" : "fail-detail",
             Time = FormatTime(timestamp),
             // An egress announcement is the one message in a room that must never be skimmed
             // past, so it is styled apart from ordinary agent chatter.
-            RowClass = WithMention(sender, text, WithPresence(room, sender, text.StartsWith("[egress]", StringComparison.Ordinal)
-                ? "line egress"
-                : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass)),
+            RowClass = WithMention(sender, text, WithDelegator(room, sender, WithPresence(room, sender,
+                text.StartsWith("[egress]", StringComparison.Ordinal)
+                    ? "line egress"
+                    : sender == Model.Nick && rowClass == "line" ? "line own" : rowClass))),
             FileId = fileId,
             // Metadata arrives on a separate round-trip, so show the row immediately with a
             // placeholder rather than withholding it until the name and size are known.
@@ -394,6 +405,95 @@ public sealed partial class ChatViewModel
         }
 
         return bare + " away";
+    }
+
+    /// <summary>
+    /// Marks what the room's dispatcher said, so it can be told apart at a glance.
+    ///
+    /// <para>Who is answering is the question a room full of agents raises, and the delegator is
+    /// the one that decides. It was readable only from the header, in words, for the active room -
+    /// so a line in the timeline gave no clue which agent it came from in that sense.</para>
+    ///
+    /// <para>Never a system line, which has no author, and never the delegator's own user - the
+    /// distinction is about agents.</para>
+    /// </summary>
+    /// <summary>
+    /// The reason behind a failed turn, or null when this is an ordinary message.
+    ///
+    /// <para>Two shapes. <c>[failed] …</c> is what the agent SDK sends, the same kind of marker
+    /// <c>[egress]</c> and <c>[tool]</c> already use. The second is the prose it sent before that
+    /// marker existed - "(dagger failed to answer: Retry failed after 4 tries)" - matched so an
+    /// agent older than this client still reads as a chip rather than as the wall of text this
+    /// replaced. A room is routinely a mix of versions; that is the normal state of one.</para>
+    /// </summary>
+    private static string? FailureIn(string text)
+    {
+        const string marker = "[failed]";
+        if (text.StartsWith(marker, StringComparison.Ordinal))
+        {
+            return text[marker.Length..].Trim();
+        }
+
+        // ( <nick> failed to answer: <reason> )
+        const string middle = " failed to answer: ";
+        if (text.StartsWith('(') && text.EndsWith(')') && text.Contains(middle, StringComparison.Ordinal))
+        {
+            var at = text.IndexOf(middle, StringComparison.Ordinal);
+            return text[(at + middle.Length)..^1].Trim();
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Shows or hides the reason behind one failed turn. By id, so a room with several keeps them
+    /// apart - opening all of them to read one would be the wall of text this exists to avoid.
+    /// </summary>
+    public void ToggleFailure(string id)
+    {
+        if (id.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var row in Model.Messages.Where(m => m.Id == id))
+        {
+            row.FailDetailClass = row.FailDetailClass.Contains("hidden", StringComparison.Ordinal)
+                ? "fail-detail"
+                : "fail-detail hidden";
+        }
+    }
+
+    private string WithDelegator(string room, string sender, string rowClass)
+    {
+        var bare = rowClass.Replace(" delegator", "");
+        if (bare.Contains("system", StringComparison.Ordinal)
+            || !_delegators.TryGetValue(room, out var who)
+            || who.Length == 0
+            || !string.Equals(sender, who, StringComparison.OrdinalIgnoreCase))
+        {
+            return bare;
+        }
+
+        return bare + " delegator";
+    }
+
+    /// <summary>
+    /// Re-marks a room's backlog after the delegator changes. An election can move it mid-
+    /// conversation, and what somebody said while they WERE the delegator is not what the room
+    /// wants coloured - it wants to know who is dispatching now.
+    /// </summary>
+    private void RefreshDelegator(string room)
+    {
+        if (!_rooms.TryGetValue(room, out var backlog))
+        {
+            return;
+        }
+
+        foreach (var row in backlog)
+        {
+            row.RowClass = WithDelegator(room, row.Sender, row.RowClass);
+        }
     }
 
     /// <summary>
@@ -578,7 +678,7 @@ public sealed partial class ChatViewModel
                 Sender = sender,
                 Text = text,
                 Time = FormatTime(timestamp),
-                RowClass = sender == Model.Nick ? "line own" : "line",
+                RowClass = WithDelegator(room, sender, sender == Model.Nick ? "line own" : "line"),
                 ReplyTo = replyTo,
             });
         }
@@ -675,6 +775,13 @@ public sealed partial class ChatViewModel
 
     /// <summary>Parent of each room the server told us about, for showing the list as a tree.</summary>
     private readonly Dictionary<string, string?> _roomParents = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Who dispatches in each room, by nick. Kept raw and per room rather than read back out of
+    /// <c>Model.Delegator</c>, which is prose for the header ("no delegator") and describes the
+    /// ACTIVE room only - a backlog belongs to its own room whether or not you are looking at it.
+    /// </summary>
+    private readonly Dictionary<string, string> _delegators = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Take the server's room listing: label joined rooms with their parentage, and offer the
@@ -780,6 +887,11 @@ public sealed partial class ChatViewModel
 
     public void SetDelegator(string room, string? nick)
     {
+        // Recorded for whatever room it names, before the active-room check: the header is about
+        // the room you are looking at, the colouring is about the room the message is in.
+        _delegators[room] = nick ?? "";
+        RefreshDelegator(room);
+
         if (room != Model.ActiveRoom)
         {
             return;
@@ -826,6 +938,8 @@ public sealed partial class ChatViewModel
         Model.RosterAgentsTitleClass = Model.Agents.Count > 0 ? "roster-title" : "roster-title hidden";
 
         var delegatorRow = Model.Agents.FirstOrDefault(a => a.Role.Length > 0);
+        _delegators[room] = delegatorRow?.Nick ?? "";
+        RefreshDelegator(room);
         Model.Delegator = delegatorRow?.Nick ?? "no delegator";
         RefreshDispatch();
     }

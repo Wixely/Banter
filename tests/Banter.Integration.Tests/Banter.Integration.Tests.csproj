@@ -18,5 +18,9 @@
          under the person who sat down to try the feature. -->
     <ProjectReference Include="../../src/Banter.Warden/Banter.Warden.csproj" />
     <ProjectReference Include="../../src/Banter.Transport.CupriNet/Banter.Transport.CupriNet.csproj" />
+    <!-- For BanterChatSession: history paging is a conversation between the client, the server and
+         the view-model's queue, and the bug it was fixed for lived in exactly that seam. Testing
+         it anywhere narrower would have to assume the thing that was wrong. -->
+    <ProjectReference Include="../../src/Banter.App/Banter.App.csproj" />
   </ItemGroup>
 </Project>

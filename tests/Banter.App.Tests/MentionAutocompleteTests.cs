@@ -152,6 +152,54 @@ public sealed class MentionAutocompleteTests(ITestOutputHelper output)
         Assert.Equal("@scribe ", vm.Model.Composer);
     }
 
+    /// <summary>
+    /// …and the composer keeps the focus, so the sentence can carry on.
+    ///
+    /// <para>Taking a suggestion by TAP moved focus to the row that was tapped: on a phone the
+    /// keyboard went away and carrying on meant tapping the field again, in the middle of writing
+    /// a sentence. Asserted by typing afterwards rather than by reading a focus flag - what was
+    /// wanted is that the next character lands in the composer, and that is the thing to check.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ClickingOneKeepsTheComposerFocused()
+    {
+        var (app, vm, _) = Room();
+        using var doc = Typing(app, "@scr");
+        doc.BuildDisplayList(Width, Height);
+
+        var hit = false;
+        for (var y = 0f; y < Height && !hit; y += 2)
+        {
+            for (var x = 0f; x < Width; x += 8)
+            {
+                if (doc.HitTest(x, y)?.Element?.Closest("[data-mention]")?.GetAttribute("data-mention") != "scribe")
+                {
+                    continue;
+                }
+
+                doc.DispatchClick(x, y, 1);
+                hit = true;
+                break;
+            }
+        }
+
+        Assert.True(hit, "the suggestion should be painted somewhere clickable");
+        vm.ApplyPending();
+
+        // Carrying on where the completion left off.
+        foreach (var ch in "hello")
+        {
+            doc.DispatchKey(ch.ToString(), EditKey.None);
+        }
+
+        app.Present(Width, Height);
+        vm.ApplyPending();
+
+        output.WriteLine($"composer: '{vm.Model.Composer}'");
+        Assert.Equal("@scribe hello", vm.Model.Composer);
+    }
+
     [Fact]
     public void EscapePutsTheListAwayWithoutTouchingWhatWasTyped()
     {

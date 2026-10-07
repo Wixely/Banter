@@ -47,6 +47,19 @@ public sealed partial class MessageRow
     public string FileId { get; set; } = "";
 
     /// <summary>Hidden until the row actually has an attachment.</summary>
+    /// <summary>
+    /// A turn that failed, as a chip rather than a paragraph. An agent that cannot reach its model
+    /// used to paste the whole reason into the room - "(dagger failed to answer: Retry failed
+    /// after 4 tries)" - which is a wall of someone else's plumbing in the middle of a
+    /// conversation, and unreadable on a phone. The chip says Failed; the reason is one tap away.
+    /// </summary>
+    public string FailClass { get; set; } = "fail hidden";
+
+    /// <summary>The reason, shown only once asked for.</summary>
+    public string FailDetail { get; set; } = "";
+
+    public string FailDetailClass { get; set; } = "fail-detail hidden";
+
     public string AttachClass { get; set; } = "attach hidden";
 
     /// <summary>Name and size, filled in once the server's file metadata arrives.</summary>

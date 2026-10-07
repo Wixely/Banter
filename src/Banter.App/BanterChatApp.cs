@@ -396,7 +396,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <span class="msg-main">
                     <span class="{{ReplyClass}}" data-goto-reply="{{ReplyTo}}">{{ReplyText}}</span>
                     <span class="msg-head"><span class="sender">{{Sender}}</span><span class="sender-away">left the room</span><span class="time">{{Time}}</span><span class="edited">{{EditedMark}}</span></span>
-                    <span class="text"><span class="work-dots"><span class="wdot wdot-a"></span><span class="wdot wdot-b"></span><span class="wdot wdot-c"></span></span><span class="body">{{Text}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
+                    <span class="text"><span class="work-dots"><span class="wdot wdot-a"></span><span class="wdot wdot-b"></span><span class="wdot wdot-c"></span></span><span class="body">{{Text}}</span><span class="{{FailClass}}" data-fail="{{Id}}">Failed</span><span class="{{FailDetailClass}}">{{FailDetail}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
                     <span class="{{AskClass}}">
                       <span class="{{AskTabsClass}}">
                         <span class="{{TabClass}}" data-repeat="AskTabs" data-ask-tab="{{TabKey}}">{{Label}}</span>
@@ -1441,6 +1441,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .topic { color: #8d97a6; font-size: 11px; margin-top: 2px; }
         .dispatch { color: #8d97a6; font-size: 11px; }
 
+        /* A turn that failed, as a chip. The reason an agent could not reach its model is the
+           author's plumbing, not the room's conversation - it belongs one tap away rather than
+           pasted across the middle of what people are saying. Red because it IS a failure, and
+           bordered because it is a control: tapping it is how the reason appears. */
+        .fail { display: inline-block; padding: 2px 9px; border-radius: 8px; font-size: 11px;
+                font-weight: bold; color: #fca5a5; background: #2a1215; border: 1px solid #5b2327;
+                cursor: pointer; }
+        .fail.hidden { display: none; }
+        .fail-detail { display: block; padding-top: 5px; color: #9aa3b0; font-size: 11px;
+                       white-space: pre-wrap; }
+        .fail-detail.hidden { display: none; }
+
         .loadmore { padding: 6px 18px; color: #fb7185; font-size: 12px; cursor: pointer; }
         .loadmore.hidden { display: none; }
 
@@ -1471,6 +1483,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            between elements become visible whitespace in every message. */
         .body { white-space: pre-wrap; font-size: 13px; color: #c8ced7; margin-top: 2px; }
         .line.own .sender { color: #34d399; }
+
+        /* The room's dispatcher, in the timeline. Amber because the three colours already spoken
+           for say other things - green is you, grey is gone, and the app's red is its own mark -
+           and because "this is the one deciding who answers" is a thing to notice rather than a
+           warning. Both the name and the avatar, so it reads at a glance down the left edge the
+           way the room is actually scanned. */
+        .line.delegator .sender { color: #fbbf24; }
+        .line.delegator .pfp { background: linear-gradient(145deg, #4a3410, #2a1d07);
+                               border: 1px solid #6b4c14; color: #fbbf24; }
         /* No author, so no avatar: the line sits where the text would start instead. */
         /* Somebody who has left the room. The words stay exactly as legible - history is still
            history - and it is the AUTHOR that is marked, because what changed is not what was
@@ -2355,6 +2376,20 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        // The reason behind a failed turn, on demand. Per row, because a room can have more than
+        // one and opening them all to read one would be the wall of text this replaced.
+        doc.OnAction("data-fail", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.ToggleFailure(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
         doc.OnAction("data-rooms-close", _unused =>
         {
             ViewModel.ResetRooms();
@@ -2465,6 +2500,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 return false;
             }
 
+            // Straight back to the composer, caret after the name and its space. Tapping a
+            // suggestion is the middle of writing a sentence, and it used to be the end of it:
+            // taking the name moved focus to the row that was tapped, so the keyboard went away
+            // and carrying on meant tapping the field again. Focus() exists for exactly this
+            // shape - a flow that puts text somewhere for the user to keep typing in - and lands
+            // the caret at the end of the value, which is where "carry on" starts.
+            doc.Focus(".composer");
             doc.Refresh();
             return true;
         });
