@@ -636,6 +636,29 @@ public sealed partial class ChatModel
     public string HubSelected { get; set; } = "";
     public string HubDetailClass { get; set; } = "mgmt-detail hidden";
     public string HubEmptyClass { get; set; } = "mgmt-empty";
+
+    /// <summary>
+    /// What the empty pane says. Two different situations wear it: "pick one of the hubs on the
+    /// left", and "there are none, and here is why" - which is the one somebody standing in front
+    /// of a deployment actually needs.
+    /// </summary>
+    public string HubEmptyText { get; set; } = HubsEmptyBecauseNone;
+
+    /// <summary>
+    /// The page lists hubs that decide for THEMSELVES what each agent may use, which is a narrower
+    /// thing than "an MCP server this deployment uses" - so a server with plenty of tools and no
+    /// `perAgentIdentity` anywhere shows an empty page and looks broken. It names the three
+    /// reasons there might be nothing, because from here they are indistinguishable.
+    /// </summary>
+    public const string HubsEmptyBecauseNone =
+        "No hub here keeps its own identities, so there is nothing to show.\n\n"
+        + "This page lists MCP servers that decide for themselves what each agent may use. A "
+        + "server appears here when its entry in the tool configuration sets \"perAgentIdentity\": "
+        + "true and names a url - without that, its tools are granted by Banter instead and live "
+        + "on the tools panel.\n\n"
+        + "The configuration is mcp.json beside the server, or wherever --mcp or "
+        + "BANTER_MCP_CONFIG points. In a container that is a file you mount; if nothing is "
+        + "mounted there, the server starts with no tools at all and says so in its log.";
     public string HubDetailTitle { get; set; } = "";
     public string HubDetailSubtitle { get; set; } = "";
     public string HubState { get; set; } = "";

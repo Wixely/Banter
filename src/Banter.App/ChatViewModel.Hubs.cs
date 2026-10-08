@@ -62,10 +62,17 @@ public sealed partial class ChatViewModel
 
         Model.HubsStatus = Model.AdminHubs.Count switch
         {
-            0 => "No hubs configured",
+            0 => "None configured",
             1 => "1 hub",
             var n => $"{n} hubs",
         };
+
+        // An empty page is the one that most needs words. "Choose a hub" in front of a list with
+        // nothing in it reads as something that failed to load - which is how this was reported,
+        // from a deployment where the answer was simply that no upstream had perAgentIdentity on.
+        Model.HubEmptyText = Model.AdminHubs.Count == 0
+            ? ChatModel.HubsEmptyBecauseNone
+            : "Choose a hub to see what it offers and who it knows.";
 
         // The open detail moves with the list, so a hub that drops out takes its pane with it.
         if (Model.HubSelected.Length > 0)
@@ -85,6 +92,10 @@ public sealed partial class ChatViewModel
         Model.AdminHubs = [];
         Model.HubsStatus = reason;
         ClearHubDetail();
+
+        // ClearHubDetail puts the ordinary "choose one" back, which is wrong in front of a list
+        // that could not be read at all. The server's own words first, then what to do about it.
+        Model.HubEmptyText = $"{reason}\n\n{ChatModel.HubsEmptyBecauseNone}";
     }
 
     public void SelectHub(string key)
@@ -142,6 +153,8 @@ public sealed partial class ChatViewModel
 
     public void ClearHubDetail()
     {
+        // Deliberately not touching HubEmptyText: what the empty pane should SAY depends on
+        // whether there is a list to choose from, which is SetHubs's business and not this one's.
         Model.HubSelected = "";
         foreach (var row in Model.AdminHubs)
         {

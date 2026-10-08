@@ -255,6 +255,64 @@ public sealed class HubsPageTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// An empty page explains itself. Reported from a deployment where this page showed nothing
+    /// and looked broken: the answer was simply that no upstream had perAgentIdentity set, which
+    /// is invisible from here - a server can have plenty of tools and still belong on the tools
+    /// panel rather than this one.
+    ///
+    /// <para>"Choose a hub" in front of a list with nothing in it is the worst of both: it names
+    /// no problem and offers no action.</para>
+    /// </summary>
+    [Fact]
+    public void AnEmptyPageSaysWhyAndWhatToChange()
+    {
+        var vm = Admin();
+        vm.SetHubs([]);
+
+        output.WriteLine(vm.Model.HubEmptyText);
+
+        Assert.Equal("None configured", vm.Model.HubsStatus);
+        Assert.Contains("perAgentIdentity", vm.Model.HubEmptyText, StringComparison.Ordinal);
+        Assert.Contains("mcp.json", vm.Model.HubEmptyText, StringComparison.Ordinal);
+        Assert.Contains("BANTER_MCP_CONFIG", vm.Model.HubEmptyText, StringComparison.Ordinal);
+
+        // …and it does not tell somebody to pick from a list that is empty.
+        Assert.DoesNotContain("Choose a hub", vm.Model.HubEmptyText, StringComparison.Ordinal);
+    }
+
+    /// <summary>With hubs to pick from it goes back to being an ordinary empty pane.</summary>
+    [Fact]
+    public void WithHubsItIsTheOrdinaryInvitation()
+    {
+        var vm = Admin();
+        vm.SetHubs([Hubs.Sample]);
+
+        Assert.Contains("Choose a hub", vm.Model.HubEmptyText, StringComparison.Ordinal);
+
+        // Selecting and clearing must not lose that - ClearHubDetail is not the thing that
+        // decides what an empty pane says.
+        vm.SelectHub("mcphub");
+        vm.ClearHubDetail();
+        Assert.Contains("Choose a hub", vm.Model.HubEmptyText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A server that could not be asked at all says the server's own words first, and then the
+    /// same explanation - the reason alone ("This server has no tool backend") tells an operator
+    /// what happened but not what to do about it.
+    /// </summary>
+    [Fact]
+    public void ARefusalKeepsTheExplanationToo()
+    {
+        var vm = Admin();
+        vm.HubsUnavailable("This server has no tool backend.");
+
+        output.WriteLine(vm.Model.HubEmptyText);
+        Assert.StartsWith("This server has no tool backend.", vm.Model.HubEmptyText, StringComparison.Ordinal);
+        Assert.Contains("perAgentIdentity", vm.Model.HubEmptyText, StringComparison.Ordinal);
+    }
+
     // -- Acting on an identity ----------------------------------------------------------------
 
     /// <summary>

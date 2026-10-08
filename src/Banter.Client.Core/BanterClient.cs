@@ -9,6 +9,23 @@ public sealed record BanterClientOptions
     public string ClientName { get; init; } = "Banter.Client";
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// How long one dial-and-handshake may take before it is given up on. Covers the whole of it -
+    /// the TCP connect, HELLO and AUTH - because any of the three can hang.
+    ///
+    /// <para>A number is needed because the platform's is not one anybody would choose: an address
+    /// that is routable but has nothing on it leaves the connect waiting on a SYN that will never
+    /// be answered, which on Android is about two minutes of a sign-in button doing nothing. A
+    /// mistyped address is the common case here and it should come back saying so, not look like
+    /// the app has frozen.</para>
+    ///
+    /// <para>Longer than <see cref="RequestTimeout"/> on purpose: a first connect may be waking a
+    /// server, crossing a mesh, or dialling something at the end of a slow link, and ten seconds
+    /// is a short budget for all three together. <see cref="TimeSpan.Zero"/> waits for the
+    /// platform, which is the old behaviour.</para>
+    /// </summary>
+    public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(20);
+
     /// <summary>When the connection drops, redial + re-auth + rejoin rooms automatically.
     /// Initial connection failures still throw — reconnect only guards an established session.</summary>
     public bool AutoReconnect { get; init; } = true;
@@ -897,6 +914,30 @@ public sealed partial class BanterClient : IAsyncDisposable
     /// <summary>Dials and completes HELLO + AUTH over the raw connection (no receive loop yet),
     /// so the same path serves both the first connection and every reconnect.</summary>
     private async Task<IBanterConnection> DialAndHandshakeAsync(CancellationToken cancellationToken)
+    {
+        // The caller's token still cancels; this only adds a ceiling. Linked rather than replacing
+        // it, so a sign-in that is abandoned still stops at once.
+        using var budget = _options.ConnectTimeout > TimeSpan.Zero
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        budget?.CancelAfter(_options.ConnectTimeout);
+        var token = budget?.Token ?? cancellationToken;
+
+        try
+        {
+            return await DialAndHandshakeCoreAsync(token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (budget is { IsCancellationRequested: true }
+                                                 && !cancellationToken.IsCancellationRequested)
+        {
+            // Said as what it is. A bare OperationCanceledException here reads as "you cancelled
+            // this", which nobody did - and on the sign-in screen it arrived as an empty reason.
+            throw new BanterClientException(
+                $"{_endpoint} did not answer within {_options.ConnectTimeout.TotalSeconds:0.#}s.");
+        }
+    }
+
+    private async Task<IBanterConnection> DialAndHandshakeCoreAsync(CancellationToken cancellationToken)
     {
         var connection = await _transport.ConnectAsync(_endpoint, cancellationToken).ConfigureAwait(false);
         try

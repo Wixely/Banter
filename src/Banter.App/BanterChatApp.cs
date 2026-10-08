@@ -1122,7 +1122,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         rowKey: "{{HubKey}}",
         rowBody: HubRowBody,
         emptyClass: "{{HubEmptyClass}}",
-        emptyText: "Choose a hub to see what it offers and who it knows.",
+        emptyText: "{{HubEmptyText}}",
         detailClass: "{{HubDetailClass}}",
         detailTitle: "{{HubDetailTitle}}",
         detailSubtitle: "{{HubDetailSubtitle}}",
@@ -1875,7 +1875,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-state.muted { color: #6b7482; }
 
         .mgmt-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 18px; }
+        /* Centred, and able to be more than a sentence. Most of these panes say "choose one of
+           the things on the left"; the hubs pane has to explain an EMPTY left, which is three
+           paragraphs and a configuration key - so the breaks have to survive (pre-wrap) and the
+           text needs a width it can be read at rather than the whole pane. */
         .mgmt-empty { flex: 1; display: flex; align-items: center; justify-content: center;
+                      padding: 0 28px; white-space: pre-wrap; text-align: center;
                       font-size: 12px; color: #4d5563; }
         .mgmt-empty.hidden { display: none; }
         .mgmt-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
