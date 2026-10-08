@@ -74,6 +74,23 @@ public sealed partial class ChatViewModel
         tab.BadgeClass = badge.Length == 0 ? "badge hidden" : "badge";
     }
 
+    /// <summary>
+    /// Lights the composer's box while somebody is typing in it, and says whether that changed -
+    /// the engine reports text-input state on every keystroke, and repainting for each one would
+    /// be a frame per character to redraw a border that has not moved.
+    /// </summary>
+    public bool SetComposerFocused(bool focused)
+    {
+        var want = focused ? "composer-row focused" : "composer-row";
+        if (string.Equals(Model.ComposerRowClass, want, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Model.ComposerRowClass = want;
+        return true;
+    }
+
     /// <summary>Queue a mutation. Safe from any thread; runs later on the render thread.</summary>
     public void Post(Action mutation) => _pending.Enqueue(mutation);
 

@@ -139,7 +139,7 @@ public sealed class RowAlignmentTests(ITestOutputHelper output)
             return Walk(doc.Root)
                 .Where(n => n.Node.Element?.TagName == "CUPRI-TEXTAREA"
                             || n.Node.Element?.TagName == "CUPRI-BUTTON"
-                            || (n.Node.Element?.GetAttribute("class") ?? "") is "composer-row" or "composer-hint")
+                            || Has(n.Node, "composer-row") || Has(n.Node, "composer-hint"))
                 .Select(n => (n.Left, n.Top, n.Node.Width, n.Node.Height))
                 .ToArray();
         }
@@ -174,10 +174,12 @@ public sealed class RowAlignmentTests(ITestOutputHelper output)
         using var doc = new BanterChatApp(vm).CreateDocument();
         doc.BuildDisplayList(Width, Height);
 
-        var field = Walk(doc.Root).First(n => n.Node.Element?.TagName == "CUPRI-TEXTAREA");
+        // The ROW's top edge, which is where the ring is drawn. It used to be the field's own: the
+        // field drew a 2px rectangle inside the row's rounded box, which is the nested look that
+        // was reported. The field draws nothing now and the row lights instead.
+        var field = Walk(doc.Root).First(n => Has(n.Node, "composer-row"));
         var (px, py) = PointOnComposer(doc);
 
-        // A line through the field's own top edge, where its border is drawn.
         var row = (int)(field.Top + 1);
 
         int AccentPixels()
@@ -209,6 +211,11 @@ public sealed class RowAlignmentTests(ITestOutputHelper output)
         Assert.True(focused > 20, $"the focused field should be ringed, found only {focused} accent pixels");
     }
 
+    /// <summary>Class membership by token. An exact string match on "composer-row" stopped
+    /// finding the row the moment it could also be "composer-row focused".</summary>
+    private static bool Has(CupriFace.Dom.RenderNode n, string cls) =>
+        n.Element?.GetAttribute("class")?.Split(' ').Contains(cls) == true;
+
     /// <summary>A point that really is inside the composer, found by asking what is painted there.</summary>
     private static (float X, float Y) PointOnComposer(CupriFace.CupriDocument doc)
     {
@@ -235,7 +242,7 @@ public sealed class RowAlignmentTests(ITestOutputHelper output)
         doc.BuildDisplayList(Width, Height);
 
         var nodes = Walk(doc.Root).ToList();
-        var row = nodes.Single(n => (n.Node.Element?.GetAttribute("class") ?? "") == "composer-row");
+        var row = nodes.Single(n => Has(n.Node, "composer-row"));
         var rowRight = row.Left + row.Node.Width;
 
         // Talk, Attach and Send are all present here. Measured before the fix: the last button

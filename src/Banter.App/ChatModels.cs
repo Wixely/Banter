@@ -588,6 +588,13 @@ public sealed partial class ChatModel
     /// narrow screen, where the overlay is ON the chat rather than a column beside it - see
     /// ChatViewModel.ToggleRooms.
     /// </summary>
+    /// <summary>
+    /// The composer's own box, and whether it is lit. The ring belongs to the ROW rather than to
+    /// the field inside it: the field draws its own border, and a bordered rectangle inside a
+    /// rounded bordered box is two boxes where there is one control.
+    /// </summary>
+    public string ComposerRowClass { get; set; } = "composer-row";
+
     public string RoomsBackdropClass { get; set; } = "rooms-backdrop hidden";
 
     public string HubsButtonClass { get; set; } = "rail-button hidden";

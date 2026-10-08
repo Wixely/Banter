@@ -436,7 +436,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 </div>
                 <div class="mention-hint">Ctrl+Up / Ctrl+Down to choose · Enter to insert</div>
               </div>
-              <div class="composer-row">
+              <div class="{{ComposerRowClass}}">
                 <span class="prompt">&gt;</span>
                 <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message" data-composer="1" submit-on-enter></cupri-textarea>
                 <!-- Icons, not words. The word WAS each button's accessible name, so it moves to
@@ -1618,9 +1618,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .ask.answered .ask-hint { color: #6ee7b7; padding-left: 0; }
 
         .composer-wrap { padding: 8px 16px 12px 16px; }
+        /* THE field, as far as anybody looking at it is concerned. The component inside draws no
+           box of its own (see .composer), so this is the only border on screen and the only one
+           that lights up. It was two: a rounded box with a hard-edged rectangle inside it, tight
+           around the text, and lit pink on focus - which read as a small input dropped into a
+           bigger one rather than as one control.
+
+           The horizontal padding clears the 14px corner radius. At 10 the first character sat
+           inside the curve and touched it, which is the kind of thing the inner box had been
+           hiding: it held the text away from the corner by being a box of its own. */
         .composer-row { display: flex; flex-direction: row; align-items: center;
                         border: 1px solid #303744; background: #11151b; border-radius: 14px;
-                        padding: 6px 8px; box-shadow: 0 18px 55px #00000052; }
+                        padding: 12px 16px; box-shadow: 0 18px 55px #00000052; }
+        /* Colour only, never width: the border is declared in both states so the row cannot
+           change size when focus arrives and shift everything above it by a pixel. */
+        .composer-row.focused { border-color: #fb7185; }
         .prompt { color: #fb7185; font-weight: bold; padding: 0 9px 0 3px; }
         /* Styled explicitly. The engine's defaults for a text field and a button are a white box
            and a light button, which on a dark app look like two controls that failed to load. */
@@ -1649,12 +1661,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            interior, and then both appear at once. Measured: typing a space changes zero pixels
            under the default and 324 under pre-wrap. An HTML <textarea> gets this behaviour by
            default and cupri-textarea does not, so it has to be asked for. */
-        .composer { flex: 1; min-width: 0; min-height: 18px; max-height: 110px; background: #11151b;
-                    color: #f3f5f7; border: 2px solid transparent; padding: 3px 0;
+        /* Text, and nothing else. No background, no border and no ring: the row around it is the
+           control, and anything drawn here is a second box inside the first. `border: 0` is safe
+           to mean "none" precisely because the component's own focus rule sets border-COLOUR
+           alone (CupriFace 0.10.1) - it recolours what it finds, and it finds nothing.
+           The row carries the ring instead, via ComposerRowClass. */
+        .composer { flex: 1; min-width: 0; min-height: 20px; max-height: 110px;
+                    background: transparent; color: #f3f5f7; border: 0; padding: 2px 0;
                     white-space: pre-wrap; caret-color: #fb7185; }
-        /* The component's own focus ring is amber, which on this palette reads as a warning
-           rather than as "you are typing here". Colour only — the width is already reserved. */
-        .composer:focus { border-color: #fb7185; }
         .composer-hint { font-size: 10px; color: #5f6877; margin: 7px 0 0 0; }
 
         /* Above the composer, not below it: a list that drops downwards would fall off the
@@ -2219,8 +2233,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
              So the box takes a line of its own (`1 0 100%` — grow, never shrink, start at full
              width) and the three buttons wrap under it, against the right where the send button
-             belongs. The prompt goes: it is a decoration, and it was costing more than it says. */
-          .composer-row { padding: 0; flex-wrap: wrap; justify-content: flex-end; }
+             belongs. The prompt goes: it is a decoration, and it was costing more than it says.
+
+             The padding is NOT zero any more. It was, back when the field inside drew its own box
+             and held the text away from this one's edge; with that box gone the row is the only
+             one there is, and at zero the first character sat on the border and inside the 14px
+             corner. Less than the desktop's, because every pixel here is one the message box does
+             not have — but enough to clear the curve. */
+          .composer-row { padding: 10px 14px; flex-wrap: wrap; justify-content: flex-end; }
           .composer { flex: 1 0 100%; }
           .prompt { display: none; }
           .mic { margin-top: 8px; }
@@ -2336,6 +2356,20 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         {
             doc.InputProfile = InputProfile.Touch;
         }
+
+        // Lights the composer's box while somebody is typing in it. Multiline is what identifies
+        // it: the composer is the only cupri-textarea in the application, and
+        // TheComposerIsTheOnlyMultilineField keeps that true rather than hoping.
+        //
+        // Raised on every keystroke - it carries the value and the caret - so the view-model says
+        // whether anything actually changed and the frame is only asked for when it did.
+        doc.TextInputStateChanged += state =>
+        {
+            if (ViewModel.SetComposerFocused(state.Focused && state.Multiline))
+            {
+                doc.Refresh();
+            }
+        };
 
         // The wheel and the keyboard reach zoom without this page, so the page has to follow
         // them rather than be the only thing that knows.
