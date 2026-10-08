@@ -20,9 +20,20 @@ public sealed class MultiSessionPresenceTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// A grace nothing in this class has to RACE. Every test here asserts that something was NOT
+    /// announced, so the window only has to outlast a disconnect and a reconnect - and a connect
+    /// is a socket, a handshake and a round trip, which on a loaded machine is not a number worth
+    /// guessing at. Thirty seconds costs the suite nothing, because no test waits for it to pass.
+    ///
+    /// <para>The tests that need the window to EXPIRE are in <see cref="DepartureGraceTests"/>
+    /// with a short one. They are the opposite requirement and one server cannot hold both:
+    /// sharing it is what made the pocket trip fail under the whole suite's load while passing
+    /// six times out of six on its own.</para>
+    /// </summary>
     private static readonly PresenceLimits Grace = new()
     {
-        ReconnectGrace = TimeSpan.FromMilliseconds(400),
+        ReconnectGrace = TimeSpan.FromSeconds(30),
         SweepInterval = TimeSpan.FromMilliseconds(50),
     };
     private readonly TcpBanterTransport _transport = new();
@@ -125,27 +136,6 @@ public sealed class MultiSessionPresenceTests : IAsyncLifetime
         Assert.Contains(members.Members, m => m.Nick == "alice");
     }
 
-    [Fact]
-    public async Task TheLastDeviceLeavingDoesAnnounceIt()
-    {
-        await using var bob = await ConnectAsync("bob");
-        await bob.JoinAsync("#main");
-
-        var desktop = await ConnectAsync("alice");
-        var phone = await ConnectAsync("alice");
-        await desktop.JoinAsync("#main");
-        await phone.JoinAsync("#main");
-
-        var parted = new TaskCompletionSource<string>();
-        bob.MemberParted += p => { if (p.Nick == "alice") parted.TrySetResult(p.Nick!); };
-
-        await desktop.DisposeAsync();
-        await Task.Delay(300);
-        await phone.DisposeAsync();
-
-        // After the grace, not instead of it: nobody came back, so this is somebody who left.
-        Assert.Equal("alice", await parted.Task.WaitAsync(Timeout));
-    }
 
     /// <summary>
     /// A pocket trip says nothing at all. Android destroys the socket when the app leaves the
@@ -175,7 +165,8 @@ public sealed class MultiSessionPresenceTests : IAsyncLifetime
         await using var returned = await ConnectAsync("alice");
         await returned.JoinAsync("#main");
 
-        // Long enough that a sweep has certainly run and found nothing to announce.
+        // Many sweeps' worth of chances to say something it should not - the sweep runs every
+        // 50ms. The grace is thirty seconds and is deliberately not what this waits on.
         await Task.Delay(400);
 
         Assert.Empty(said);
@@ -185,30 +176,6 @@ public sealed class MultiSessionPresenceTests : IAsyncLifetime
         Assert.Contains(members.Members, m => m.Nick == "alice");
     }
 
-    /// <summary>
-    /// The grace is not a licence to go quiet for ever: a session that does not come back is
-    /// announced once the window passes, and the room is not left holding a member who is gone.
-    /// </summary>
-    [Fact]
-    public async Task APhoneThatDoesNotComeBackIsAnnouncedOnce()
-    {
-        await using var bob = await ConnectAsync("bob");
-        await bob.JoinAsync("#main");
-
-        var phone = await ConnectAsync("alice");
-        await phone.JoinAsync("#main");
-
-        var parts = new List<string>();
-        bob.MemberParted += p => parts.Add(p.Nick ?? "");
-
-        await phone.DisposeAsync();
-        await Task.Delay(1000);          // the grace is 400ms and the sweep runs every 50ms
-
-        Assert.Equal(["alice"], parts);
-
-        var members = await bob.GetMembersAsync("#main");
-        Assert.DoesNotContain(members.Members, m => m.Nick == "alice");
-    }
 
     [Fact]
     public async Task ASecondDeviceJoiningDoesNotAnnounceASecondArrival()
