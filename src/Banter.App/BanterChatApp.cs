@@ -2096,7 +2096,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            landscape phone the card needs 540px in 412px, so the Connect button, the status line
            saying why the last attempt failed, and the hint under it were all off-screen with
            nothing to scroll and no rail to escape to. This is the settings card's scar in the one
-           place the app has no way out of. */
+           place the app has no way out of.
+
+           The COLUMN is load-bearing, not a style choice: `overflow: scroll` on a flex ROW does
+           not scroll cross-axis overflow at all - the pane goes on reporting its scroll content
+           as its own height and declines the wheel, so adding overflow here changed nothing until
+           the direction turned (CupriFace#300). Measured, not guessed: the identical markup as a
+           column reports 500px of content against 200px and scrolls. If #300 is fixed this can go
+           back to being a row, and ConnectReachabilityTests is what will say so. */
         .connect { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                    display: flex; flex-direction: column; align-items: center;
                    justify-content: flex-start;
