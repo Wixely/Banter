@@ -70,4 +70,42 @@ public sealed class MarkupHealthTests(ITestOutputHelper output)
 
         Assert.True(ignored.Count == 0, $"{ignored.Count} ignored declaration(s) on '{page}'");
     }
+
+    /// <summary>
+    /// Secondary text is readable, not merely present.
+    ///
+    /// <para><c>CF0090</c> is text whose contrast against what is behind it falls below the AA
+    /// ratio for its size. Seven distinct colour pairs failed it on this app for a long time, the
+    /// worst at 2.5:1 - the "choose one of the things on the left" line that IS the content of an
+    /// empty management page. The dark theme is what hides this: every one of them looks
+    /// deliberate, and a grey that is 2.5:1 and a grey that is 4.6:1 are the same design decision
+    /// to anybody who can already read them both.</para>
+    ///
+    /// <para>The failures collapsed into two values rather than seven, which is the useful part:
+    /// hints and status at <c>#747f91</c>, the brighter tier - subtitles, section titles, the room
+    /// hash, muted state - at <c>#808b9c</c>. Both clear 4.5:1 on every background in the sheet
+    /// with the dimmer-to-brighter ladder intact, so the tiers still read as tiers.</para>
+    ///
+    /// <para>This sees what the furnished model renders at the design size, like the checks above
+    /// it. Text that only appears in some other state - an away author's name, say - is outside
+    /// what any of these can speak for.</para>
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AppPages.Each), MemberType = typeof(AppPages))]
+    public void SecondaryTextIsReadable(string page)
+    {
+        var app = AppPages.Showing(page);
+        var report = CupriDoctor.Check(
+            app.Html, app.Css,
+            width: (int)BanterChatApp.DesignWidth, height: (int)BanterChatApp.DesignHeight,
+            model: app.Model);
+
+        var dim = report.Findings.Where(f => f.Code == "CF0090").ToList();
+        foreach (var f in dim)
+        {
+            output.WriteLine(f.ToString());
+        }
+
+        Assert.True(dim.Count == 0, $"{dim.Count} unreadable run(s) of text on '{page}'");
+    }
 }

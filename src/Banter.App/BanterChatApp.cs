@@ -1392,13 +1392,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .status.on { color: #34d399; }
         .status.off { color: #fb7185; }
         .sidebar-scroll { flex: 1; overflow: scroll; padding: 12px 10px 18px 10px; }
-        .section-title { padding: 0 9px 6px 9px; color: #717c8d; font-size: 10px; font-weight: bold; }
+        .section-title { padding: 0 9px 6px 9px; color: #808b9c; font-size: 10px; font-weight: bold; }
         .rooms { display: flex; flex-direction: column; }
         .tab { display: flex; flex-direction: row; align-items: center; height: 36px;
                padding: 0 10px; border-radius: 9px; cursor: pointer; color: #aeb6c2; }
         .tab:hover { background: #171b22; color: #e5e7eb; }
         .tab.active { background: #202530; color: #ffffff; }
-        .hash { color: #667085; font-weight: bold; padding-right: 9px; }
+        .hash { color: #808b9c; font-weight: bold; padding-right: 9px; }
         .tab.active .hash { color: #fb7185; }
         /* Clipped, because a flex item's box shrinks and the GLYPHS do not: the engine lays the
            text out at its own width and paints it, so a long room name ran straight across the
@@ -1675,7 +1675,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .composer { flex: 1; min-width: 0; min-height: 20px; max-height: 110px;
                     background: transparent; color: #f3f5f7; border: 0; padding: 2px 0;
                     white-space: pre-wrap; }
-        .composer-hint { font-size: 10px; color: #5f6877; margin: 7px 0 0 0; }
+        .composer-hint { font-size: 10px; color: #747f91; margin: 7px 0 0 0; }
 
         /* Above the composer, not below it: a list that drops downwards would fall off the
            bottom of the window, which is exactly where the composer already is. */
@@ -1698,7 +1698,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mention-meta { font-size: 10px; color: #8d97a6; }
         /* Said here rather than in the composer hint, because it is only true while this is up —
            and Ctrl on an arrow is not a guess anyone makes unprompted. */
-        .mention-hint { font-size: 9px; color: #5f6877; padding: 4px 7px 1px 7px; }
+        .mention-hint { font-size: 9px; color: #747f91; padding: 4px 7px 1px 7px; }
 
         /* Buttons are sized by padding, never by height. An explicit height leaves the label
            against the top of the box — line-height does not move it — and the border sits outside
@@ -1754,7 +1754,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
         .roster { width: 236px; background: #0e1116; border-left: 1px solid #20262f;
                   padding: 12px 10px; overflow: scroll; }
-        .roster-title { font-size: 10px; font-weight: bold; color: #717c8d; padding: 4px 8px 8px 8px; }
+        .roster-title { font-size: 10px; font-weight: bold; color: #808b9c; padding: 4px 8px 8px 8px; }
         .tasks { padding-bottom: 12px; }
         .tasks.hidden { display: none; }
         .task { padding: 7px 8px; border-radius: 9px; margin-bottom: 6px; background: #151920; }
@@ -1864,12 +1864,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-list-head { display: flex; flex-direction: row; align-items: center; }
         .mgmt-list-heading { display: flex; flex-direction: column; flex: 1; min-width: 0; }
         .mgmt-title { font-size: 17px; font-weight: bold; color: #f3f5f7; }
-        .mgmt-subtitle { font-size: 11px; color: #6b7482; margin-top: 2px; }
+        .mgmt-subtitle { font-size: 11px; color: #808b9c; margin-top: 2px; }
         .mgmt-new.hidden { display: none; }
         .mgmt-new { padding: 8px 14px; font-size: 12px; font-weight: bold; background: #2563eb;
                     color: #ffffff; border: 1px solid #2563eb; border-radius: 10px;
                     text-align: center; }
-        .mgmt-status { font-size: 10px; color: #5f6877; padding: 12px 2px 6px 2px; }
+        .mgmt-status { font-size: 10px; color: #747f91; padding: 12px 2px 6px 2px; }
         .mgmt-rows { flex: 1; min-width: 0; overflow: scroll; padding-right: 10px; }
 
         .mgmt-row { padding: 8px; border-radius: 10px; margin-bottom: 6px; background: #131820;
@@ -1892,7 +1892,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-state { font-size: 10px; color: #34d399; margin-top: 2px; }
         .mgmt-state.pending { color: #fbbf24; }
         /* Finished work is still listed when asked for, but it is not what the page is for. */
-        .mgmt-state.muted { color: #6b7482; }
+        .mgmt-state.muted { color: #808b9c; }
 
         .mgmt-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 18px; }
         /* Centred, and able to be more than a sentence. Most of these panes say "choose one of
@@ -1901,7 +1901,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            text needs a width it can be read at rather than the whole pane. */
         .mgmt-empty { flex: 1; display: flex; align-items: center; justify-content: center;
                       padding: 0 28px; white-space: pre-wrap; text-align: center;
-                      font-size: 12px; color: #4d5563; }
+                      font-size: 12px; color: #747f91; }
         .mgmt-empty.hidden { display: none; }
         .mgmt-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
         .mgmt-detail.hidden { display: none; }
@@ -1943,7 +1943,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                                            padding: 8px 11px; font-size: 13px; color: #8d97a6; }
         .mgmt-readonly { background: #0b0e13; border: 1px solid #1b212a; border-radius: 10px;
                          padding: 8px 11px; font-size: 13px; color: #8d97a6; }
-        .mgmt-hint { font-size: 10px; color: #5f6877; margin-top: 5px; }
+        .mgmt-hint { font-size: 10px; color: #747f91; margin-top: 5px; }
 
         .mgmt-choices { display: flex; flex-direction: row; }
         /* Zoom offers seven steps; on one row each would be too narrow to read. */
@@ -1962,7 +1962,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-choice-text { display: flex; flex-direction: column; flex: 1; min-width: 0;
                             padding-left: 9px; }
         .mgmt-choice-label { font-size: 12px; font-weight: bold; color: #e6eaf0; }
-        .mgmt-choice-hint { font-size: 10px; color: #6b7482; margin-top: 2px; }
+        .mgmt-choice-hint { font-size: 10px; color: #808b9c; margin-top: 2px; }
 
         .mgmt-inline { margin-top: 8px; padding: 7px 14px; font-size: 12px; background: #1b2029;
                        color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
