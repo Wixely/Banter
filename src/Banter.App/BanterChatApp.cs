@@ -1666,9 +1666,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            to mean "none" precisely because the component's own focus rule sets border-COLOUR
            alone (CupriFace 0.10.1) - it recolours what it finds, and it finds nothing.
            The row carries the ring instead, via ComposerRowClass. */
+        /* No caret-color here. It was written when the row took over the focus ring, to match the
+           caret to it, and the engine does not implement the property - it was dropped on the
+           floor and the caret has always been the default one. CupriDoctor said so as CF0050 from
+           the day it went in; nothing read CF0050 until now, which is the only reason it survived
+           a release. MarkupHealthTests gates the whole code at zero, so this cannot come back
+           silently - if the engine gains the property, this is the comment to delete. */
         .composer { flex: 1; min-width: 0; min-height: 20px; max-height: 110px;
                     background: transparent; color: #f3f5f7; border: 0; padding: 2px 0;
-                    white-space: pre-wrap; caret-color: #fb7185; }
+                    white-space: pre-wrap; }
         .composer-hint { font-size: 10px; color: #5f6877; margin: 7px 0 0 0; }
 
         /* Above the composer, not below it: a list that drops downwards would fall off the

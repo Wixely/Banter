@@ -37,4 +37,37 @@ public sealed class MarkupHealthTests(ITestOutputHelper output)
 
         Assert.True(errors.Count == 0, $"{errors.Count} error-level finding(s) on '{page}'");
     }
+
+    /// <summary>
+    /// Every CSS property the sheet declares is one the engine actually implements.
+    ///
+    /// <para><c>CF0050</c> is an ignored declaration, and an ignored declaration is the same class
+    /// of failure as a misspelt binding above: the page renders, nothing complains, and the thing
+    /// you wrote simply never happens. <c>caret-color: #fb7185</c> lived in the composer for a
+    /// whole release doing nothing - CupriDoctor had been reporting it the entire time and no test
+    /// read the code, so the only evidence was a caret that was never the colour it was set to,
+    /// which is not something anybody notices.</para>
+    ///
+    /// <para>Checked at the design size only. An unsupported property is a fact about the
+    /// stylesheet, not about the viewport, so the other sizes would report the same thing eight
+    /// more times.</para>
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AppPages.Each), MemberType = typeof(AppPages))]
+    public void NothingInTheSheetIsSilentlyIgnored(string page)
+    {
+        var app = AppPages.Showing(page);
+        var report = CupriDoctor.Check(
+            app.Html, app.Css,
+            width: (int)BanterChatApp.DesignWidth, height: (int)BanterChatApp.DesignHeight,
+            model: app.Model);
+
+        var ignored = report.Findings.Where(f => f.Code == "CF0050").ToList();
+        foreach (var f in ignored)
+        {
+            output.WriteLine(f.ToString());
+        }
+
+        Assert.True(ignored.Count == 0, $"{ignored.Count} ignored declaration(s) on '{page}'");
+    }
 }
