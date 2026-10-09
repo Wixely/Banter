@@ -2091,23 +2091,39 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* No padding here; the offset is on the card instead, for the reason the tool panel has
            the same shape — this is `width: 100%`, and padding adds to a width unless the box is
            told otherwise. Padding here once put the card's centre 60px right of the viewport's. */
+        /* `overflow: scroll` because `height: 100%` is a hard ceiling and a box with a ceiling
+           does not clip on its own - it paints past itself and the overflow is unreachable. On a
+           landscape phone the card needs 540px in 412px, so the Connect button, the status line
+           saying why the last attempt failed, and the hint under it were all off-screen with
+           nothing to scroll and no rail to escape to. This is the settings card's scar in the one
+           place the app has no way out of. */
         .connect { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-                   display: flex; justify-content: center; align-items: flex-start;
+                   display: flex; flex-direction: column; align-items: center;
+                   justify-content: flex-start;
+                   overflow: scroll;
                    background: #0b0d10; }
         .connect.hidden { display: none; }
         /* Centred by the container rather than by auto margins on the card — one lone child is
-           what justify-content is for. Top-aligned on purpose: a short viewport must not push the
-           card off-screen. */
-        /* No fixed height: the card holds a status line and a storage note that are empty on a
-           first visit and two lines on a bad one, and a fixed height clipped whichever it was
-           not sized for.
-           The parent's align-items: flex-start is what replaces it. That parent is a flex row,
-           so the default stretch made the card full-height the moment the height came off - a
-           card whose shadow reaches the bottom of the window, which is not obviously a layout
-           bug when you are looking at a dark screen. Caught by the pixel test, not by eye.
+           what the container's alignment is for. The pane is a COLUMN, so that is align-items
+           for the horizontal and justify-content: flex-start for the vertical; it was a row
+           until the overflow had to become scrollable, and the two properties swapped jobs when
+           it turned. Top-aligned on purpose either way: a short viewport must not push the card
+           off-screen. A silent left-align is what breaks if the direction changes again, so
+           ConnectReachabilityTests measures where the card actually sits.
            On the container rather than align-self on the card: the self form is not honoured
            here, measured. */
-        .connect-card { width: 360px; margin-top: 60px;
+        /* No fixed height: the card holds a status line and a storage note that are empty on a
+           first visit and two lines on a bad one, and a fixed height clipped whichever it was
+           not sized for. While the pane was a row, the default align-items: stretch made the
+           card full-height the moment that height came off - a card whose shadow reached the
+           bottom of the window, which is not obviously a layout bug on a dark screen, and was
+           caught by the pixel test rather than by eye. In a column the equivalent trap is the
+           opposite one, and flex-shrink below answers it. */
+        /* flex-shrink: 0 because the pane is a COLUMN now, and a column shrinks its items along
+           the main axis to make them fit: on a 412px screen the card was squeezed from 489px to
+           352px and its own contents overflowed it instead. The card keeps its natural height and
+           the pane scrolls - which is the whole point of the pane scrolling. */
+        .connect-card { width: 360px; margin-top: 60px; flex-shrink: 0;
                         display: flex; flex-direction: column; background: #151920;
                         border-radius: 14px; padding: 24px;
                         box-shadow: 0 18px 55px #00000052; }
