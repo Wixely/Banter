@@ -6,7 +6,7 @@
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationId>uk.co.wixely.banter</ApplicationId>
+    <ApplicationId>com.wixely.banter</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
     <!-- The version people see, from the one place the repository's version lives. It was
          hardcoded 0.1.0 and had been wrong since the day the repo moved past it - the same
