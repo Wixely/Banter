@@ -347,6 +347,22 @@ public sealed partial class BanterClient : IAsyncDisposable
         RequestAsync<RoomCreatePayload>(new RoomCreatePayload(room, parentRoom, purpose), cancellationToken);
 
     /// <summary>
+    /// Close a room for everybody in it. An admin may close any room; an agent, a room it is the
+    /// delegator of or a side room off one. Refused with <c>NOT_ALLOWED</c> otherwise.
+    /// </summary>
+    public Task CloseRoomAsync(string room, string reason = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new RoomClosePayload(room, reason), cancellationToken);
+
+    /// <summary>
+    /// Change a room's regime; admin only. <see cref="RoomRegime.Republic"/> ends an interregnum,
+    /// which is how to say a third-party delegator is intended there. Answers with the regime in
+    /// force afterwards, so asking for the one it already has is a read.
+    /// </summary>
+    public Task<RoomRegimePayload> SetRoomRegimeAsync(
+        string room, RoomRegime regime, CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomRegimePayload>(new RoomRegimePayload(room, regime), cancellationToken);
+
+    /// <summary>
     /// Pull an agent into a room you are the delegator of. Refused when the agent is not cleared
     /// for that room's sensitivity.
     /// </summary>
@@ -468,6 +484,12 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     /// <summary>Raised when a room's dispatch mode changes.</summary>
     public event Action<RoomModePayload>? RoomModeChanged;
+
+    /// <summary>Raised when a room's regime changes, and on joining one.</summary>
+    public event Action<RoomRegimePayload>? RoomRegimeChanged;
+
+    /// <summary>Raised when a room you were in is closed. You are already out of it.</summary>
+    public event Action<RoomClosePayload>? RoomClosed;
 
     /// <summary>
     /// Opens a streamed message in a room: deltas render live in every member's client and the
@@ -1221,6 +1243,19 @@ public sealed partial class BanterClient : IAsyncDisposable
                         break;
                     case RoomModePayload roomMode:
                         RoomModeChanged?.Invoke(roomMode);
+                        break;
+                    case RoomRegimePayload regime:
+                        RoomRegimeChanged?.Invoke(regime);
+                        break;
+                    case RoomClosePayload closed:
+                        // Out of the rejoin set first: a reconnect that joined it again would
+                        // open a fresh room of the same name, which is the opposite of closed.
+                        lock (_roomsLock)
+                        {
+                            _joinedRooms.Remove(closed.Room);
+                        }
+
+                        RoomClosed?.Invoke(closed);
                         break;
                     case TaskInfoPayload task:
                         TaskChanged?.Invoke(task);

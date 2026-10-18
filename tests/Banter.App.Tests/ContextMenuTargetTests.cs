@@ -42,6 +42,32 @@ public sealed class ContextMenuTargetTests
         throw new Xunit.Sdk.XunitException($"nothing painted belongs to data-msg=\"{messageId}\"");
     }
 
+    /// <summary>
+    /// Copy from the menu copies the message it was opened on - including a failed turn, whose
+    /// words are its reason. It used to copy the newest message whichever row was clicked, and a
+    /// failure's empty text when it was the newest, so an error could not be copied at all.
+    /// </summary>
+    [Fact]
+    public void CopyFromTheMenuCopiesTheMessageItWasOpenedOnEvenAFailure()
+    {
+        var vm = new ChatViewModel();
+        vm.SetNick("alice");
+        vm.AddRoom("#main");
+        var clip = new RecordingClipboard();
+        var app = new BanterChatApp(vm) { Clipboard = clip };
+        vm.Append("#main", "dagger", "[failed] Retry failed after 4 tries: 502 Bad Gateway", 0, id: "m1");
+        vm.Append("#main", "bob", "something later", 0, id: "m2");
+
+        using var doc = app.CreateDocument();
+        doc.BuildDisplayList(Width, Height);
+
+        var (x, y) = PointOn(doc, "m1");
+        doc.DispatchContextMenu(x, y);
+        app.CopyFromMenu();
+
+        Assert.Equal("Retry failed after 4 tries: 502 Bad Gateway", Assert.Single(clip.Texts));
+    }
+
     [Fact]
     public void RightClickingAMessageAimsTheMenuAtIt()
     {

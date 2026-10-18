@@ -28,6 +28,9 @@ public interface IServerStore
     ValueTask<HistoryPage?> GetHistoryPageAsync(string room, string? beforeMessageId, int limit, CancellationToken cancellationToken = default);
     ValueTask UpsertRoomAsync(string name, string? topic, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<RoomRecord>> GetRoomsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Forgets a closed room, so it is not loaded again at start. Its messages stay.</summary>
+    ValueTask DeleteRoomAsync(string name, CancellationToken cancellationToken = default);
 }
 
 public sealed class DbServerStore(BanterDatabase database) : IServerStore
@@ -172,5 +175,12 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
         var rooms = await connection.QueryAsync<RoomRecord>(
             "SELECT name AS Name, topic AS Topic FROM rooms").ConfigureAwait(false);
         return rooms.AsList();
+    }
+
+    public async ValueTask DeleteRoomAsync(string name, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await connection.ExecuteAsync("DELETE FROM rooms WHERE name = @Name", new { Name = name })
+            .ConfigureAwait(false);
     }
 }

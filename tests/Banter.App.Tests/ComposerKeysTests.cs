@@ -58,6 +58,32 @@ public sealed class ComposerKeysTests
         throw new Xunit.Sdk.XunitException("nothing painted belongs to the composer");
     }
 
+    /// <summary>The middle of the first laid-out box carrying this class, in document space.</summary>
+    private static (float X, float Y) MiddleOf(CupriFace.Dom.RenderNode root, string cls)
+    {
+        (float X, float Y)? Find(CupriFace.Dom.RenderNode n, float px, float py)
+        {
+            var x = px + n.X;
+            var y = py + n.Y;
+            if (n.Element?.GetAttribute("class")?.Split(' ').Contains(cls) == true && n.Width > 0)
+            {
+                return (x + (n.Width / 2), y + (n.Height / 2));
+            }
+
+            foreach (var c in n.Children)
+            {
+                if (Find(c, x, y) is { } hit)
+                {
+                    return hit;
+                }
+            }
+
+            return null;
+        }
+
+        return Find(root, 0, 0) ?? throw new Xunit.Sdk.XunitException($"no .{cls} is laid out");
+    }
+
     [Fact]
     public void EnterSends()
     {
@@ -68,6 +94,55 @@ public sealed class ComposerKeysTests
         vm.ApplyPending();
 
         Assert.Equal(("#main", "hello"), Assert.Single(sent));
+    }
+
+    /// <summary>
+    /// After a send, the next keystroke starts the next message. The composer is emptied by the
+    /// model, and the field has to be told: left alone it kept its focus or its caret from the
+    /// message just sent, so the next thing typed went nowhere or landed after text that was no
+    /// longer there.
+    /// </summary>
+    [Fact]
+    public void AfterEnterTheNextKeystrokeStartsTheNextMessage()
+    {
+        var (app, vm, sent) = Room();
+        using var doc = Typing(app, "hello");
+
+        doc.DispatchKey("", EditKey.Enter);
+        vm.ApplyPending();
+        doc.BuildDisplayList(Width, Height);
+
+        foreach (var ch in "again")
+        {
+            doc.DispatchKey(ch.ToString(), EditKey.None);
+        }
+
+        Assert.Equal("again", vm.Model.Composer);
+        doc.DispatchKey("", EditKey.Enter);
+        vm.ApplyPending();
+        Assert.Equal(["hello", "again"], sent.Select(s => s.Text));
+    }
+
+    [Fact]
+    public void AfterTheSendButtonTheNextKeystrokeStartsTheNextMessage()
+    {
+        var (app, vm, sent) = Room();
+        using var doc = Typing(app, "hello");
+
+        // The button, by where it is laid out - a click moves focus to what was clicked.
+        doc.BuildFrame(Width, Height);
+        var (bx, by) = MiddleOf(doc.Root, "send");
+        doc.DispatchClick(bx, by, 1);
+        vm.ApplyPending();
+        doc.BuildDisplayList(Width, Height);
+
+        foreach (var ch in "again")
+        {
+            doc.DispatchKey(ch.ToString(), EditKey.None);
+        }
+
+        Assert.Equal(("#main", "hello"), Assert.Single(sent));
+        Assert.Equal("again", vm.Model.Composer);
     }
 
     [Fact]

@@ -108,8 +108,23 @@ public sealed partial class ChatViewModel
     public bool UsersPanelOpen => !Model.UsersPanelClass.Contains("hidden", StringComparison.Ordinal);
 
     /// <summary>These buttons appear only for an admin — for anyone else the verbs would be refused.</summary>
+    /// <summary>Whether this account is an operator. Closing a room is offered only then: the
+    /// server refuses everybody else, and a control that always ends in NOT_ALLOWED is worse than
+    /// none.</summary>
+    public bool IsAdmin { get; private set; }
+
+    private static string CloseClassFor(bool isAdmin) => isAdmin ? "tab-close" : "no-close";
+
     public void SetIsAdmin(bool isAdmin)
     {
+        IsAdmin = isAdmin;
+        foreach (var tab in Model.Rooms)
+        {
+            tab.CloseClass = CloseClassFor(isAdmin);
+        }
+
+        RefreshRegime();
+
         var shown = isAdmin ? "rail-button" : "rail-button hidden";
         Model.AgentsButtonClass = shown;
         Model.UsersButtonClass = shown;
@@ -616,9 +631,54 @@ public sealed partial class ChatViewModel
         Model.ConfirmClass = "confirm";
     }
 
+    private string _pendingRoom = "";
+
+    /// <summary>
+    /// Asks before closing a room. It closes for everybody in it, not just for you - which is
+    /// the difference from leaving, and the reason it is worth a deliberate step.
+    /// </summary>
+    public void ConfirmCloseRoom(string room)
+    {
+        if (room.Length == 0)
+        {
+            return;
+        }
+
+        _pendingAct = ConfirmAct.CloseRoom;
+        _pendingRoom = room;
+        Model.ConfirmTitle = $"Close {room}?";
+        Model.ConfirmBody = "It closes for everybody in it, people and agents, and leaves the room "
+            + "list. What was said there is kept.";
+        Model.ConfirmAction = "Close room";
+        Model.ConfirmClass = "confirm";
+    }
+
+    /// <summary>
+    /// Asks before ending an interregnum. Ending it says a third-party delegator is acceptable
+    /// here, and the election that follows may seat one at once - so it is a decision about where
+    /// the room's words go, and worth the step.
+    /// </summary>
+    public void ConfirmEndInterregnum(string room)
+    {
+        if (!IsAdmin || !InInterregnum(room))
+        {
+            return;
+        }
+
+        _pendingAct = ConfirmAct.EndInterregnum;
+        _pendingRoom = room;
+        Model.ConfirmTitle = $"End the interregnum in {room}?";
+        Model.ConfirmBody = "The seat stops being held for a local agent, and the usual rules elect "
+            + "whoever is eligible - which may be a third-party agent, which then reads everything "
+            + "said in the room.";
+        Model.ConfirmAction = "End interregnum";
+        Model.ConfirmClass = "confirm";
+    }
+
     public void CancelConfirm()
     {
         _pendingAct = null;
+        _pendingRoom = "";
         Model.ConfirmClass = "confirm hidden";
         _pendingHub = "";
         _pendingAgent = "";
@@ -645,6 +705,8 @@ public sealed partial class ChatViewModel
             ConfirmAct.RemoveAgent => Model.AgentSelected,
             ConfirmAct.RemoveUser => Model.UserSelected,
             ConfirmAct.ForgetHubIdentity => _pendingAgent,
+            ConfirmAct.CloseRoom => _pendingRoom,
+            ConfirmAct.EndInterregnum => _pendingRoom,
             _ => "",
         };
 
@@ -698,6 +760,7 @@ public sealed partial class ChatViewModel
         var showing = Model.SidebarClass.Contains("open", StringComparison.Ordinal)
                       || (!narrow && !Model.SidebarClass.Contains("shut", StringComparison.Ordinal));
         Model.SidebarClass = showing ? "sidebar shut" : "sidebar open";
+        Model.RailClass = showing ? "rail shut" : "rail open";
 
         // The roster rides along. On a narrow screen the two are not columns, they are the halves
         // of one overlay — rooms above, people below — so one control moves both, and hiding the
@@ -728,6 +791,7 @@ public sealed partial class ChatViewModel
     public void ResetRooms()
     {
         Model.SidebarClass = "sidebar";
+        Model.RailClass = "rail";
         Model.RosterClass = "roster";
         Model.RoomsBackdropClass = "rooms-backdrop hidden";
     }

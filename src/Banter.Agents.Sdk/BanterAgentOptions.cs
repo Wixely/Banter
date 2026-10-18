@@ -117,7 +117,10 @@ public sealed record LlmChatAgentOptions
 
     public string SystemPrompt { get; init; } =
         "You are a participant in a group chat. Keep replies short and conversational - " +
-        "a sentence or two unless asked for detail. Do not prefix your replies with your name.";
+        "a sentence or two unless asked for detail. Do not prefix your replies with your name. " +
+        "Your replies are shown as Markdown, so use it where it helps: lists, **bold**, `code` " +
+        "and fenced code blocks. To show an image from Banter's file storage, write " +
+        "![description](banter:FILE_ID); images from web addresses are not displayed.";
 
     /// <summary>
     /// Messages of prior room context to send with each turn. Small on purpose: a chat room is

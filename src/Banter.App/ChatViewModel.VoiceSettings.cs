@@ -262,6 +262,22 @@ public sealed partial class ChatViewModel
 
     public void ChooseFlash(string value) => SetFlashOnMention(value == "flash");
 
+    /// <summary>Whether being put into a new room switches to it. See
+    /// <c>BanterSettings.FollowNewRooms</c>.</summary>
+    public bool FollowNewRooms { get; private set; } = true;
+
+    public void SetFollowNewRooms(bool follow)
+    {
+        FollowNewRooms = follow;
+        Model.FollowChoices = FollowChoices(follow ? "follow" : "stay");
+    }
+
+    public void ChooseFollow(string value) => SetFollowNewRooms(value == "follow");
+
+    private static List<ChoiceRow> FollowChoices(string selected) => Choices(selected,
+        ("follow", "Switch to it", "Opens the new room as soon as you are added, so you see what it was opened for."),
+        ("stay", "Stay where you are", "The room appears as a new tab and waits for you."));
+
     /// <summary>
     /// Whether this host can hold a connection open while it is in the background at all.
     ///

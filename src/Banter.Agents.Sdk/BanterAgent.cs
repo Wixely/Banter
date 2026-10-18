@@ -66,6 +66,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         _client.Evicted += OnEvicted;
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
+        _client.RoomClosed += OnRoomClosed;
         _client.MemberJoined += OnMemberJoined;
         _client.TaskChanged += OnTaskChanged;
         _client.Reconnected += OnReconnected;
@@ -288,6 +289,21 @@ public abstract partial class BanterAgent : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// A room this agent was in is gone. Its state goes with it - the roster most of all, because
+    /// a reconnect rejoins every room it has a roster for, and rejoining a closed room would open
+    /// it again.
+    /// </summary>
+    private void OnRoomClosed(RoomClosePayload p)
+    {
+        lock (_roomStateLock)
+        {
+            _rosters.Remove(p.Room);
+            _delegators.Remove(p.Room);
+            _modes.Remove(p.Room);
+        }
+    }
+
     /// <summary>True when this agent is the elected delegator for the room.</summary>
     public bool IsDelegatorFor(string room)
     {
@@ -406,6 +422,9 @@ public abstract partial class BanterAgent : IAsyncDisposable
     ///
     /// <para>In a <b>mention</b> room every agent answers when named.</para>
     ///
+    /// <para>In a <b>collaborate</b> room agents answer when named, by anyone; and the room's
+    /// delegator also answers a person who names nobody, as it would in a delegated room.</para>
+    ///
     /// <para><b>An @mention from a person goes straight to the agent named</b>, delegated room or
     /// not: asking someone directly and being answered by whoever happens to hold the room is not
     /// what anybody means by it. Only from a person — an agent writing "@scout" still goes through
@@ -438,6 +457,15 @@ public abstract partial class BanterAgent : IAsyncDisposable
         // conferring cannot leak back into the main channel where it would not stop.
         if (ModeFor(m.Room) == RoomDispatchMode.Collaborate)
         {
+            // A person talking in it without naming anyone is talking to the room, and the room's
+            // delegator is who answers that - as it would in a delegated room. Without this a side
+            // room with one agent and one person in it went silent unless the person typed the
+            // agent's name every time, which is not how anybody talks to the only other one there.
+            if (!IsAgentSender(m) && IsDelegatorFor(m.Room) && !NamesAnotherAgentIn(m))
+            {
+                return true;
+            }
+
             return Addressed(m);
         }
 
@@ -922,6 +950,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
             _client.Evicted -= OnEvicted;
             _client.DelegatorChanged -= OnDelegatorChanged;
             _client.RoomModeChanged -= OnRoomModeChanged;
+            _client.RoomClosed -= OnRoomClosed;
             _client.MemberJoined -= OnMemberJoined;
             _client.TaskChanged -= OnTaskChanged;
             _client.Reconnected -= OnReconnected;

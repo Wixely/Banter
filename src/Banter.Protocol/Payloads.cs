@@ -621,6 +621,53 @@ public sealed record AgentMovePayload(
     [property: Key(1)] string Room,
     [property: Key(2)] string Reason = "");
 
+/// <summary>
+/// Close a room. Sent by a client to ask, and by the server to every member once it is done, with
+/// <see cref="ClosedBy"/> filled in. Closing ends the room for everybody, not just the sender -
+/// leaving is what <see cref="PartPayload"/> is for.
+///
+/// <para>Who may: an admin, any room; the room's delegator, or its parent's - the agent that
+/// opened a side room for some work is the one that knows when the work is finished. The
+/// history is kept: a closed room is gone from the list, not from the record.</para>
+/// </summary>
+[MessagePackObject]
+public sealed record RoomClosePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string Reason = "",
+    [property: Key(2)] string? ClosedBy = null);
+
+/// <summary>
+/// How a room's delegator may be chosen - its standing, in the room's own politics.
+///
+/// <para>A delegator reads everything said in its room before deciding who answers, so which
+/// agent holds the seat is a question of where the room's words go. Most of the time the usual
+/// election rules answer it. The case they cannot answer is the one where the local agent that
+/// held the seat goes away: the rules would hand the seat to whoever is left, and if that is a
+/// third-party agent the room's conversation now flows to it without anybody having decided so.
+/// So the room remembers that it had a local delegator, and holds the seat for one.</para>
+/// </summary>
+public enum RoomRegime
+{
+    /// <summary>The usual rules: the election picks the delegator.</summary>
+    Republic = 0,
+
+    /// <summary>
+    /// A local delegator left, and the seat is held for a local agent: only a local agent may be
+    /// elected. Ends by itself when one takes the seat, or when an admin ends it - which is how
+    /// "a third-party delegator here is intended" is said.
+    /// </summary>
+    Interregnum = 1,
+}
+
+/// <summary>A room's regime. <see cref="Reason"/> and <see cref="ChangedBy"/> say why and who,
+/// on a change; both are empty on the copy sent to somebody joining.</summary>
+[MessagePackObject]
+public sealed record RoomRegimePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] RoomRegime Regime,
+    [property: Key(2)] string Reason = "",
+    [property: Key(3)] string? ChangedBy = null);
+
 /// <summary>Get (Mode omitted by convention) or set a room's dispatch mode.</summary>
 [MessagePackObject]
 public sealed record RoomModePayload(

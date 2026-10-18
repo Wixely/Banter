@@ -121,8 +121,8 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         // room list and the roster are only reachable through it. Its SIZE has been asserted since
         // touch targets went in; that it answers a finger at all has not.
         var phone = OnAPhone();
-        var (x, y) = Middle(phone.Doc, "logo");
-        output.WriteLine($"the mark is at ({x:F0},{y:F0})");
+        var (x, y) = Middle(phone.Doc, "drawer-toggle");
+        output.WriteLine($"the handle is at ({x:F0},{y:F0})");
 
         Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
 
@@ -130,7 +130,9 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "a tap on the mark did not open the rooms");
         Assert.True(WidthOf(phone.Doc, "roster") > 0f, "the people did not come with them");
 
-        // Far enough apart not to be a double tap, which is a different gesture entirely.
+        // Far enough apart not to be a double tap, which is a different gesture entirely. The same
+        // point: the open drawer's mark lands exactly where the handle was, so this tap is on the
+        // mark - which is what makes the handle look like it became the top of the drawer.
         phone.Touch.Advance(1.0);
         phone.Touch.Tap(x, y);
         Assert.Equal(0f, WidthOf(phone.Doc, "sidebar"), 1);
@@ -143,7 +145,7 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         // the pointer, the window going away — must leave nothing behind. Worth its own test for
         // any control that acts on release, which on this screen is all of them.
         var phone = OnAPhone();
-        var (x, y) = Middle(phone.Doc, "logo");
+        var (x, y) = Middle(phone.Doc, "drawer-toggle");
 
         phone.Touch.Down(x, y);
         phone.Touch.Cancel();
@@ -158,7 +160,7 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         // answer. The tab is 44 tall and inside an overlay that is positioned absolutely over the
         // chat — which is exactly the arrangement where a hit-test can land on what is underneath.
         var phone = OnAPhone();
-        var (markX, markY) = Middle(phone.Doc, "logo");
+        var (markX, markY) = Middle(phone.Doc, "drawer-toggle");
         phone.Touch.Tap(markX, markY);
 
         Assert.Equal("#main", phone.Vm.Model.ActiveRoom);
@@ -198,7 +200,7 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
     public void PickingARoomPutsTheListAway()
     {
         var phone = OnAPhone();
-        var (markX, markY) = Middle(phone.Doc, "logo");
+        var (markX, markY) = Middle(phone.Doc, "drawer-toggle");
         phone.Touch.Tap(markX, markY);
         Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
 
@@ -240,7 +242,7 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
             return Task.CompletedTask;
         });
 
-        var (markX, markY) = Middle(phone.Doc, "logo");
+        var (markX, markY) = Middle(phone.Doc, "drawer-toggle");
         phone.Touch.Tap(markX, markY);
 
         var (joinX, joinY) = MiddleOf(phone.Doc, "data-join", "#notes");
@@ -356,7 +358,7 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
     {
         var reads = 0;
         var phone = OnAPhone(roomsListed: () => reads++);
-        var (x, y) = Middle(phone.Doc, "logo");
+        var (x, y) = Middle(phone.Doc, "drawer-toggle");
 
         phone.Touch.Tap(x, y);
         Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
@@ -385,11 +387,11 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
     public void TappingAwayFromTheRoomListClosesIt()
     {
         var phone = OnAPhone();
-        var (markX, markY) = Middle(phone.Doc, "logo");
+        var (markX, markY) = Middle(phone.Doc, "drawer-toggle");
         phone.Touch.Tap(markX, markY);
         Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
 
-        // Far to the right of the overlay, which is 232 wide starting at the 56px rail.
+        // Far to the right of the drawer, which is the 56px rail and a 232px list beside it.
         var catcher = Walk(phone.Doc.Root).First(n =>
             n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("rooms-backdrop") == true
             && n.Node.Width > 0);
@@ -403,21 +405,26 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// The catcher starts where the rail ends, so the rail still answers while the list is up -
-    /// a full-width one would eat the tap and the button under it would never be reached.
+    /// On a phone the rail is put away with the room list, and a floating handle stands in for
+    /// it - the chat gets the whole width. Opened, the drawer's own mark lands exactly where the
+    /// handle was, so the button reads as having become the top of the drawer rather than as a
+    /// second control beside it.
     /// </summary>
     [Fact]
-    public void TheCatcherDoesNotCoverTheRail()
+    public void TheRailIsInTheDrawerAndItsMarkLandsOnTheHandle()
     {
         var phone = OnAPhone();
+        Assert.Equal(0f, WidthOf(phone.Doc, "rail"), 1);
+        Assert.Equal(PhoneW, WidthOf(phone.Doc, "main"), 1);
+
+        var (handleX, handleY) = Middle(phone.Doc, "drawer-toggle");
+        phone.Touch.Tap(handleX, handleY);
+
+        Assert.True(WidthOf(phone.Doc, "rail") > 0f, "the rail did not come out with the drawer");
         var (markX, markY) = Middle(phone.Doc, "logo");
-        phone.Touch.Tap(markX, markY);
-
-        var catcher = Walk(phone.Doc.Root).First(n =>
-            n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("rooms-backdrop") == true
-            && n.Node.Width > 0);
-
-        Assert.True(catcher.X >= markX, $"the catcher starts at {catcher.X:F0}, over a mark at {markX:F0}");
+        output.WriteLine($"handle ({handleX:F0},{handleY:F0}), drawer mark ({markX:F0},{markY:F0})");
+        Assert.Equal(handleX, markX, 0);
+        Assert.Equal(handleY, markY, 0);
     }
 
     /// <summary>
@@ -432,7 +439,7 @@ public sealed class TouchGestureTests(ITestOutputHelper output)
         phone.Vm.SetIsAdmin(true);
         phone.Settle();
 
-        var (markX, markY) = Middle(phone.Doc, "logo");
+        var (markX, markY) = Middle(phone.Doc, "drawer-toggle");
         phone.Touch.Tap(markX, markY);
         Assert.True(WidthOf(phone.Doc, "sidebar") > 0f, "the list did not open");
 

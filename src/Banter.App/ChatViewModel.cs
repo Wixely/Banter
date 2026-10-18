@@ -68,11 +68,16 @@ public sealed partial class ChatViewModel
     }
 
     /// <summary>Sets an unread count and its visibility together, so the two cannot disagree.</summary>
-    private static void SetBadge(RoomRow tab, string badge)
+    private void SetBadge(RoomRow tab, string badge)
     {
         tab.Badge = badge;
         tab.BadgeClass = badge.Length == 0 ? "badge hidden" : "badge";
+        MarkUnread();
     }
+
+    /// <summary>Whether any room has something unread, said on the narrow screen's drawer handle.</summary>
+    private void MarkUnread() =>
+        Model.DrawerToggleClass = Model.Rooms.Any(r => r.Badge.Length > 0) ? "drawer-toggle unread" : "drawer-toggle";
 
     /// <summary>
     /// Lights the composer's box while somebody is typing in it, and says whether that changed -
@@ -168,10 +173,25 @@ public sealed partial class ChatViewModel
 
         if (!Model.Rooms.Any(r => r.Name == room))
         {
-            Model.Rooms.Add(new RoomRow { Name = room, Label = room });
+            Model.Rooms.Add(new RoomRow { Name = room, Label = room, CloseClass = CloseClassFor(IsAdmin) });
         }
 
         if (Model.ActiveRoom.Length == 0)
+        {
+            SwitchTo(room);
+        }
+    }
+
+    /// <summary>
+    /// A room the server put us in rather than one we joined, which is switched to when
+    /// <see cref="FollowNewRooms"/> says so. Only when it is new here: a room already on the rail
+    /// is one we knew about, and moving somebody to it would be a surprise rather than a follow.
+    /// </summary>
+    public void AdoptRoom(string room)
+    {
+        var isNew = !_rooms.ContainsKey(room);
+        AddRoom(room);
+        if (isNew && FollowNewRooms && Model.ActiveRoom != room)
         {
             SwitchTo(room);
         }
@@ -181,6 +201,7 @@ public sealed partial class ChatViewModel
     {
         _rooms.Remove(room);
         Model.Rooms.RemoveAll(r => r.Name == room);
+        MarkUnread();
         if (Model.ActiveRoom == room)
         {
             Model.ActiveRoom = "";
@@ -273,6 +294,9 @@ public sealed partial class ChatViewModel
             ReplyTo = replyTo,
         };
 
+        row.IsMarkdown = rowClass != "line system" && _knownAgents.Contains(sender);
+        Render(row);
+
         // Anyone heard from is somebody who could be given a voice of their own.
         SawSpeaker(sender);
 
@@ -309,6 +333,123 @@ public sealed partial class ChatViewModel
     }
 
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
+
+    /// <summary>
+    /// What copying a whole message puts on the clipboard. A failed turn's words are its reason,
+    /// which lives behind the Failed chip rather than in <see cref="MessageRow.Text"/> - so copying
+    /// one used to copy nothing at all, on exactly the message most worth pasting somewhere. An
+    /// agent's Markdown is copied as written, which is what pastes cleanly anywhere else.
+    /// </summary>
+    public static string CopyableText(MessageRow row) =>
+        row.Text.Length > 0 ? row.Text : row.FailDetail;
+
+    // ── Markdown, for what agents write ──────────────────────────────────────────────────────
+
+    /// <summary>Every nick ever seen in an agent roster, in any room. Kept after an agent leaves,
+    /// so what it said is still drawn the way it was written.</summary>
+    private readonly HashSet<string> _knownAgents = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Stored files this client holds locally, by file id, as the URI to draw them from.</summary>
+    private readonly Dictionary<string, string> _imageSources = new(StringComparer.Ordinal);
+
+    /// <summary>Stored files that cannot be shown: gone, not an image, too big, or not ours to read.</summary>
+    private readonly HashSet<string> _missingImages = new(StringComparer.Ordinal);
+
+    /// <summary>A stored image a message refers to cannot be shown, so the message stops saying it
+    /// is loading.</summary>
+    public void StoredImageUnavailable(string fileId)
+    {
+        if (!_missingImages.Add(fileId))
+        {
+            return;
+        }
+
+        foreach (var row in _rooms.Values.SelectMany(rows => rows)
+                     .Where(r => r.IsMarkdown && StoredImages(r.Text).Contains(fileId)))
+        {
+            Render(row);
+        }
+    }
+
+    /// <summary>
+    /// Agents named by a roster. One that is new here has its messages redrawn: history arrives
+    /// before the roster does, so a room's earlier replies were laid out as plain text by the time
+    /// anybody knew an agent wrote them.
+    /// </summary>
+    private void LearnAgents(IEnumerable<string> nicks)
+    {
+        var fresh = nicks.Where(_knownAgents.Add).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (fresh.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var row in _rooms.Values.SelectMany(rows => rows)
+                     .Where(r => fresh.Contains(r.Sender) && !r.RowClass.Contains("system", StringComparison.Ordinal)
+                                 && !r.RowClass.Contains("deleted", StringComparison.Ordinal)))
+        {
+            row.IsMarkdown = true;
+            Render(row);
+        }
+    }
+
+    /// <summary>Shows the row's text as Markdown or as it was typed, whichever it is.</summary>
+    private void Render(MessageRow row)
+    {
+        var md = row.IsMarkdown && row.Text.Length > 0;
+        row.BodyClass = md ? "body hidden" : "body";
+        row.MarkdownClass = md ? "md" : "md hidden";
+        row.MarkdownText = md ? MarkdownFor(row.Text) : "";
+    }
+
+    /// <summary>
+    /// The scheme a stored file is referred to by: <c>![a diagram](banter:FILE_ID)</c>. A file in
+    /// Banter's own storage is one the server already holds and this client is allowed to read,
+    /// so drawing it reaches nowhere new.
+    /// </summary>
+    public const string StoredImageScheme = "banter:";
+
+    private static readonly global::System.Text.RegularExpressions.Regex ImageRef =
+        new(@"!\[([^\]]*)\]\(([^)\s]+)\)", global::System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The file id in a <c>banter:</c> reference, or null for anything else. Ids are
+    /// letters, digits, <c>-</c> and <c>_</c>; anything else is not one of ours.</summary>
+    public static string? StoredImageId(string src)
+    {
+        if (!src.StartsWith(StoredImageScheme, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var id = src[StoredImageScheme.Length..].TrimStart('/');
+        return id.Length > 0 && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') ? id : null;
+    }
+
+    /// <summary>The stored files a message's Markdown shows, so a session knows what to fetch.</summary>
+    public static IReadOnlyList<string> StoredImages(string text) =>
+        [.. ImageRef.Matches(text).Select(m => StoredImageId(m.Groups[2].Value)).OfType<string>().Distinct()];
+
+    /// <summary>
+    /// The Markdown as it is drawn. Images are the one part of it that would LOAD something, so
+    /// they are the part that is rewritten: one in Banter's storage is drawn from the copy this
+    /// client fetched (and says it is loading until then); anything else - a web address, a
+    /// path - becomes a link with its alt text, shown and never fetched.
+    /// </summary>
+    public string MarkdownFor(string text) => ImageRef.Replace(text, m =>
+    {
+        var alt = m.Groups[1].Value.Replace("]", "");
+        var src = m.Groups[2].Value;
+        var label = alt.Length > 0 ? alt : "image";
+
+        if (StoredImageId(src) is { } id)
+        {
+            return _imageSources.TryGetValue(id, out var local) ? $"![{alt}]({local})"
+                : _missingImages.Contains(id) ? $"*{label} (image unavailable)*"
+                : $"*{label} (loading)*";
+        }
+
+        return $"[{label} (remote image, not loaded)]({src})";
+    });
 
     /// <summary>
     /// Reports a message that never reached the server, and hands the words back.
@@ -543,10 +684,18 @@ public sealed partial class ChatViewModel
         }
 
         var src = new Uri(localPath).AbsoluteUri;
+        _imageSources[fileId] = src;
         foreach (var row in _rooms.Values.SelectMany(rows => rows).Where(r => r.FileId == fileId))
         {
             row.ImageSrc = src;
             row.ImageClass = "inline-image";
+        }
+
+        // And any Markdown that shows it, wherever it is.
+        foreach (var row in _rooms.Values.SelectMany(rows => rows)
+                     .Where(r => r.IsMarkdown && StoredImages(r.Text).Contains(fileId)))
+        {
+            Render(row);
         }
     }
 
@@ -581,6 +730,7 @@ public sealed partial class ChatViewModel
 
         row.Text = text;
         row.EditedMark = " (edited)";
+        Render(row);
     }
 
     /// <summary>
@@ -597,6 +747,8 @@ public sealed partial class ChatViewModel
         row.Text = "message deleted";
         row.EditedMark = "";
         row.RowClass = "line deleted";
+        row.IsMarkdown = false;
+        Render(row);
         row.FileId = "";
         row.AttachClass = "attach hidden";
         row.AttachText = "";
@@ -689,7 +841,7 @@ public sealed partial class ChatViewModel
                 continue;
             }
 
-            rows.Add(new MessageRow
+            var row = new MessageRow
             {
                 Id = id,
                 Sender = sender,
@@ -697,7 +849,10 @@ public sealed partial class ChatViewModel
                 Time = FormatTime(timestamp),
                 RowClass = WithDelegator(room, sender, sender == Model.Nick ? "line own" : "line"),
                 ReplyTo = replyTo,
-            });
+                IsMarkdown = _knownAgents.Contains(sender),
+            };
+            Render(row);
+            rows.Add(row);
         }
 
         if (rows.Count == 0)
@@ -755,6 +910,7 @@ public sealed partial class ChatViewModel
         }
 
         row.Text += delta;
+        Render(row);
 
         // The first token that is actually a token. A delta can be empty, or whitespace that
         // renders as nothing, and dropping the indicator for one of those would blank the row
@@ -777,6 +933,7 @@ public sealed partial class ChatViewModel
         }
 
         row.Text = finalText;
+        Render(row);
         row.Time = FormatTime(timestamp);
         row.RowClass = StoppedWorking(row.RowClass).Replace(" streaming", "");
     }
@@ -870,6 +1027,7 @@ public sealed partial class ChatViewModel
 
         _agents[room] = rows;
         _presentAgents[room] = [.. rows.Select(r => r.Nick)];
+        LearnAgents(rows.Select(r => r.Nick));
         RefreshPresence(room);
         if (room == Model.ActiveRoom)
         {
@@ -942,7 +1100,75 @@ public sealed partial class ChatViewModel
             (_, 0) => mode,
             _ => $"{mode} · {who}",
         };
+
+        // The pill's dot: green while somebody is running the room, amber while nobody is - the
+        // one thing about the room's status worth seeing at a glance.
+        Model.DispatchClass = Model.Dispatch.Length == 0
+            ? "dispatch hidden"
+            : who.Length > 0 && who != "no delegator" ? "dispatch on" : "dispatch off";
+
+        RefreshRegime();
     }
+
+    /// <summary>Rooms in interregnum, as the server last said. Absent means republic, which is
+    /// also what a server too old to send a regime is under.</summary>
+    private readonly HashSet<string> _interregna = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Records a room's regime, and shows it if it is the room on screen.</summary>
+    public void SetRegime(string room, bool interregnum)
+    {
+        if (interregnum)
+        {
+            _interregna.Add(room);
+        }
+        else
+        {
+            _interregna.Remove(room);
+        }
+
+        if (room == Model.ActiveRoom)
+        {
+            RefreshRegime();
+        }
+    }
+
+    public bool InInterregnum(string room) => _interregna.Contains(room);
+
+    /// <summary>What the room's regime means, in a sentence - the chip's tip and /regime's answer.</summary>
+    public string RegimeExplained(string room) => InInterregnum(room)
+        ? "Interregnum: the local delegator left, so the seat is held for a local agent. "
+          + "No third-party agent can take it until a local one does or an admin ends this."
+        : "Republic: the delegator is elected under the usual rules.";
+
+    /// <summary>
+    /// The single letter beside the delegator: R for republic, I for interregnum. An admin can
+    /// end an interregnum from it, so for them it is a control, and it says so.
+    /// </summary>
+    private void RefreshRegime()
+    {
+        var room = Model.ActiveRoom;
+        var held = InInterregnum(room);
+        Model.RegimeMark = held ? "I" : "R";
+        Model.RegimeClass = Model.Dispatch.Length == 0
+            ? "regime hidden"
+            : held ? (IsAdmin ? "regime interregnum act" : "regime interregnum") : "regime republic";
+        Model.RegimeTip = RegimeExplained(room) + (held && IsAdmin ? " Click to end it." : "");
+    }
+
+    /// <summary>
+    /// The server's own lines about who is dispatching a room, and under what regime. They are status, and the header's
+    /// pill says the same thing and stays current, so in the timeline they were only a growing
+    /// pile of out-of-date versions of it. Matched on the system sender AND the exact wording the
+    /// server uses, so nothing anybody typed is ever hidden by this.
+    /// </summary>
+    public static bool IsDispatchNotice(string sender, string text) =>
+        sender == "banter"
+        && (text.Contains(" is now the delegator for this room", StringComparison.Ordinal)
+            || text.StartsWith("No delegator: ", StringComparison.Ordinal)
+            || text.StartsWith("Room is now delegated: ", StringComparison.Ordinal)
+            || text.StartsWith("Room is now mention mode: ", StringComparison.Ordinal)
+            || text.StartsWith("Interregnum: ", StringComparison.Ordinal)
+            || text.StartsWith("Republic restored: ", StringComparison.Ordinal));
 
     private void ShowAgentsFor(string room)
     {

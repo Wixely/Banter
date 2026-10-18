@@ -163,6 +163,24 @@ public abstract partial class BanterAgent
                 return $"{agent} is in {target} and has been told: {instruction}";
             }),
 
+        new("close_room",
+            "Close a room for everybody in it, once what it was opened for is finished. Usually a "
+            + "side room you opened: close it when the work is done, so the room list holds what "
+            + "is still going on. Its history is kept. Leave out 'room' to close the one you are in.",
+            """
+            {"type":"object","properties":{
+              "room":{"type":"string","description":"The room to close. Defaults to this one."},
+              "reason":{"type":"string","description":"Why, in a few words. Shown where the room came from."}
+            },"required":[]}
+            """,
+            async (room, args, ct) =>
+            {
+                var target = Optional(args, "room") is { Length: > 0 } named ? named : room;
+                var reason = Optional(args, "reason") ?? "";
+                await Client.CloseRoomAsync(target, reason, ct).ConfigureAwait(false);
+                return $"Closed {target}.";
+            }),
+
     ];
 
     /// <summary>What any agent may do, delegator or not.</summary>

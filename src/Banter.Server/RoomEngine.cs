@@ -78,6 +78,13 @@ internal sealed partial class RoomEngine(
         /// <summary>Current delegator's nick, or null when none is elected.</summary>
         public string? Delegator { get; set; }
 
+        /// <summary>Whether the current delegator is a local agent - remembered, because by the
+        /// time it matters the delegator has left and its attributes have left with it.</summary>
+        public bool DelegatorIsLocal { get; set; }
+
+        /// <summary>How the delegator may be chosen. See <see cref="RoomRegime"/>.</summary>
+        public RoomRegime Regime { get; set; } = RoomRegime.Republic;
+
         /// <summary>Parent room when this is a sub-room, so the side channel stays traceable
         /// back to the conversation that spawned it.</summary>
         public string? ParentRoom { get; set; }
@@ -301,6 +308,12 @@ internal sealed partial class RoomEngine(
             case RoomCreatePayload create:
                 await HandleRoomCreateAsync(session, envelope, create).ConfigureAwait(false);
                 break;
+            case RoomClosePayload close:
+                await HandleRoomCloseAsync(session, envelope, close).ConfigureAwait(false);
+                break;
+            case RoomRegimePayload regime:
+                await HandleRoomRegimeAsync(session, envelope, regime).ConfigureAwait(false);
+                break;
             case AgentMovePayload move:
                 await HandleAgentMoveAsync(session, envelope, move).ConfigureAwait(false);
                 break;
@@ -407,6 +420,7 @@ internal sealed partial class RoomEngine(
         // arrival whether to stay quiet rather than answering once before finding out.
         session.Send(new RoomModePayload(room.Name, room.Mode));
         session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+        session.Send(new RoomRegimePayload(room.Name, room.Regime));
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
@@ -468,6 +482,7 @@ internal sealed partial class RoomEngine(
                 Broadcast(room, new JoinPayload(room.Name, admin.Nick));
                 admin.Send(new RoomModePayload(room.Name, room.Mode));
                 admin.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+                admin.Send(new RoomRegimePayload(room.Name, room.Regime));
             }
         }
     }
@@ -482,7 +497,38 @@ internal sealed partial class RoomEngine(
     /// </summary>
     private async ValueTask ReelectAsync(Room room)
     {
-        var result = DelegatorElection.Elect([.. room.Agents.Values], room.Sensitivity);
+        // The local agent holding the seat has gone. Before anything is elected in its place, the
+        // room goes into interregnum: the election below would otherwise be free to hand the seat
+        // to whoever is left, and a third-party agent holding it means every word in the room
+        // reaching that third party with nobody having decided it should.
+        if (room.Regime == RoomRegime.Republic && room.Delegator is { } sitting && room.DelegatorIsLocal
+            && !room.Agents.ContainsKey(sitting))
+        {
+            await SetRegimeAsync(room, RoomRegime.Interregnum, $"{sitting}, the local delegator, left")
+                .ConfigureAwait(false);
+        }
+
+        // In interregnum only local agents stand. The operator-configured delegator rule wins
+        // outright in the election, ahead of every eligibility check, so this is the only place a
+        // third-party agent that asked for the seat can be kept out of it.
+        List<AgentCandidate> candidates = room.Regime == RoomRegime.Interregnum
+            ? [.. room.Agents.Values.Where(a => a.Locality == AgentLocality.Local)]
+            : [.. room.Agents.Values];
+        var result = DelegatorElection.Elect(candidates, room.Sensitivity);
+        if (result.Nick is null && room.Regime == RoomRegime.Interregnum)
+        {
+            result = result with { Reason = "the seat is held for a local agent" };
+        }
+
+        var winner = result.Nick is { } won ? room.Agents.GetValueOrDefault(won) : null;
+        room.DelegatorIsLocal = winner?.Locality == AgentLocality.Local;
+
+        // A local agent in the seat is what the interregnum was waiting for.
+        if (room.Regime == RoomRegime.Interregnum && room.DelegatorIsLocal)
+        {
+            await SetRegimeAsync(room, RoomRegime.Republic, $"{winner!.Nick} took the seat").ConfigureAwait(false);
+        }
+
         if (string.Equals(result.Nick, room.Delegator, StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -495,6 +541,51 @@ internal sealed partial class RoomEngine(
             ? $"No delegator: {result.Reason}. Agents answer when mentioned."
             : $"{result.Nick} is now the delegator for this room ({result.Reason}).";
         await AnnounceSystemAsync(room, text).ConfigureAwait(false);
+    }
+
+    /// <summary>Changes a room's regime and says so, to the room and in its timeline.</summary>
+    private async ValueTask SetRegimeAsync(Room room, RoomRegime regime, string reason, string? by = null)
+    {
+        room.Regime = regime;
+        Broadcast(room, new RoomRegimePayload(room.Name, regime, reason, by));
+        await AnnounceSystemAsync(room, regime == RoomRegime.Interregnum
+            ? $"Interregnum: {reason}. The seat is held for a local agent until one takes it, or an admin ends this."
+            : $"Republic restored: {reason}.").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// An admin changing a room's regime. Ending an interregnum is how somebody says a
+    /// third-party delegator is intended here; declaring one holds the seat for a local agent
+    /// before anything has gone wrong. Either way the election runs again under the new rules.
+    /// </summary>
+    private async ValueTask HandleRoomRegimeAsync(
+        ClientSession session, BanterEnvelope envelope, RoomRegimePayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (room.Regime != request.Regime)
+        {
+            if (!session.IsAdmin)
+            {
+                session.Send(new ErrorPayload("NOT_ADMIN", "Only an admin may change a room's regime."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+
+            await SetRegimeAsync(
+                room,
+                request.Regime,
+                request.Regime == RoomRegime.Republic ? $"ended by {session.Nick}" : $"declared by {session.Nick}",
+                session.Nick).ConfigureAwait(false);
+            await ReelectAsync(room).ConfigureAwait(false);
+        }
+
+        session.Send(new RoomRegimePayload(room.Name, room.Regime), replyTo: envelope.MsgId);
     }
 
     private async ValueTask HandleAgentAnnounceAsync(
@@ -698,7 +789,65 @@ internal sealed partial class RoomEngine(
 
         session.Send(new RoomModePayload(room.Name, room.Mode));
         session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+        session.Send(new RoomRegimePayload(room.Name, room.Regime));
         session.Send(new RoomCreatePayload(room.Name, room.ParentRoom, request.Purpose), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Close a room for everybody in it. Everyone in it is told, everyone is taken out, and it is
+    /// forgotten - so it is gone from the list and is not loaded again at start. The history is
+    /// kept: closing tidies the list, it does not take back what was said.
+    ///
+    /// <para>An admin may close any room. An agent may close a room it is the delegator of, or a
+    /// side room off one it is the delegator of: the agent that opened a room for a piece of work
+    /// is the one that knows when the work is finished, and a side room nobody can close is one
+    /// the room list carries forever.</para>
+    /// </summary>
+    private async ValueTask HandleRoomCloseAsync(
+        ClientSession session, BanterEnvelope envelope, RoomClosePayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        Room? parent = room.ParentRoom is { } parentName && _rooms.TryGetValue(parentName, out var p) ? p : null;
+        var mayClose = session.IsAdmin
+            || string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase)
+            || (parent is not null && string.Equals(parent.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase));
+        if (!mayClose)
+        {
+            session.Send(
+                new ErrorPayload("NOT_ALLOWED", $"Only an admin or {room.Name}'s delegator may close it."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var notice = new RoomClosePayload(room.Name, request.Reason, session.Nick);
+        foreach (var member in room.Members.ToList())
+        {
+            member.Send(notice);
+        }
+
+        room.Members.Clear();
+        room.Agents.Clear();
+        room.Leaving.Clear();
+        _rooms.Remove(room.Name);
+        await store.DeleteRoomAsync(room.Name).ConfigureAwait(false);
+
+        // Said where the room came from, so the conversation that opened it also shows it ending.
+        if (parent is not null)
+        {
+            await AnnounceSystemAsync(
+                parent,
+                request.Reason.Length > 0
+                    ? $"{session.Nick} closed {room.Name}: {request.Reason}"
+                    : $"{session.Nick} closed {room.Name}").ConfigureAwait(false);
+        }
+
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
     /// <summary>
@@ -758,6 +907,7 @@ internal sealed partial class RoomEngine(
             Broadcast(room, new JoinPayload(room.Name, moved.Nick));
             moved.Send(new RoomModePayload(room.Name, room.Mode));
             moved.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+            moved.Send(new RoomRegimePayload(room.Name, room.Regime));
         }
 
         room.Agents[target.Nick] = candidate with { JoinSequence = _joinSequence++ };

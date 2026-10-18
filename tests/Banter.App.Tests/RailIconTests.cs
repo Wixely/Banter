@@ -74,7 +74,7 @@ public sealed class RailIconTests(ITestOutputHelper output)
         // The rail used to be "B", "T", "A". A letter that crept back would be a regression that
         // every other test here would happily pass.
         var html = new BanterChatApp(Room()).Html;
-        var start = html.IndexOf("<div class=\"rail\">", StringComparison.Ordinal);
+        var start = html.IndexOf("<div class=\"{{RailClass}}\">", StringComparison.Ordinal);
         // Ends where the room list begins. That class is BOUND ({{SidebarClass}}) rather than
         // literal, because the list is hidden by a media rule on a narrow window and forced open
         // or shut over the top of it — so this looks for the binding, not for "sidebar".

@@ -268,7 +268,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
     public override string Html => $$$"""
         <div class="app">
-          <div class="rail">
+          <div class="{{RailClass}}">
             <!-- Also the rooms toggle. On a narrow window the room list is an overlay rather than
                  a column, and this is what opens it; on a wide one it puts the column away. The
                  speech bubble is the app's mark AND the thing the list is a list of, so it carries
@@ -348,7 +348,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="section-title">Rooms</div>
               <div class="rooms">
                 <div class="{{TabClass}}" data-repeat="Rooms" data-room="{{Name}}">
-                  <span class="hash">#</span><span class="tab-name">{{Label}}</span><span class="{{BadgeClass}}">{{Badge}}</span>
+                  <span class="hash">#</span><span class="tab-name">{{Label}}</span><span class="{{BadgeClass}}">{{Badge}}</span><span class="{{CloseClass}}" data-room-close="{{Name}}"><span class="tab-x tab-x-a"></span><span class="tab-x tab-x-b"></span></span>
                 </div>
                 <div class="{{BrowseClass}}">
                   <div class="section-title">Other rooms</div>
@@ -360,7 +360,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </div>
             <div class="sidebar-footer">
               <div class="me">{{NickInitials}}</div>
-              <div class="identity"><span class="nick">{{Nick}}</span><span class="identity-sub">{{Dispatch}}</span></div>
+              <div class="identity"><span class="nick">{{Nick}}</span></div>
             </div>
           </div>
           <!-- Bound, so the whole chat pane can be taken out while the sign-in screen is up.
@@ -382,7 +382,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <span class="room-name">{{ActiveRoom}}<span class="room-caret"></span></span>
                 <span class="topic">{{Topic}}</span>
               </div>
-              <span class="dispatch">{{Dispatch}}</span>
+              <!-- Who is running the room, as a status pill rather than a sentence. -->
+              <span class="{{DispatchClass}}"><span class="pill-dot"></span><span class="pill-text">{{Dispatch}}</span><cupri-tooltip text="{{RegimeTip}}"><span class="{{RegimeClass}}" data-regime="1">{{RegimeMark}}</span></cupri-tooltip></span>
             </div>
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
             <cupri-context-menu class="timeline-menu">
@@ -396,7 +397,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <span class="msg-main">
                     <span class="{{ReplyClass}}" data-goto-reply="{{ReplyTo}}">{{ReplyText}}</span>
                     <span class="msg-head"><span class="sender">{{Sender}}</span><span class="sender-away">left the room</span><span class="time">{{Time}}</span><span class="edited">{{EditedMark}}</span></span>
-                    <span class="text"><span class="work-dots"><span class="wdot wdot-a"></span><span class="wdot wdot-b"></span><span class="wdot wdot-c"></span></span><span class="body">{{Text}}</span><span class="{{FailClass}}" data-fail="{{Id}}">Failed</span><span class="{{FailDetailClass}}">{{FailDetail}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
+                    <span class="text"><span class="work-dots"><span class="wdot wdot-a"></span><span class="wdot wdot-b"></span><span class="wdot wdot-c"></span></span><span class="{{BodyClass}}">{{Text}}</span><cupri-markdown class="{{MarkdownClass}}" text="{{MarkdownText}}"></cupri-markdown><span class="{{FailClass}}" data-fail="{{Id}}">Failed</span><span class="{{FailDetailClass}}">{{FailDetail}}</span><span class="{{AttachClass}}" data-file="{{FileId}}">{{AttachText}}</span><cupri-image class="{{ImageClass}}" src="{{ImageSrc}}" alt="{{AttachText}}"></cupri-image></span>
                     <span class="{{AskClass}}">
                       <span class="{{AskTabsClass}}">
                         <span class="{{TabClass}}" data-repeat="AskTabs" data-ask-tab="{{TabKey}}">{{Label}}</span>
@@ -499,6 +500,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <cupri-button class="{{ReadbackClass}}">{{ReadbackText}}</cupri-button>
             </div>
           </div>
+          <!-- The drawer's handle, on a narrow screen only: there the rail and the room list
+               are one drawer kept out of the way, and this is what brings it out. It sits exactly
+               where the rail's own mark lands when the drawer is open, so opening it reads as the
+               drawer arriving under the button rather than the button moving.
+
+               A sibling of the pages rather than inside the chat pane, because z-index is sorted
+               among siblings: inside the pane, nothing the pages declared could put them over
+               it, and it sat on top of every page title. -->
+          <div class="{{DrawerToggleClass}}" data-rooms-toggle="1">
+            <div class="icon-chat">
+              <div class="chat-body"></div>
+              <div class="chat-tail"></div>
+            </div>
+            <div class="unread-dot"></div>
+          </div>
           <div class="{{RosterClass}}">
             <div class="{{TasksClass}}">
               <div class="roster-title">Work</div>
@@ -529,11 +545,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           </div>
           <div class="{{ToolsClass}}">
             <div class="toolpanel-inner">
+              <div class="mgmt-x page-close" data-tools-close="1">
+                <div class="x-bar x-a"></div>
+                <div class="x-bar x-b"></div>
+              </div>
               <div class="toolpanel-head">
                 <span class="toolpanel-title">{{ToolsTitle}}</span>
                 <span class="toolpanel-status">{{ToolsStatus}}</span>
                 <cupri-button class="tools-save">Save</cupri-button>
-                <cupri-button class="tools-close">Close</cupri-button>
               </div>
               <div class="toolpanel-body">
                 <div class="tool-agents">
@@ -558,13 +577,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           <div class="{{SettingsPanelClass}} settings-overlay">
             <div class="mgmt-backdrop" data-settings-close="1"></div>
             <div class="mgmt-card settings-card">
+              <div class="mgmt-x page-close" data-settings-close="1">
+                <div class="x-bar x-a"></div>
+                <div class="x-bar x-b"></div>
+              </div>
               <div class="mgmt-pane">
                 <div class="mgmt-detail-head">
                   <div class="mgmt-list-heading">
                     <div class="mgmt-title">Settings</div>
                     <div class="mgmt-subtitle">How Banter looks on this machine.</div>
                   </div>
-                  <cupri-button class="mgmt-remove settings-close">Close</cupri-button>
                 </div>
                 <!-- Sections, from when the list below could not scroll: the card height was a
                      hard ceiling and the settings had grown about 340px past it, so what was below
@@ -631,6 +653,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         </div>
                       </div>
                       <div class="mgmt-hint">A message that says @your-name is marked in the room either way. This is what happens when you are looking at something else.</div>
+                    </div>
+                  </div>
+                  <div class="{{AlertFieldsClass}}">
+                    <div class="mgmt-label">When you are added to a room</div>
+                    <div class="mgmt-control">
+                      <div class="mgmt-choices">
+                        <div class="{{RowClass}}" data-repeat="FollowChoices" data-follow="{{Value}}">
+                          <div class="{{DotClass}}"></div>
+                          <div class="mgmt-choice-text">
+                            <div class="mgmt-choice-label">{{Label}}</div>
+                            <div class="mgmt-choice-hint">{{Hint}}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mgmt-hint">An agent opening a side room puts you in it. Rooms you join yourself are not affected.</div>
                     </div>
                   </div>
                   <div class="{{TranscriptFieldsClass}}">
@@ -827,6 +864,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                      missed the card, which is exactly what "outside" means. -->
                 <div class="mgmt-backdrop" {{{closeAction}}}="1"></div>
                 <div class="mgmt-card">
+                  <!-- The way out, in the card's top-right corner on every page and every size.
+                       It used to sit in the detail pane's head, which is the right of a wide card
+                       but the MIDDLE of a narrow one, where the list stacks on top of the pane.
+                       First in the card so the list and pane paint over nothing of it - it is
+                       positioned, so it is drawn above them regardless. -->
+                  <div class="mgmt-x page-close" {{{closeAction}}}="1">
+                    <div class="x-bar x-a"></div>
+                    <div class="x-bar x-b"></div>
+                  </div>
                   <div class="mgmt-list">
                     <div class="mgmt-list-head">
                       <div class="mgmt-list-heading">
@@ -852,10 +898,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         <div class="mgmt-subtitle">{{{detailSubtitle}}}</div>
                       </div>
                       <cupri-button class="{{{removeClass}}}">{{{removeLabel}}}</cupri-button>
-                      <div class="mgmt-x" {{{closeAction}}}="1">
-                        <div class="x-bar x-a"></div>
-                        <div class="x-bar x-b"></div>
-                      </div>
                     </div>
                     <div class="{{{emptyClass}}}">{{{emptyText}}}</div>
                     <div class="{{{detailClass}}}">
@@ -1385,6 +1427,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            because both selectors are one class and the later one wins - put last, this turned the
            catcher off at every width and the narrow rule never got a say. */
         .rooms-backdrop { display: none; }
+
+        /* Only exists on a narrow screen, where the rail it stands in for is put away. */
+        .drawer-toggle { display: none; }
         .workspace { height: 66px; padding: 0 16px; display: flex; flex-direction: column;
                      justify-content: center; border-bottom: 1px solid #20262f; }
         .workspace-name { font-size: 14px; font-weight: bold; }
@@ -1410,6 +1455,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                  display: flex; align-items: center; justify-content: center;
                  font-size: 10px; font-weight: bold; background: #4c1d1d; color: #fecaca; }
         .badge.hidden { display: none; }
+
+        /* Closing a room, admins only. Always laid out, so a tab does not change width under the
+           pointer; drawn only on the tab you are in and the one you are pointing at, so a list of
+           rooms is not a column of crosses. The cross is two bars, for the reason the rail icons
+           are boxes: no glyph is the same on every head. */
+        .no-close { display: none; }
+        .tab-close { position: relative; flex: 0 0 auto; width: 22px; height: 22px;
+                     margin-left: 4px; border-radius: 6px; cursor: pointer; }
+        .tab-x { position: absolute; left: 5px; top: 10px; width: 12px; height: 2px;
+                 border-radius: 1px; background: transparent; }
+        .tab-x-a { transform: rotate(45deg); }
+        .tab-x-b { transform: rotate(-45deg); }
+        .tab.active .tab-x { background: #5d6572; }
+        .tab:hover .tab-x { background: #808b9c; }
+        .tab-close:hover { background: #2a303b; }
+        .tab-close:hover .tab-x { background: #fb7185; }
 
         .browse { padding-top: 14px; }
         .browse.hidden { display: none; }
@@ -1439,7 +1500,26 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            desktop header would promise something that does nothing there. */
         .room-caret { display: none; }
         .topic { color: #8d97a6; font-size: 11px; margin-top: 2px; }
-        .dispatch { color: #8d97a6; font-size: 11px; }
+        /* Who is running the room, as a pill: a dot that says whether anybody is, and the mode
+           and delegator beside it. */
+        .dispatch { display: flex; flex-direction: row; align-items: center; flex: 0 0 auto;
+                    height: 24px; padding: 0 10px; border-radius: 12px; background: #171b22;
+                    border: 1px solid #252b35; color: #aeb6c2; font-size: 11px; }
+        .dispatch.hidden { display: none; }
+        .pill-dot { width: 7px; height: 7px; border-radius: 4px; margin-right: 7px;
+                    background: #5d6572; }
+        .dispatch.on .pill-dot { background: #34d399; }
+        .dispatch.off .pill-dot { background: #fbbf24; }
+
+        /* The room's regime, one letter at the end of the pill. Quiet for a republic, which is
+           the usual case; lit for an interregnum, which is the one worth noticing. */
+        .regime { display: flex; align-items: center; justify-content: center; width: 16px;
+                  height: 16px; margin-left: 8px; margin-right: -4px; border-radius: 5px;
+                  font-size: 10px; font-weight: bold; background: #202530; color: #808b9c; }
+        .regime.hidden { display: none; }
+        .regime.interregnum { background: #3a2a07; color: #fbbf24; }
+        .regime.act { cursor: pointer; }
+        .regime.act:hover { background: #4a360a; }
 
         /* A turn that failed, as a chip. The reason an agent could not reach its model is the
            author's plumbing, not the room's conversation - it belongs one tap away rather than
@@ -1482,6 +1562,28 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            pre-wrap makes the markup's own indentation significant - a newline and two spaces
            between elements become visible whitespace in every message. */
         .body { white-space: pre-wrap; font-size: 13px; color: #c8ced7; margin-top: 2px; }
+        .body.hidden { display: none; }
+
+        /* An agent's reply, as Markdown. Sized to sit among plain messages rather than as the
+           document the component is styled for by default: the same 13px and colour as a plain
+           body, paragraphs a line apart rather than a page apart, and code on the app's own
+           surfaces. Qualified by .text so these win over the component's own rules. */
+        .md.hidden { display: none; }
+        .text .md { display: block; margin-top: 2px; font-size: 13px; line-height: 1.5;
+                    color: #c8ced7; --cupri-text: #c8ced7; }
+        .text .md p { margin: 0 0 6px 0; }
+        .text .md h1 { font-size: 17px; margin: 4px 0 6px 0; color: #f3f5f7; }
+        .text .md h2 { font-size: 15px; margin: 6px 0 4px 0; color: #f3f5f7; }
+        .text .md h3 { font-size: 14px; margin: 6px 0 4px 0; color: #f3f5f7; }
+        .text .md ul { margin: 0 0 6px 0; }
+        .text .md ol { margin: 0 0 6px 0; }
+        .text .md li { margin: 2px 0; }
+        .text .md code { background: #1b2029; border: 1px solid #2a313c; color: #e2e8f0; }
+        .text .md pre { background: #0d1015; border: 1px solid #252b35; margin: 2px 0 8px 0;
+                        padding: 10px 12px; font-size: 12px; }
+        .text .md blockquote { margin: 0 0 6px 0; border-left: 3px solid #2f3742; color: #9aa3b0; }
+        .text .md a { color: #fb7185; }
+        .text .md cupri-image { max-width: 320px; margin: 4px 0 8px 0; }
         .line.own .sender { color: #34d399; }
 
         /* The room's dispatcher, in the timeline. Amber because the three colours already spoken
@@ -1803,7 +1905,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* An overlay rather than another column: granting tools is a deliberate, occasional act,
            and it wants the width to show what each tool actually is. */
         .toolpanel { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-                     display: flex; background: #0b0d10; }
+                     display: flex; background: #0b0d10; z-index: 30; }
         .toolpanel.hidden { display: none; }
         /* The inset is a margin on the card rather than padding on the overlay. The overlay is
            `width: 100%`, and padding adds to a width unless the box is told otherwise, so padding
@@ -1815,8 +1917,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .toolpanel-status { color: #8d97a6; font-size: 12px; padding-right: 12px; }
         .tools-save { min-width: 72px; padding: 6px 14px; font-size: 13px; margin-right: 8px; background: #ef4444; color: #ffffff;
                       border: 1px solid #ef4444; border-radius: 10px; text-align: center; }
-        .tools-close { min-width: 72px; padding: 6px 14px; font-size: 13px; background: #1b2029; color: #f3f5f7;
-                       border: 1px solid #333a46; border-radius: 10px; text-align: center; }
         .toolpanel-body { display: flex; flex-direction: row; flex: 1; }
 
         .tool-agents { width: 180px; padding-right: 12px; }
@@ -1849,7 +1949,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* Laid out rather than placed at coordinates. Hybrid presentation means the logical
            viewport is whatever the window's aspect gives once the design size fits, so a card
            pinned to left:40 top:32 was only ever centred on one window shape. */
-        .mgmt { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; }
+        /* Above the chat and its drawer: on a phone the drawer's handle is fixed over the
+           header, and a page opened on top must cover it rather than wear it on its title. */
+        .mgmt { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex;
+                z-index: 30; }
         .mgmt.hidden { display: none; }
         /* Dim rather than opaque: the room is still there, you have just stepped in front of it.
            It also has to be a real painted box, because it is what catches an outside click. */
@@ -1916,6 +2019,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-x { position: relative; width: 30px; height: 30px; border-radius: 9px;
                   background: #1b2029; margin-left: 10px; cursor: pointer; }
         .mgmt-x:hover { background: #2a323e; }
+
+        /* Every page's way out: the top-right corner of its card, whatever is stacked inside. The
+           heads beside it keep clear of it (padding-right below), so a title or a button never
+           runs underneath. */
+        .mgmt-card { position: relative; }
+        .toolpanel-inner { position: relative; }
+        .page-close { position: absolute; right: 14px; top: 14px; margin-left: 0; z-index: 2; }
+        .mgmt-detail-head { padding-right: 44px; }
+        .toolpanel-head { padding-right: 44px; }
         .x-bar { position: absolute; left: 7px; top: 14px; width: 16px; height: 2px;
                  border-radius: 1px; background: #bec5cf; }
         .x-a { transform: rotate(45deg); }
@@ -2053,13 +2165,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                    color: #cfd6e0; border: 1px solid #333a46; border-radius: 9px; }
         /* The destructive one is coloured, not hidden behind anything: it already asks. */
         .hub-act-bad { color: #fca5a5; border-color: #4c1d1d; }
-        .settings-close { color: #f3f5f7; background: #1b2029; border: 1px solid #333a46; }
 
         /* ── Confirming something destructive ──────────────────────────────────────────────
            Above the page that raised it, and deliberately small: it asks one question about one
            named thing, and the page behind stays visible so the answer has its context. */
         .confirm { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex;
-                   align-items: center; justify-content: center; }
+                   align-items: center; justify-content: center; z-index: 40; }
         .confirm.hidden { display: none; }
         .confirm-backdrop { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
                             background: #05070ac0; }
@@ -2114,7 +2225,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                    display: flex; flex-direction: column; align-items: center;
                    justify-content: flex-start;
                    overflow: scroll;
-                   background: #0b0d10; }
+                   background: #0b0d10; z-index: 35; }
         .connect.hidden { display: none; }
         /* Centred by the container rather than by auto margins on the card — one lone child is
            what the container's alignment is for. The pane is a COLUMN, so that is align-items
@@ -2202,7 +2313,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                          box-sizing: border-box;
                          left: 56px; top: 56%; width: 233px; height: 44%; z-index: 20;
                          border-left: 0; border-top: 1px solid #20262f;
-                         box-shadow: 0 0 40px #000000a8; }
+                         border-right: 1px solid #252b35; box-shadow: 16px 0 36px #00000073; }
 
           /* An overlay, not a column: a column here would be taking the width from the only
              thing that needs it. Absolute so it lifts out of the flex row entirely — left as a
@@ -2213,28 +2324,62 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
              see the note on .roster above. */
           .sidebar.open { display: flex; position: fixed; left: 56px; top: 0;
                           width: 232px; height: 56%; z-index: 20;
-                          box-shadow: 0 0 40px #000000a8; }
+                          border-right: 1px solid #252b35; box-shadow: 16px 0 36px #00000073; }
 
-          /* Just under the overlay's z-index, and starting where the rail ends. Invisible rather
-             than dimmed: the chat behind is not being presented as unreachable, it is one tap
-             away, and dimming it would say otherwise. */
+          /* Just under the drawer's z-index, over the whole window. Dimmed, because the drawer is
+             now the rail as well as the room list and covers most of a phone: what is behind it
+             should read as set aside for the moment, and one tap anywhere on it brings it back. */
           /* Width rather than `right: 0`: a fixed box here is not sized by its left and right
              together - measured, it laid out 0 wide and caught nothing - so the width is stated,
              and it is the window less the rail. */
-          .rooms-backdrop { display: block; position: fixed; left: 56px; top: 0;
-                            width: calc(100% - 56px); height: 100%; z-index: 19; }
+          .rooms-backdrop { display: block; position: fixed; left: 0; top: 0;
+                            width: 100%; height: 100%; z-index: 19; background: #00000080; }
           .rooms-backdrop.hidden { display: none; }
 
-          /* The rail stays. It is the only way to reach tools, agents, users, work and settings,
-             and at 56px it costs less than any of them would cost as a menu. */
-          .rail { width: 56px; padding: 10px 6px; }
+          /* The rail goes into the drawer with the room list. Every pixel of a 412 screen is one
+             the chat could use, and what the rail opens - tools, agents, users, work, settings -
+             is reached a few times a day, not every message; one tap on the handle is a fair
+             price for 56px of conversation the rest of the time. */
+          .rail { display: none; width: 56px; padding: 7px 6px; }
+          .rail.open { display: flex; position: fixed; left: 0; top: 0; height: 100%; z-index: 20;
+                       border-right: 0; }
           .logo { width: 38px; height: 38px; border-radius: 12px; }
           .rail-button { width: 38px; height: 38px; margin-top: 8px; }
+
+          /* At the same point as the rail's mark - left 15 is the rail's 6px padding plus
+             (56 - 38) / 2, its 56 being the content box, and top 7 is its padding - so the open
+             drawer's mark covers it exactly and the button appears to have become the top of the
+             drawer. Under the drawer rather than over it: the drawer's mark is the same control,
+             and a second copy above it would only be one more thing drawn.
+
+             Absolute rather than fixed. A fixed box is painted on the viewport's top layer, above
+             everything whatever its z-index, so it sat on every page's title; the drawer stays
+             fixed, which is what keeps it above this. */
+          .drawer-toggle { display: flex; position: absolute; left: 15px; top: 7px; width: 38px;
+                           height: 38px; border-radius: 12px; align-items: center;
+                           justify-content: center; cursor: pointer;
+                           background: linear-gradient(145deg, #ef4444, #991b1b);
+                           box-shadow: 0 6px 18px #00000080; z-index: 10; }
+          /* Somewhere else has something unread. The room list that would say so is in the
+             drawer, so the handle says it instead - otherwise a message in another room is
+             invisible until somebody happens to open the drawer. */
+          .unread-dot { display: none; position: absolute; left: 29px; top: -3px; width: 12px;
+                        height: 12px; border-radius: 6px; background: #fde047;
+                        border: 2px solid #111419; }
+          .drawer-toggle.unread .unread-dot { display: block; }
+          .header { padding-left: 66px; }
+          body.cupri-coarse .rail { padding-top: 4px; }
+          body.cupri-coarse .drawer-toggle { left: 12px; top: 4px; width: 44px; height: 44px; }
+          body.cupri-coarse .unread-dot { left: 35px; }
 
           /* The room is named in the header; the topic and the dispatch mode are both second
              sentences, and there is no room here for a second sentence. */
           .topic { display: none; }
-          .dispatch { display: none; }
+          /* The pill stays - it is how a phone knows who is running the room - but it is not
+             allowed to take the room name's line from it. */
+          .header-title { min-width: 0; }
+          .dispatch { max-width: 220px; overflow: hidden; }
+          .pill-text { white-space: nowrap; min-width: 0; overflow: hidden; }
           .header { height: 52px; }
 
           /* Says the room name is a button. Drawn rather than set as a glyph, for the reason the
@@ -2304,6 +2449,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
              detail off the bottom: the list scrolls inside its own share, which is a shorter
              journey than scrolling the page to find out whether there is a detail pane at all. */
           .mgmt-list { width: auto; height: 38%; border-right: 0; padding: 12px 10px; }
+          /* Stacked, the list's head is the card's top line, so it is the one the corner X sits
+             beside - and the pane's head, now in the middle, has nothing to keep clear of. */
+          .mgmt-list-head { padding-right: 44px; }
+          .mgmt-list + .mgmt-pane .mgmt-detail-head { padding-right: 0; }
           .mgmt-pane { padding: 12px; }
 
           /* Label above field rather than beside it. 116px of label out of 412 is most of a
@@ -2340,6 +2489,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         body.cupri-coarse .rail-button { width: 44px; height: 44px; }
         body.cupri-coarse .logo { width: 44px; height: 44px; }
         body.cupri-coarse .tab { height: 44px; }
+        /* A finger cannot hover, so every tab's cross is drawn, and big enough to hit. */
+        body.cupri-coarse .tab-close { width: 44px; height: 44px; margin-right: -10px; }
+        body.cupri-coarse .tab-x { left: 16px; top: 21px; background: #5d6572; }
         body.cupri-coarse .browse-row { height: 44px; }
         body.cupri-coarse .mgmt-row { padding: 12px 8px; }
         body.cupri-coarse .mgmt-choice.compact { height: 44px; }
@@ -2879,6 +3031,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                     { Act: ConfirmAct.RemoveUser, Subject.Length: > 0 } u => Admin.UserRemoveAsync(u.Subject),
                     { Act: ConfirmAct.ForgetHubIdentity, Subject.Length: > 0, Hub.Length: > 0 } h =>
                         Admin.HubForgetAsync(h.Hub, h.Subject),
+                    { Act: ConfirmAct.CloseRoom, Subject.Length: > 0 } r =>
+                        CommandAsync(ViewModel.Model.ActiveRoom, $"/close {r.Subject}"),
+                    { Act: ConfirmAct.EndInterregnum, Subject.Length: > 0 } r =>
+                        CommandAsync(r.Subject, "/regime republic"),
                     _ => Task.CompletedTask,
                 };
             }
@@ -2921,13 +3077,6 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
-        doc.OnClick(".settings-close", _unused =>
-        {
-            VoiceSettingsChanged();
-            ViewModel.ShowSettingsPanel(false);
-            doc.Refresh();
-        });
-
         doc.OnAction("data-settings-section", e =>
         {
             ViewModel.ShowSettingsSection(e.Value ?? "you");
@@ -2951,6 +3100,14 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnAction("data-flash", e =>
         {
             ViewModel.ChooseFlash(e.Value ?? "flash");
+            VoiceSettingsChanged();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-follow", e =>
+        {
+            ViewModel.ChooseFollow(e.Value ?? "follow");
             VoiceSettingsChanged();
             doc.Refresh();
             return true;
@@ -3032,6 +3189,35 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             {
                 Clipboard.SetText(ViewModel.Model.AdminCode);
             }
+        });
+
+        // The close control inside a tab. Registered before the tab's own handler and answered
+        // here, so a click on it asks about closing and does not also switch to the room.
+        doc.OnAction("data-room-close", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.ConfirmCloseRoom(e.Value);
+            doc.Refresh();
+            return true;
+        });
+
+        // The regime letter. Only an interregnum, and only for an admin, has anything to do: the
+        // other cases are a status, and its tip already says what it means.
+        doc.OnAction("data-regime", _ =>
+        {
+            var room = ViewModel.Model.ActiveRoom;
+            if (!ViewModel.IsAdmin || !ViewModel.InInterregnum(room))
+            {
+                return false;
+            }
+
+            ViewModel.ConfirmEndInterregnum(room);
+            doc.Refresh();
+            return true;
         });
 
         // Room tabs carry their own name, so one handler serves every repeated row.
@@ -3128,7 +3314,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         doc.OnClick(".menu-reply", _ => BeginReply());
         doc.OnClick(".menu-edit", _ => BeginEdit());
         doc.OnClick(".menu-delete", _ => DeleteContextMessage());
-        doc.OnClick(".copy-selection", _ => CopySelection());
+        doc.OnClick(".copy-selection", _ => CopyFromMenu());
         doc.OnClick(".copy-image", _ => CopyMostRecentImage());
         doc.OnClick(".copy-room", _ => Clipboard.SetText(ViewModel.Model.ActiveRoom));
 
@@ -3199,7 +3385,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         });
 
         doc.OnClick(".tools-save", _ => SaveTools());
-        doc.OnClick(".tools-close", _ => ViewModel.Post(() => ViewModel.ShowToolPanel(false)));
+        doc.OnAction("data-tools-close", _ =>
+        {
+            ViewModel.Post(() => ViewModel.ShowToolPanel(false));
+            return true;
+        });
 
         doc.OnAction("data-file", e =>
         {
@@ -3449,12 +3639,23 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// Copy the current selection. Falls back to the newest message when nothing is selected,
     /// because "Copy" with an empty selection doing nothing at all reads as a broken menu.
     /// </summary>
-    public void CopySelection()
+    public void CopySelection() =>
+        CopyOr(ViewModel.Model.Messages.LastOrDefault());
+
+    /// <summary>
+    /// The menu's Copy: the selection if there is one, and otherwise the message the menu was
+    /// opened on. It used to fall back to the newest message whichever row was right-clicked, so
+    /// copying an earlier error put somebody else's words on the clipboard.
+    /// </summary>
+    public void CopyFromMenu() =>
+        CopyOr(_contextMessage ?? ViewModel.Model.Messages.LastOrDefault());
+
+    private void CopyOr(MessageRow? fallback)
     {
         var selected = _doc?.CopySelection() ?? "";
-        if (selected.Length == 0)
+        if (selected.Length == 0 && fallback is not null)
         {
-            selected = ViewModel.Model.Messages.LastOrDefault()?.Text ?? "";
+            selected = ChatViewModel.CopyableText(fallback);
         }
 
         if (selected.Length > 0)
@@ -3776,7 +3977,20 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     private MessageRow? _contextMessage;
 
     /// <summary>Send the composer's contents to the active room and clear it.</summary>
+    /// <summary>
+    /// Sends what is in the composer, then gives the composer focus again with its caret at the
+    /// start of the now-empty box - whichever way the send came. A click on the Send button had
+    /// moved focus to the button, so the next keystrokes went nowhere; and the box is emptied by
+    /// the model, which the field only takes in when it is told, so even with focus kept the
+    /// caret could be left where the old message ended.
+    /// </summary>
     public void Send()
+    {
+        SendComposer();
+        _doc?.Focus(".composer");
+    }
+
+    private void SendComposer()
     {
         var text = ViewModel.Model.Composer.Trim();
         var room = ViewModel.Model.ActiveRoom;

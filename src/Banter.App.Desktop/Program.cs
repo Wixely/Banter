@@ -202,6 +202,7 @@ var app = new BanterChatApp(vm)
         settings = settings with
         {
             FlashOnMention = vm.FlashOnMention,
+            FollowNewRooms = vm.FollowNewRooms,
             Voice = settings.Voice with
             {
                 Engine = vm.ChosenTranscribe,
@@ -247,6 +248,7 @@ if (filePicker.IsSupported)
 // itself keeps that, whatever the new default says.
 vm.SetAutoSubmit(settings.Voice.AutoSubmit && !settings.Voice.ReviewBeforeSend, settings.Voice.AutoSubmitDelaySeconds);
 vm.SetFlashOnMention(settings.FlashOnMention);
+vm.SetFollowNewRooms(settings.FollowNewRooms);
 vm.SetVoiceSettings(
     settings.Voice.Engine,
     settings.Voice.Language,

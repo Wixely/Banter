@@ -23,6 +23,7 @@ internal static class BrowserSettings
 {
     private const string ZoomKey = "banter.zoom";
     private const string UserKey = "banter.user";
+    private const string FollowKey = "banter.follow-new-rooms";
 
     /// <summary>Long enough for anything stored here; a value longer than this was not written by
     /// us and is not worth honouring.</summary>
@@ -30,6 +31,7 @@ internal static class BrowserSettings
 
     private static float? _zoom;
     private static string? _user;
+    private static bool? _follow;
 
     /// <summary>
     /// The zoom this browser was last left at, or 1.
@@ -69,6 +71,19 @@ internal static class BrowserSettings
             if (_user == value) return;
             _user = value;
             Write(UserKey, value);
+        }
+    }
+
+    /// <summary>Whether being put into a new room switches to it. On unless this browser was told
+    /// otherwise, matching <c>BanterSettings.FollowNewRooms</c>.</summary>
+    public static bool FollowNewRooms
+    {
+        get => _follow ??= Read(FollowKey) != "0";
+        set
+        {
+            if (_follow == value) return;
+            _follow = value;
+            Write(FollowKey, value ? "1" : "0");
         }
     }
 

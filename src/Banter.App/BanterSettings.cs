@@ -73,6 +73,15 @@ public sealed record BanterSettings
     public bool FlashOnMention { get; init; } = true;
 
     /// <summary>
+    /// Switch to a room the moment you are put into it — a side room an agent opened, or one an
+    /// operator added you to — rather than leaving it as a new tab to find.
+    ///
+    /// <para>Only for rooms you were put in. Rooms you join yourself, and the ones rejoined after
+    /// a reconnect, never move you: you are already where you meant to be.</para>
+    /// </summary>
+    public bool FollowNewRooms { get; init; } = true;
+
+    /// <summary>
     /// Hold the connection open while the app is in the background, and say so with a persistent
     /// notification. Android only; the desktop has no equivalent because nothing there takes its
     /// sockets away.

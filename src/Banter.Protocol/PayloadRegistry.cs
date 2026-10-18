@@ -93,6 +93,8 @@ public static class PayloadRegistry
         [BanterMessageType.HubReport] = typeof(HubReportPayload),
         [BanterMessageType.HubRotate] = typeof(HubRotatePayload),
         [BanterMessageType.HubForget] = typeof(HubForgetPayload),
+        [BanterMessageType.RoomClose] = typeof(RoomClosePayload),
+        [BanterMessageType.RoomRegime] = typeof(RoomRegimePayload),
         [BanterMessageType.Error] = typeof(ErrorPayload),
         [BanterMessageType.Ok] = typeof(OkPayload),
     };

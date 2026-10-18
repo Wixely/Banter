@@ -27,6 +27,39 @@ public sealed class ChatViewModelTests
     }
 
     [Fact]
+    public void BeingPutIntoANewRoomSwitchesToIt()
+    {
+        var vm = Joined();
+
+        vm.AdoptRoom("#side");
+
+        Assert.Equal("#side", vm.Model.ActiveRoom);
+    }
+
+    [Fact]
+    public void BeingPutIntoANewRoomStaysPutWhenFollowingIsOff()
+    {
+        var vm = Joined();
+        vm.SetFollowNewRooms(false);
+
+        vm.AdoptRoom("#side");
+
+        Assert.Equal("#main", vm.Model.ActiveRoom);
+        Assert.Contains(vm.Model.Rooms, r => r.Name == "#side");
+    }
+
+    [Fact]
+    public void ARoomAlreadyOnTheRailIsNotFollowed()
+    {
+        var vm = Joined();
+        vm.AddRoom("#other");
+
+        vm.AdoptRoom("#other");
+
+        Assert.Equal("#main", vm.Model.ActiveRoom);
+    }
+
+    [Fact]
     public void MessagesFromOthersAndSelfAreStyledDifferently()
     {
         var vm = Joined();
@@ -49,6 +82,20 @@ public sealed class ChatViewModelTests
         Assert.Empty(vm.Model.Messages);
         Assert.Equal("1", vm.Model.Rooms.Single(r => r.Name == "#other").Badge);
         Assert.Single(vm.Backlog("#other"));
+    }
+
+    [Fact]
+    public void ThePhonesDrawerHandleSaysWhenAnotherRoomHasSomethingUnread()
+    {
+        var vm = Joined();
+        vm.AddRoom("#other");
+        Assert.Equal("drawer-toggle", vm.Model.DrawerToggleClass);
+
+        vm.Append("#other", "bob", "psst", 0);
+        Assert.Equal("drawer-toggle unread", vm.Model.DrawerToggleClass);
+
+        vm.SwitchTo("#other");
+        Assert.Equal("drawer-toggle", vm.Model.DrawerToggleClass);
     }
 
     [Fact]

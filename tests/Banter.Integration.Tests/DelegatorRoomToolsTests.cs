@@ -155,6 +155,59 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
             $"'{nick}' never became delegator");
 
     [Fact]
+    public async Task TheDelegatorClosesTheSideRoomItOpenedWhenTheWorkIsDone()
+    {
+        await using var human = await HumanAsync();
+        var closed = new TaskCompletionSource<RoomClosePayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        human.RoomClosed += c => closed.TrySetResult(c);
+        await using var boss = new ToolingAgent(Agent("local"));
+        await boss.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        boss.Plan.Enqueue(("open_side_room", """{"purpose":"the release notes"}"""));
+        await human.SendMessageAsync("#main", "@local open a room for the release notes");
+        await UntilAsync(() => Task.FromResult(boss.Results.Count == 1), "the room was never opened");
+        var room = RoomNameIn(boss.Results[0]);
+
+        // Asked from the main room, about the side room - the delegator of the parent is who may.
+        boss.Plan.Enqueue(("close_room", $$"""{"room":"{{room}}","reason":"notes are written"}"""));
+        await human.SendMessageAsync("#main", "@local that's done, close it");
+        await UntilAsync(() => Task.FromResult(boss.Results.Count == 2), "close_room never ran");
+        output.WriteLine(boss.Results[1]);
+
+        // The admin was in it (every room an agent opens has the operators in it), so was told.
+        var notice = await closed.Task.WaitAsync(Patience);
+        Assert.Equal(room, notice.Room);
+        Assert.Equal("local", notice.ClosedBy);
+
+        var rooms = await human.ListRoomsAsync();
+        Assert.DoesNotContain(rooms.Rooms, r => r.Name == room);
+
+        var main = await human.GetHistoryAsync("#main", limit: 100);
+        Assert.Contains(main.Messages, m => m.Text.Contains($"local closed {room}: notes are written"));
+    }
+
+    [Fact]
+    public async Task OnlyAnAdminOrTheDelegatorMayCloseARoom()
+    {
+        await using var human = await HumanAsync();
+        await using var boss = new ToolingAgent(Agent("local"));
+        await boss.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // An agent that is in #main but does not run it.
+        await using var worker = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "local-2", "pw");
+        await worker.JoinAsync("#main");
+        var refused = await Assert.ThrowsAsync<BanterErrorException>(() => worker.CloseRoomAsync("#main"));
+        Assert.Equal("NOT_ALLOWED", refused.Code);
+
+        // An admin may close any room, one it has no part in running included.
+        await human.CreateRoomAsync("#scratch");
+        await human.CloseRoomAsync("#scratch");
+        Assert.DoesNotContain((await human.ListRoomsAsync()).Rooms, r => r.Name == "#scratch");
+    }
+
+    [Fact]
     public async Task OnlyTheDelegatorIsOfferedTheRoomTools()
     {
         await using var human = await HumanAsync();

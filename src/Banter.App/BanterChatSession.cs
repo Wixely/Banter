@@ -21,6 +21,13 @@ public sealed partial class BanterChatSession : IDisposable
 
     private bool _disposed;
 
+    /// <summary>
+    /// Rooms this session has asked to join and not yet heard back about. The server announces our
+    /// own join to us as well, often before it acknowledges the request, and that echo must not
+    /// read as being put into a room by somebody else. Locked: the echo arrives on the receive loop.
+    /// </summary>
+    private readonly HashSet<string> _joining = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Try to claim the "loading older history" slot for a room.</summary>
     /// <summary>
     /// How far back this session has read in each room, owned HERE rather than read back out of
@@ -64,6 +71,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.TaskChanged += OnTaskChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
+        _client.RoomClosed += OnRoomClosed;
+        _client.RoomRegimeChanged += OnRoomRegime;
         _client.MemberJoined += OnJoined;
         _client.MemberParted += OnParted;
         _client.TopicChanged += OnTopic;
@@ -85,7 +94,23 @@ public sealed partial class BanterChatSession : IDisposable
     /// <summary>Joins a room and back-fills it from server history so the timeline isn't empty.</summary>
     public async Task JoinAsync(string room, int history = 100, CancellationToken cancellationToken = default)
     {
-        await _client.JoinAsync(room, cancellationToken).ConfigureAwait(false);
+        lock (_joining)
+        {
+            _joining.Add(room);
+        }
+
+        try
+        {
+            await _client.JoinAsync(room, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_joining)
+            {
+                _joining.Remove(room);
+            }
+        }
+
         _vm.Post(() =>
         {
             _vm.AddRoom(room);
@@ -105,9 +130,10 @@ public sealed partial class BanterChatSession : IDisposable
 
         _vm.Post(() =>
         {
-            foreach (var m in page.Messages)
+            foreach (var m in page.Messages.Where(m => !ChatViewModel.IsDispatchNotice(m.Sender, m.Text)))
             {
                 _vm.Append(room, m.Sender, m.Text, m.Timestamp, id: m.MessageId ?? "");
+                FetchStoredImages(m.Text);
             }
 
             _vm.SetHistoryCursor(room, page.NextCursor);
@@ -200,6 +226,34 @@ public sealed partial class BanterChatSession : IDisposable
     private void OnRoomModeChanged(Protocol.RoomModePayload p) =>
         _vm.Post(() => _vm.SetDispatchMode(p.Room, p.Mode.ToString().ToLowerInvariant()));
 
+    private void OnRoomRegime(Protocol.RoomRegimePayload p) =>
+        _vm.Post(() => _vm.SetRegime(p.Room, p.Regime == Protocol.RoomRegime.Interregnum));
+
+    /// <summary>A room we were in was closed, by us or by somebody else. Its tab goes, and the
+    /// room you land in says why it went - otherwise a tab simply vanishing reads as a fault.</summary>
+    private void OnRoomClosed(Protocol.RoomClosePayload p)
+    {
+        _vm.Post(() =>
+        {
+            _vm.RemoveRoom(p.Room);
+            if (_vm.Model.ActiveRoom.Length > 0)
+            {
+                var by = p.ClosedBy is { Length: > 0 } who ? $" by {who}" : "";
+                var why = p.Reason.Length > 0 ? $": {p.Reason}" : "";
+                _vm.System(_vm.Model.ActiveRoom, $"{p.Room} was closed{by}{why}");
+            }
+        });
+
+        _ = RefreshRoomsAsync();
+    }
+
+    /// <summary>
+    /// Close a room for everybody in it. The tab goes when the server says it is closed, not
+    /// here: a refusal (not an admin, not its delegator) must leave the room exactly as it was.
+    /// </summary>
+    public Task CloseRoomAsync(string room, string reason = "") =>
+        _client.CloseRoomAsync(room, reason);
+
     /// <summary>
     /// Fetch the next page of older history and splice it above what is shown. Re-entrancy is
     /// guarded per room: the control stays clickable, but a second click while a page is still in
@@ -222,11 +276,16 @@ public sealed partial class BanterChatSession : IDisposable
                 .ConfigureAwait(false);
 
             var older = page.Messages
+                .Where(m => !ChatViewModel.IsDispatchNotice(m.Sender, m.Text))
                 .Select(m => (Id: m.MessageId ?? "", m.Sender, m.Text, m.Timestamp, ReplyTo: m.ReplyTo ?? ""))
                 .ToList();
 
             // Recorded here, synchronously, and not only through the queue. See _history.
             _history[room] = page.NextCursor;
+            foreach (var m in older)
+            {
+                FetchStoredImages(m.Text);
+            }
 
             _vm.Post(() =>
             {
@@ -408,6 +467,44 @@ public sealed partial class BanterChatSession : IDisposable
             case "part":
                 await Guard(room, () => PartAsync(room)).ConfigureAwait(false);
                 break;
+            case "regime":
+            {
+                // "/regime" says what this room is under; "/regime republic" ends an interregnum
+                // and "/regime interregnum" declares one. Changing it is the server's to refuse.
+                var wanted = rest.ToLowerInvariant() switch
+                {
+                    "republic" or "end" or "clear" => Protocol.RoomRegime.Republic,
+                    "interregnum" or "hold" => Protocol.RoomRegime.Interregnum,
+                    _ => (Protocol.RoomRegime?)null,
+                };
+
+                if (wanted is { } regime)
+                {
+                    await Guard(room, () => _client.SetRoomRegimeAsync(room, regime)).ConfigureAwait(false);
+                }
+                else
+                {
+                    _vm.Post(() => _vm.System(room, _vm.RegimeExplained(room)
+                        + " (/regime republic ends an interregnum; /regime interregnum declares one.)"));
+                }
+
+                break;
+            }
+            case "close":
+            {
+                // "/close" closes this room; "/close #other why" closes that one, with a reason.
+                var target = room;
+                var reason = rest;
+                if (rest.StartsWith('#'))
+                {
+                    var gap = rest.IndexOf(' ');
+                    target = gap < 0 ? rest : rest[..gap];
+                    reason = gap < 0 ? "" : rest[(gap + 1)..].Trim();
+                }
+
+                await Guard(room, () => CloseRoomAsync(target, reason)).ConfigureAwait(false);
+                break;
+            }
             case "tools":
                 // The panel is the real surface; the command is here so it is reachable without
                 // hunting for a button, and so it works on a head that has no roster on screen.
@@ -426,7 +523,7 @@ public sealed partial class BanterChatSession : IDisposable
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
                     "/edit <text> | /delete | " +
-                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
@@ -637,10 +734,16 @@ public sealed partial class BanterChatSession : IDisposable
     // message the live feed already delivered.
     private void OnMessage(Protocol.MsgPayload m)
     {
+        if (ChatViewModel.IsDispatchNotice(m.Sender, m.Text))
+        {
+            return;
+        }
+
         _vm.Post(() => _vm.Append(
             m.Room, m.Sender, m.Text, m.Timestamp,
             id: m.MessageId ?? "", fileId: m.FileId ?? "", replyTo: m.ReplyTo ?? ""));
         SpeakIncoming(m.Room, m.Sender, m.Text);
+        FetchStoredImages(m.Text);
 
         // The message only carries a file id, so name and size need a round-trip. Done off the
         // receive loop and best-effort: the row is already visible with a placeholder, and a
@@ -689,11 +792,44 @@ public sealed partial class BanterChatSession : IDisposable
         await Guard(room, () => _client.DeleteMessageAsync(room, id).AsTask()).ConfigureAwait(false);
     }
 
-    private void OnEdited(Protocol.EditPayload e) =>
+    private void OnEdited(Protocol.EditPayload e)
+    {
         _vm.Post(() => _vm.MarkEdited(e.Room, e.MessageId, e.Text));
+        FetchStoredImages(e.Text);
+    }
 
     private void OnDeleted(Protocol.DeletePayload d) =>
         _vm.Post(() => _vm.MarkDeleted(d.Room, d.MessageId));
+
+    /// <summary>Fetches the stored images a message's Markdown shows. Only <c>banter:</c>
+    /// references are ever fetched, and only from this server's storage.</summary>
+    private void FetchStoredImages(string text)
+    {
+        foreach (var id in ChatViewModel.StoredImages(text))
+        {
+            _ = FetchStoredImageAsync(id);
+        }
+    }
+
+    private async Task FetchStoredImageAsync(string fileId)
+    {
+        try
+        {
+            var info = await _client.GetFileInfoAsync(fileId).ConfigureAwait(false);
+            if (!MimeTypes.IsImage(info.MimeType) || info.Size > MaxInlineImageBytes)
+            {
+                _vm.Post(() => _vm.StoredImageUnavailable(fileId));
+                return;
+            }
+
+            await TryFetchInlineImageAsync(info).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Not there, or not ours to read. Said, rather than left saying it is loading.
+            _vm.Post(() => _vm.StoredImageUnavailable(fileId));
+        }
+    }
 
     private async Task FetchAttachmentInfoAsync(string fileId)
     {
@@ -718,14 +854,23 @@ public sealed partial class BanterChatSession : IDisposable
         // no JoinAsync of our own to hang the setup off.
         if (string.Equals(j.Nick, _client.Nick, StringComparison.OrdinalIgnoreCase))
         {
-            _ = AdoptRoomAsync(j.Room);
+            bool ours;
+            lock (_joining)
+            {
+                ours = _joining.Contains(j.Room);
+            }
+
+            if (!ours)
+            {
+                _ = AdoptRoomAsync(j.Room);
+            }
         }
     }
 
     /// <summary>Set up a room the server put us in, rather than one we asked to join.</summary>
     private async Task AdoptRoomAsync(string room)
     {
-        _vm.Post(() => _vm.AddRoom(room));
+        _vm.Post(() => _vm.AdoptRoom(room));
         await RefreshRoomsAsync().ConfigureAwait(false);
         await RefreshTasksAsync(room).ConfigureAwait(false);
     }
@@ -762,6 +907,7 @@ public sealed partial class BanterChatSession : IDisposable
     {
         _vm.Post(() => _vm.StreamEnd(e.StreamId, e.FinalText, e.Timestamp));
         EndSpokenStream(e.StreamId);
+        FetchStoredImages(e.FinalText);
     }
 
     private void OnPrivate(Protocol.PrivMsgPayload p) =>
@@ -799,6 +945,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.DelegatorChanged -= OnDelegatorChanged;
         _client.TaskChanged -= OnTaskChanged;
         _client.RoomModeChanged -= OnRoomModeChanged;
+        _client.RoomClosed -= OnRoomClosed;
+        _client.RoomRegimeChanged -= OnRoomRegime;
         _client.MemberJoined -= OnJoined;
         _client.MemberParted -= OnParted;
         _client.TopicChanged -= OnTopic;

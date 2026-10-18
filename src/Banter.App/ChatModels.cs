@@ -23,6 +23,26 @@ public sealed partial class MessageRow
     /// </summary>
     public string Text { get; set; } = "";
 
+    /// <summary>
+    /// Whether <see cref="Text"/> is drawn as Markdown. Agents write Markdown, people write chat:
+    /// a person's <c>snake_case</c> or <c>2*3*4</c> rendered as italics would be the app
+    /// rewriting what they said. Set from the sender, not from the text.
+    /// </summary>
+    internal bool IsMarkdown { get; set; }
+
+    /// <summary>The plain body: <c>body</c>, or <c>body hidden</c> while the Markdown is shown.</summary>
+    public string BodyClass { get; set; } = "body";
+
+    /// <summary>The Markdown body: <c>md</c>, or <c>md hidden</c> for a plain one.</summary>
+    public string MarkdownClass { get; set; } = "md hidden";
+
+    /// <summary>
+    /// What the Markdown body renders: <see cref="Text"/> with every image reference resolved to
+    /// a file this client already holds, and anything else made a plain link. Never the place a
+    /// remote address gets loaded from - see <c>ChatViewModel.MarkdownFor</c>.
+    /// </summary>
+    public string MarkdownText { get; set; } = "";
+
     public string Time { get; set; } = "";
 
     /// <summary>
@@ -229,6 +249,9 @@ public sealed partial class RoomRow
     /// without this every room with nothing unread wore a small blank pill.
     /// </summary>
     public string BadgeClass { get; set; } = "badge hidden";
+
+    /// <summary>The tab's close control: <c>tab-close</c> for an admin, <c>no-close</c> otherwise.</summary>
+    public string CloseClass { get; set; } = "no-close";
 }
 
 /// <summary>
@@ -335,6 +358,12 @@ public enum ConfirmAct
 
     /// <summary>Remove an agent's identity from one hub: the only act here with two subjects.</summary>
     ForgetHubIdentity,
+
+    /// <summary>Close a room for everybody in it.</summary>
+    CloseRoom,
+
+    /// <summary>Stop holding a room's delegator seat for a local agent.</summary>
+    EndInterregnum,
 }
 
 /// <summary>A confirmed act and what it applies to. <paramref name="Hub"/> is empty for
@@ -546,6 +575,20 @@ public sealed partial class ChatModel
     /// no agents in it showed a stray "·" floating in its header.
     /// </summary>
     public string Dispatch { get; set; } = "";
+
+    /// <summary>The header's status pill: <c>on</c> with a delegator, <c>off</c> without one,
+    /// hidden before anything is known.</summary>
+    public string DispatchClass { get; set; } = "dispatch hidden";
+
+    /// <summary>The room's regime as one letter beside the delegator: R or I.</summary>
+    public string RegimeMark { get; set; } = "R";
+
+    /// <summary><c>regime republic</c>, <c>regime interregnum</c>, plus <c>act</c> when this
+    /// account can end it from here.</summary>
+    public string RegimeClass { get; set; } = "regime hidden";
+
+    /// <summary>What the letter means, on hover.</summary>
+    public string RegimeTip { get; set; } = "";
 
     /// <summary>Hidden until the room actually has work on the board.</summary>
     public string TasksClass { get; set; } = "tasks hidden";
@@ -799,6 +842,9 @@ public sealed partial class ChatModel
     /// <summary>Whether being named flashes the taskbar, on the settings page.</summary>
     public List<ChoiceRow> FlashChoices { get; set; } = [];
 
+    /// <summary>Whether being added to a new room switches to it, on the settings page.</summary>
+    public List<ChoiceRow> FollowChoices { get; set; } = [];
+
     /// <summary>Empty on every host but Android, so no row exists to click or tab to.</summary>
     public List<ChoiceRow> StayChoices { get; set; } = [];
 
@@ -874,6 +920,14 @@ public sealed partial class ChatModel
     /// whichever side of the breakpoint the flag already agreed with.</para>
     /// </summary>
     public string SidebarClass { get; set; } = "sidebar";
+
+    /// <summary>The rail, which on a narrow screen is part of the drawer and moves with
+    /// <see cref="SidebarClass"/>. On a wide window it is a column and these classes do nothing.</summary>
+    public string RailClass { get; set; } = "rail";
+
+    /// <summary>The narrow screen's handle for the drawer, marked when another room has unread
+    /// messages - the list that would say so is in the drawer, out of sight.</summary>
+    public string DrawerToggleClass { get; set; } = "drawer-toggle";
 
     /// <summary>
     /// Who is in the room: <c>roster</c>, <c>roster open</c> or <c>roster shut</c>, moved by the

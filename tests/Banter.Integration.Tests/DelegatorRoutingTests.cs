@@ -235,6 +235,28 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
             human, m => m.Text == "TWO-ANSWERED", within: TimeSpan.FromSeconds(2)));
     }
 
+    [Fact]
+    public async Task ASideRoomsDelegatorAnswersAPersonWithoutBeingNamed()
+    {
+        // One agent and one person in a room opened to work on something. Nobody else is there
+        // for the person to be talking to, so having to name the agent every time is a room that
+        // looks broken.
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        await human.CreateSubRoomAsync("#side", "#main", "just us");
+        await human.SetRoomModeAsync("#side", RoomDispatchMode.Collaborate);
+        await human.JoinAsync("#side");
+        await local.JoinForTestAsync("#side");
+        await WaitForDelegatorAsync(human, "local", "#side");
+
+        await human.SendMessageAsync("#side", "what do you make of this?");
+
+        Assert.NotNull(await WaitForInAsync(human, "#side", m => m.Text == "LOCAL-ANSWERED"));
+    }
+
     private static async Task<MsgPayload?> WaitForInAsync(
         BanterClient client, string room, Func<MsgPayload, bool> predicate)
     {
@@ -280,12 +302,12 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
         return human;
     }
 
-    private static async Task WaitForDelegatorAsync(BanterClient observer, string expected)
+    private static async Task WaitForDelegatorAsync(BanterClient observer, string expected, string room = "#main")
     {
         var deadline = DateTimeOffset.UtcNow + Timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var agents = await observer.GetAgentsAsync("#main");
+            var agents = await observer.GetAgentsAsync(room);
             if (agents.Agents.Any(a => a.IsDelegator && a.Nick == expected))
             {
                 return;

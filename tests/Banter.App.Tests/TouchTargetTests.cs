@@ -125,10 +125,10 @@ public sealed class TouchTargetTests(ITestOutputHelper output)
         var p = BanterChatApp.Presentation(412, 915);
         doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
 
-        // Height > 0: several rail buttons are `hidden` for a non-admin and stay in the tree at
-        // no size, and the first one in document order is one of them.
+        // The drawer's handle: at this width the rail is put away in the drawer, and the handle is
+        // the one control the chrome leaves on screen.
         float RailButton() => TapTargets(doc.Root)
-            .First(n => n.Element?.GetAttribute("class")?.Split(' ').Contains("rail-button") == true
+            .First(n => n.Element?.GetAttribute("class")?.Split(' ').Contains("drawer-toggle") == true
                         && n.Height > 0)
             .Height;
 
@@ -140,7 +140,7 @@ public sealed class TouchTargetTests(ITestOutputHelper output)
         doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
         var withAFinger = RailButton();
 
-        output.WriteLine($"rail button: {withAMouse:F0} with a mouse, {withAFinger:F0} with a finger");
+        output.WriteLine($"drawer handle: {withAMouse:F0} with a mouse, {withAFinger:F0} with a finger");
 
         Assert.True(withAMouse < MinTap, "the mouse layout is already finger-sized, so this proves nothing");
         Assert.True(withAFinger >= MinTap, "asking for touch did not resize anything");

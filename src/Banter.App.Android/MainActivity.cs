@@ -131,6 +131,7 @@ public sealed class MainActivity : CupriActivity
         // nobody had ever seeded the choices here the way the desktop head does.
         _viewModel.EnableNotificationAlerts();
         _viewModel.SetFlashOnMention(_settings.FlashOnMention);
+        _viewModel.SetFollowNewRooms(_settings.FollowNewRooms);
 
         return new BanterChatApp(_viewModel)
         {
@@ -490,6 +491,7 @@ public sealed class MainActivity : CupriActivity
         _settings = _settings with
         {
             FlashOnMention = _viewModel.FlashOnMention,
+            FollowNewRooms = _viewModel.FollowNewRooms,
             Voice = _settings.Voice with
             {
                 Engine = _viewModel.ChosenTranscribe,
