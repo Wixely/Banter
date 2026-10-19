@@ -260,6 +260,14 @@ public sealed partial class BanterClient : IAsyncDisposable
         SendAsync(_codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null)), cancellationToken);
 
     /// <summary>
+    /// Says something and names which agents should act on it. Null is the room's usual dispatch;
+    /// a list is exactly those agents, plus anyone named with an @. Honoured from people only.
+    /// </summary>
+    public ValueTask SendMessageAsync(
+        string room, string text, IReadOnlyList<string>? to, CancellationToken cancellationToken = default) =>
+        SendAsync(_codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null, To: to)), cancellationToken);
+
+    /// <summary>
     /// Says something as a reply to a particular message, so an agent reading it knows which of
     /// the last ten things said it answers. Ordinary chat otherwise.
     /// </summary>
@@ -267,6 +275,28 @@ public sealed partial class BanterClient : IAsyncDisposable
         string room, string text, string replyToMessageId, CancellationToken cancellationToken = default) =>
         SendAsync(
             _codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null, ReplyTo: replyToMessageId)),
+            cancellationToken);
+
+    /// <summary>
+    /// Says something with a file on it - one message, the words and the attachment together.
+    /// Upload the file first with <c>quiet: true</c>, so the upload is not announced as a message
+    /// of its own, and pass the id it comes back with.
+    /// </summary>
+    public ValueTask SendMessageAsync(
+        string room, string text, string? fileId, string? replyTo, IReadOnlyList<string>? to,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(
+            _codec.CreateEnvelope(new MsgPayload(
+                room, Nick, text, 0, fileId is { Length: > 0 } ? fileId : null,
+                ReplyTo: replyTo is { Length: > 0 } ? replyTo : null, To: to)),
+            cancellationToken);
+
+    /// <summary>A reply that also names which agents should act on it.</summary>
+    public ValueTask ReplyAsync(
+        string room, string text, string replyToMessageId, IReadOnlyList<string>? to,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(
+            _codec.CreateEnvelope(new MsgPayload(room, Nick, text, 0, null, ReplyTo: replyToMessageId, To: to)),
             cancellationToken);
 
     /// <summary>

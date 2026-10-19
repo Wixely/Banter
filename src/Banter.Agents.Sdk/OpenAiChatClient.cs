@@ -23,6 +23,14 @@ public sealed record ChatTurn(string Role, string Content)
     /// so a result sent without one is attached to the wrong call or dropped.</summary>
     public string? ToolCallId { get; init; }
 
+    /// <summary>Images that go with this turn, as <c>data:</c> URIs - the form every
+    /// OpenAI-compatible server accepts without fetching anything itself.</summary>
+    public IReadOnlyList<string> Images { get; init; } = [];
+
+    /// <summary>The Banter file attached to the message this turn records, if any. Not sent: the
+    /// agent reads it to decide what the model is shown of the file.</summary>
+    public string? AttachmentId { get; init; }
+
     public static ChatTurn System(string content) => new("system", content);
     public static ChatTurn User(string content) => new("user", content);
     public static ChatTurn Assistant(string content) => new("assistant", content);
@@ -239,13 +247,38 @@ public sealed class OpenAiChatClient : IDisposable
 
     private static WireMessage ToWire(ChatTurn turn) => new(
         turn.Role,
-        turn.Content,
+        Content(turn),
         turn.ToolCalls.Count == 0
             ? null
             : turn.ToolCalls
                 .Select(c => new WireToolCall(c.Id, "function", new WireCalledFunction(c.Name, c.Arguments)))
                 .ToList(),
         turn.ToolCallId);
+
+    /// <summary>
+    /// A turn's content: plain text, as always, unless it carries images - then the parts form,
+    /// text first and each image after it. Only then, because a server that does not do vision
+    /// may not accept the parts form at all, and nothing without an image needs it.
+    /// </summary>
+    private static JsonNode Content(ChatTurn turn)
+    {
+        if (turn.Images.Count == 0)
+        {
+            return JsonValue.Create(turn.Content);
+        }
+
+        var parts = new JsonArray { new JsonObject { ["type"] = "text", ["text"] = turn.Content } };
+        foreach (var image in turn.Images)
+        {
+            parts.Add(new JsonObject
+            {
+                ["type"] = "image_url",
+                ["image_url"] = new JsonObject { ["url"] = image },
+            });
+        }
+
+        return parts;
+    }
 
     private static WireTool ToWire(ToolSpec tool) => new(
         "function",
@@ -290,7 +323,7 @@ public sealed class OpenAiChatClient : IDisposable
 
     private sealed record WireMessage(
         [property: JsonPropertyName("role")] string Role,
-        [property: JsonPropertyName("content")] string Content,
+        [property: JsonPropertyName("content")] JsonNode Content,
         [property: JsonPropertyName("tool_calls")] IReadOnlyList<WireToolCall>? ToolCalls,
         [property: JsonPropertyName("tool_call_id")] string? ToolCallId);
 

@@ -90,6 +90,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// <summary>Told when the interface scale changes, so the head can remember it.</summary>
     public Action<float> ZoomChanged { get; init; } = _ => { };
 
+    /// <summary>
+    /// Who acts on your messages changed, in some room. Every room's choice is handed over, to be
+    /// written down: it is a decision about where your words go, and one that quietly reverted to
+    /// the default on the next launch would send them somewhere you had said not to.
+    /// </summary>
+    public Action<IReadOnlyDictionary<string, string[]>> RecipientsChanged { get; init; } = _ => { };
+
     /// <summary>Told when the pointer kind changes, so the head can remember it. A head whose
     /// platform answers this for itself — Android, the web — never wires it.</summary>
     public Action<bool> PointerChanged { get; init; } = _ => { };
@@ -152,6 +159,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
     /// <summary>Called with a chosen path, to be sent to the room the user is looking at.</summary>
     public Func<string, string, Task> AttachAsync { get; init; } = (_, _) => Task.CompletedTask;
+
+    /// <summary>
+    /// Sends a message with a staged file on it: (room, text, path, message being replied to).
+    /// A head that has not wired this falls back to the old two steps - the file as a message of
+    /// its own, then the words - which is worse but still sends both.
+    /// </summary>
+    public Func<string, string, string, string, Task>? SendWithFileAsync { get; init; }
 
     /// <summary>
     /// Called with the server, account and password from the connect screen. Only a head that
@@ -430,6 +444,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             </cupri-context-menu>
             <div class="{{EditingClass}}">editing a message — Esc to cancel</div>
             <div class="{{ReplyingClass}}" data-reply-cancel="1">{{ReplyingText}}</div>
+            <!-- The file that goes with the next message. Waits for Send, so the words about it
+                 can go with it; the cross takes it off again. -->
+            <div class="{{StagedClass}}">
+              <span class="staged-label">Attached</span><span class="staged-name">{{StagedText}}</span>
+              <span class="staged-x" data-unstage="1"><span class="x-bar x-a"></span><span class="x-bar x-b"></span></span>
+            </div>
             <div class="composer-wrap">
               <div class="{{MentionsClass}}">
                 <div class="{{RowClass}}" data-repeat="Mentions" data-mention="{{Nick}}">
@@ -440,6 +460,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="{{ComposerRowClass}}">
                 <span class="prompt">&gt;</span>
                 <cupri-textarea class="composer" value="{{Composer}}" placeholder="Message" data-composer="1" submit-on-enter></cupri-textarea>
+                <!-- Said before sending, not after: this message would reach a third-party agent. -->
+                <cupri-tooltip text="{{EgressTip}}">
+                  <span class="{{EgressClass}}"><span class="egress-bar"></span><span class="egress-dot"></span></span>
+                </cupri-tooltip>
                 <!-- Icons, not words. The word WAS each button's accessible name, so it moves to
                      aria-label rather than being dropped: strip the text out and the tree has
                      nothing left to name the control with, and a screen reader reaching the end
@@ -523,7 +547,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <div class="task-status">{{Status}}</div>
               </div>
             </div>
-            <div class="{{RosterAgentsTitleClass}}">Agents</div>
+            <!-- The ticks are who acts on YOUR messages in this room. Unticked is the default:
+                 the delegator, ticked for you; Reset goes back to it. -->
+            <div class="{{RosterAgentsTitleClass}}"><span class="roster-title-text">Agents</span><span class="{{PickClearClass}}" data-pick-clear="1">Reset</span></div>
+            <div class="{{RosterAgentsTitleClass}} pick-hint">{{PickHint}}</div>
             <div class="{{RowClass}}" data-repeat="Agents">
               <div class="agent-row">
                 <span class="agent-pfp">{{Initials}}</span>
@@ -531,6 +558,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <span class="agent-line"><span class="agent-nick">{{Nick}}</span><span class="agent-role">{{Role}}</span></span>
                   <span class="agent-meta">{{Locality}} · {{Skills}}</span>
                 </span>
+                <span class="{{PickClass}}" data-pick="{{Nick}}"><span class="pick-box"><span class="pick-tick pick-tick-short"></span><span class="pick-tick pick-tick-long"></span></span></span>
               </div>
             </div>
             <div class="{{RosterUsersTitleClass}}">Users</div>
@@ -1658,6 +1686,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .replying-banner { padding: 6px 18px; background: #1d3330; color: #9fd3c4; font-size: 12px;
                            cursor: pointer; }
         .replying-banner.hidden { display: none; }
+        .staged { display: flex; flex-direction: row; align-items: center; padding: 6px 12px 6px 18px;
+                  background: #172234; color: #c7d4e8; font-size: 12px; }
+        .staged.hidden { display: none; }
+        .staged-label { color: #7d93b3; font-weight: bold; font-size: 11px; padding-right: 8px; }
+        .staged-name { flex: 1; min-width: 0; overflow: hidden; }
+        .staged-x { position: relative; flex: 0 0 auto; width: 26px; height: 26px; border-radius: 7px;
+                    cursor: pointer; }
+        .staged-x:hover { background: #22324a; }
+        .staged-x .x-bar { left: 6px; top: 12px; width: 14px; }
         .menu-edit.hidden, .menu-delete.hidden, .menu-reply.hidden { display: none; }
 
         /* What a reply is answering, above the reply itself. Quoted rather than only threaded:
@@ -1894,6 +1931,40 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .agent-role { color: #34d399; font-size: 9px; }
         .agent-meta { color: #8d97a6; font-size: 9px; margin-top: 1px; }
         .agent.frontier .agent-meta { color: #e0a56a; }
+
+        /* Who acts on your messages. The box is drawn - a bordered square, and a tick from two
+           bars - for the reason every icon here is: no glyph looks the same on every head. The
+           hit area is bigger than the box, so it can grow for a finger without the box growing. */
+        .roster-title { display: flex; flex-direction: row; align-items: center; }
+        .roster-title-text { flex: 1; }
+        .pick-clear { font-size: 10px; font-weight: bold; color: #93a5bd; padding: 2px 6px;
+                      border-radius: 6px; cursor: pointer; }
+        .pick-clear:hover { background: #1b2029; color: #f3f5f7; }
+        .pick-clear.hidden { display: none; }
+        .roster-title.pick-hint { font-weight: normal; font-size: 9px; color: #747f91;
+                                  padding-top: 0; margin-top: -4px; }
+        .pick { flex: 0 0 auto; width: 28px; height: 28px; display: flex; align-items: center;
+                justify-content: center; cursor: pointer; margin-left: 4px; }
+        .pick-box { position: relative; width: 16px; height: 16px; border-radius: 5px;
+                    border: 1px solid #4a5464; background: #0b0d10; }
+        .pick:hover .pick-box { border-color: #7d8899; }
+        .pick.on .pick-box { background: #2563eb; border-color: #2563eb; }
+        .pick-tick { position: absolute; height: 2px; border-radius: 1px; background: transparent; }
+        .pick-tick-short { left: 2px; top: 8px; width: 6px; transform: rotate(45deg); }
+        .pick-tick-long { left: 5px; top: 6px; width: 10px; transform: rotate(-50deg); }
+        .pick.on .pick-tick { background: #ffffff; }
+
+        /* The third-party warning in the composer: an amber disc with an exclamation mark drawn
+           from a bar and a dot. Amber because it is a caution, not a fault - sending is allowed,
+           it is just leaving the building. */
+        .egress-warn { position: relative; flex: 0 0 auto; width: 22px; height: 22px;
+                       border-radius: 11px; margin-left: 8px; background: #3a2a07;
+                       border: 1px solid #fbbf24; }
+        .egress-warn.hidden { display: none; }
+        .egress-bar { position: absolute; left: 10px; top: 4px; width: 2px; height: 8px;
+                      border-radius: 1px; background: #fbbf24; }
+        .egress-dot { position: absolute; left: 10px; top: 14px; width: 2px; height: 2px;
+                      border-radius: 1px; background: #fbbf24; }
 
         /* One rule for every rail button, so a fourth one cannot drift from the other three. */
         .rail-button { width: 42px; height: 42px; border-radius: 14px; display: flex;
@@ -2489,6 +2560,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         body.cupri-coarse .rail-button { width: 44px; height: 44px; }
         body.cupri-coarse .logo { width: 44px; height: 44px; }
         body.cupri-coarse .tab { height: 44px; }
+        body.cupri-coarse .pick { width: 44px; height: 44px; }
+        body.cupri-coarse .staged-x { width: 44px; height: 44px; }
+        body.cupri-coarse .staged-x .x-bar { left: 15px; top: 21px; }
+        body.cupri-coarse .pick-clear { padding: 13px 10px; }
         /* A finger cannot hover, so every tab's cross is drawn, and big enough to hit. */
         body.cupri-coarse .tab-close { width: 44px; height: 44px; margin-right: -10px; }
         body.cupri-coarse .tab-x { left: 16px; top: 21px; background: #5d6572; }
@@ -3220,6 +3295,35 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        doc.OnAction("data-unstage", _ =>
+        {
+            ViewModel.Unstage(ViewModel.Model.ActiveRoom);
+            doc.Refresh();
+            return true;
+        });
+
+        // Who acts on your messages here: a tick per agent, and a reset back to the delegator.
+        doc.OnAction("data-pick", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            ViewModel.ToggleRecipient(e.Value);
+            SaveRecipients();
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-pick-clear", _ =>
+        {
+            ViewModel.ClearRecipients();
+            SaveRecipients();
+            doc.Refresh();
+            return true;
+        });
+
         // Room tabs carry their own name, so one handler serves every repeated row.
         doc.OnAction("data-room", e =>
         {
@@ -3450,6 +3554,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             _doc?.Refresh();
         }
 
+        // The same for the third-party warning, which turns on what is typed as well as on what
+        // is ticked.
+        if (ViewModel.RefreshEgress())
+        {
+            _doc?.Refresh();
+        }
+
         // Named in a message that arrived since the last frame. Read here rather than raised from
         // the receive thread so the head is called somewhere it can touch a window.
         if (ViewModel.MentionsSinceLooked > 0)
@@ -3570,6 +3681,24 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     /// to call either way, and on a desktop a click on a room tab changes nothing about the
     /// column it was in.</para>
     /// </summary>
+    /// <summary>For a head that cannot send a file and words as one message: the old two steps.</summary>
+    private async Task SendFileThenTextAsync(string room, string text, string path, string replyingTo)
+    {
+        await AttachAsync(room, path).ConfigureAwait(false);
+        if (text.Length > 0)
+        {
+            await (replyingTo.Length > 0 ? ReplyAsync(room, text, replyingTo) : SendAsync(room, text)).ConfigureAwait(false);
+        }
+    }
+
+    private void SaveRecipients()
+    {
+        if (ViewModel.TakeRecipientsChanged())
+        {
+            RecipientsChanged(ViewModel.SavedRecipients);
+        }
+    }
+
     private void PickedARoom(CupriDocument doc)
     {
         if (doc.ViewportWidth <= NarrowWidth)
@@ -3762,13 +3891,27 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         _ = PickAndSendAsync(room);
     }
 
+    /// <summary>Picks a file and puts it on the next message, for the room it was picked in.</summary>
     private async Task PickAndSendAsync(string room)
     {
         var path = await FilePicker.PickAsync($"Send a file to {room}").ConfigureAwait(false);
-        if (path is { Length: > 0 })
+        if (path is not { Length: > 0 })
         {
-            await AttachAsync(room, path).ConfigureAwait(false);
+            return;
         }
+
+        long size;
+        try
+        {
+            size = new FileInfo(path).Length;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ViewModel.Post(() => ViewModel.System(room, $"cannot read {Path.GetFileName(path)}: {ex.Message}"));
+            return;
+        }
+
+        ViewModel.Post(() => ViewModel.StageAttachment(room, path, size));
     }
 
     /// <summary>
@@ -3994,7 +4137,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     {
         var text = ViewModel.Model.Composer.Trim();
         var room = ViewModel.Model.ActiveRoom;
-        if (text.Length == 0 || room.Length == 0)
+        var staged = ViewModel.StagedFor(room) is not null;
+        if (room.Length == 0 || (text.Length == 0 && !staged))
         {
             return;
         }
@@ -4002,6 +4146,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         // An edit in progress takes the composer's contents instead of the room doing so.
         if (ViewModel.Model.EditingId is { Length: > 0 } editing)
         {
+            if (text.Length == 0)
+            {
+                return;
+            }
+
             ViewModel.Model.EditingId = "";
             ViewModel.Model.Composer = "";
             ViewModel.Model.EditingClass = "editing-banner hidden";
@@ -4032,9 +4181,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         ViewModel.ClearReply();
         _doc?.Refresh();
 
-        if (text[0] == '/')
+        // A command is not a message, so a staged file waits for the next one.
+        if (text.Length > 0 && text[0] == '/')
         {
             _ = CommandAsync(room, text);
+            return;
+        }
+
+        if (ViewModel.TakeStaged(room) is { } path)
+        {
+            _ = SendWithFileAsync is { } withFile
+                ? withFile(room, text, path, replyingTo)
+                : SendFileThenTextAsync(room, text, path, replyingTo);
             return;
         }
 

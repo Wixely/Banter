@@ -144,7 +144,12 @@ public sealed record MsgPayload(
     [property: Key(7)] long DeletedAt = 0,
     // The message this one answers, when it answers one. Trailing and optional, so an older peer
     // simply does not see it. A doc comment cannot sit between record parameters.
-    [property: Key(8)] string? ReplyTo = null);
+    [property: Key(8)] string? ReplyTo = null,
+    // Which agents a PERSON chose to act on this message. Null is the room's usual dispatch (the
+    // delegator decides); a list - even an empty one - is exactly those agents, plus anyone named
+    // with an @. Stripped by the server from anything an agent sends: an agent choosing who acts
+    // would be a way round the delegator, which is the one thing the delegator exists to prevent.
+    [property: Key(9)] IReadOnlyList<string>? To = null);
 
 /// <summary>
 /// One way of answering a question. <see cref="Value"/> is what comes back; <see cref="Label"/> is

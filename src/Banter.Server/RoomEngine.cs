@@ -1500,6 +1500,11 @@ internal sealed partial class RoomEngine(
             Sender = session.Nick,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             MessageId = Guid.NewGuid().ToString("N"),
+
+            // Only a person may say who acts on their message. Enforced here rather than trusted
+            // to every agent: one that honoured another agent's list would let two of them hand
+            // work around the delegator.
+            To = session.IsAgent ? null : msg.To,
         };
 
         await store.AppendMessageAsync(new ChatMessage(

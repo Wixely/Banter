@@ -222,6 +222,7 @@ public sealed partial class ChatViewModel
         }
 
         Model.ActiveRoom = room;
+        RefreshStaged();
         foreach (var tab in Model.Rooms)
         {
             tab.TabClass = tab.Name == room ? "tab active" : "tab";
@@ -297,6 +298,17 @@ public sealed partial class ChatViewModel
         row.IsMarkdown = rowClass != "line system" && _knownAgents.Contains(sender);
         Render(row);
 
+        if (fileId.Length > 0 && _imageSources.TryGetValue(fileId, out var held))
+        {
+            row.ImageSrc = held;
+            row.ImageClass = "inline-image";
+        }
+
+        if (fileId.Length > 0 && _attachmentLabels.TryGetValue(fileId, out var label))
+        {
+            row.AttachText = label;
+        }
+
         // Anyone heard from is somebody who could be given a voice of their own.
         SawSpeaker(sender);
 
@@ -333,6 +345,61 @@ public sealed partial class ChatViewModel
     }
 
     public void System(string room, string text) => Append(room, "*", text, 0, "line system");
+
+    // ── A file waiting to go with the next message ───────────────────────────────────────────
+
+    /// <summary>Files picked but not sent yet, per room. Per room because the file was chosen for
+    /// the room on screen at the time, and sending it with a message in another one would put it
+    /// somewhere it was never meant to go.</summary>
+    private readonly Dictionary<string, (string Path, long Size)> _staged = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Holds a file to go with the next message in <paramref name="room"/>, rather than sending it
+    /// the moment it is picked. Sent alone it arrived as a message of its own, and the agents in
+    /// the room answered a filename before anybody had said what it was for.
+    /// </summary>
+    public void StageAttachment(string room, string path, long size)
+    {
+        _staged[room] = (path, size);
+        RefreshStaged();
+    }
+
+    public (string Path, long Size)? StagedFor(string room) =>
+        _staged.TryGetValue(room, out var staged) ? staged : null;
+
+    /// <summary>Takes the staged file for sending, so it cannot go twice.</summary>
+    public string? TakeStaged(string room)
+    {
+        if (!_staged.Remove(room, out var staged))
+        {
+            return null;
+        }
+
+        RefreshStaged();
+        return staged.Path;
+    }
+
+    public void Unstage(string room)
+    {
+        if (_staged.Remove(room))
+        {
+            RefreshStaged();
+        }
+    }
+
+    private void RefreshStaged()
+    {
+        if (StagedFor(Model.ActiveRoom) is { } staged)
+        {
+            Model.StagedClass = "staged";
+            Model.StagedText = $"{(global::System.IO.Path.GetFileName(staged.Path))} · {FormatSize(staged.Size)}";
+        }
+        else
+        {
+            Model.StagedClass = "staged hidden";
+            Model.StagedText = "";
+        }
+    }
 
     /// <summary>
     /// What copying a whole message puts on the clipboard. A failed turn's words are its reason,
@@ -703,6 +770,10 @@ public sealed partial class ChatViewModel
     /// Fill in an attachment's name and size once the server has described it. Applies to every
     /// room, because the same file can be granted to more than one.
     /// </summary>
+    /// <summary>Names already known, by file id, so a row that arrives after its file was
+    /// described is labelled at once rather than waiting for a fetch that will not come.</summary>
+    private readonly Dictionary<string, string> _attachmentLabels = new(StringComparer.Ordinal);
+
     public void SetAttachmentInfo(string fileId, string name, long size)
     {
         if (fileId.Length == 0)
@@ -711,6 +782,7 @@ public sealed partial class ChatViewModel
         }
 
         var label = $"{name} ({FormatSize(size)})";
+        _attachmentLabels[fileId] = label;
         foreach (var row in _rooms.Values.SelectMany(rows => rows).Where(r => r.FileId == fileId))
         {
             row.AttachText = label;
@@ -1074,6 +1146,7 @@ public sealed partial class ChatViewModel
 
         Model.Delegator = nick is { Length: > 0 } ? nick : "no delegator";
         RefreshDispatch();
+        RefreshPicks();
     }
 
     public void SetDispatchMode(string room, string mode)
@@ -1185,6 +1258,7 @@ public sealed partial class ChatViewModel
         RefreshDelegator(room);
         Model.Delegator = delegatorRow?.Nick ?? "no delegator";
         RefreshDispatch();
+        RefreshPicks();
     }
 
     private void ShowUsersFor(string room)

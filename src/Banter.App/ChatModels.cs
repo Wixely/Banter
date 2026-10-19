@@ -216,6 +216,10 @@ public sealed partial class AgentRow
 
     /// <summary>Drives styling: <c>agent</c>, <c>agent frontier</c>, <c>agent delegator</c>.</summary>
     public string RowClass { get; set; } = "agent";
+
+    /// <summary>The box saying whether this agent acts on your messages here: <c>pick</c> or
+    /// <c>pick on</c>.</summary>
+    public string PickClass { get; set; } = "pick";
 }
 
 /// <summary>A unit of work on the room's board (PLAN §8b).</summary>
@@ -579,6 +583,25 @@ public sealed partial class ChatModel
     /// <summary>The header's status pill: <c>on</c> with a delegator, <c>off</c> without one,
     /// hidden before anything is known.</summary>
     public string DispatchClass { get; set; } = "dispatch hidden";
+
+    /// <summary>The roster's reset for who acts on your messages, shown once something is ticked
+    /// differently from the default.</summary>
+    public string PickClearClass { get; set; } = "pick-clear hidden";
+
+    /// <summary>Under the agents: who your messages in this room go to.</summary>
+    public string PickHint { get; set; } = "Your messages go to the delegator.";
+
+    /// <summary>A file picked to go with the next message: <c>staged</c>, or hidden.</summary>
+    public string StagedClass { get; set; } = "staged hidden";
+
+    /// <summary>The staged file's name and size.</summary>
+    public string StagedText { get; set; } = "";
+
+    /// <summary>The composer's third-party warning: <c>egress-warn</c>, or hidden.</summary>
+    public string EgressClass { get; set; } = "egress-warn hidden";
+
+    /// <summary>Which third-party agents would get the message, on hover.</summary>
+    public string EgressTip { get; set; } = "";
 
     /// <summary>The room's regime as one letter beside the delegator: R or I.</summary>
     public string RegimeMark { get; set; } = "R";

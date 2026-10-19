@@ -129,6 +129,22 @@ public sealed record LlmChatAgentOptions
     /// </summary>
     public int ContextMessages { get; init; } = 20;
 
+    /// <summary>
+    /// Whether a file someone attaches is shown to the model: an image as an image, a small text
+    /// file as its text. Null is the safe default - yes for a local agent, no for a third-party
+    /// one - because an attachment is content like any other, and the keyword check that decides
+    /// what a third party may be sent reads words, not pictures. A frontier agent told no still
+    /// learns that a file was attached, and says it could not see it.
+    /// </summary>
+    public bool? ShareAttachments { get; init; }
+
+    /// <summary>Largest image shown to the model. Encoded into the request, so a large one is a
+    /// large request every turn it stays in context.</summary>
+    public long MaxAttachmentImageBytes { get; init; } = 5 * 1024 * 1024;
+
+    /// <summary>Largest text file whose contents are put in front of the model.</summary>
+    public long MaxAttachmentTextBytes { get; init; } = 64 * 1024;
+
     public double Temperature { get; init; } = 0.7;
 
     /// <summary>Cap on reply length, so a runaway model cannot flood a room.</summary>

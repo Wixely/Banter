@@ -174,6 +174,8 @@ var app = new BanterChatApp(vm)
     FilePicker = filePicker,
     // The picker hands back a path; quoting it is what lets a chosen file have spaces in its name.
     AttachAsync = (room, path) => session?.UploadAsync(room, $"\"{path}\"") ?? Task.CompletedTask,
+    SendWithFileAsync = (room, text, path, replyTo) =>
+        session?.SendWithFileAsync(room, text, path, replyTo) ?? Task.CompletedTask,
     VoiceToggleAsync = open => session?.SetVoiceOpenAsync(open) ?? Task.CompletedTask,
     ReadbackChangedAsync = policy => session?.SetReadbackAsync(policy) ?? Task.CompletedTask,
 
@@ -231,6 +233,12 @@ var app = new BanterChatApp(vm)
 
     // Same reasoning as zoom: a preference about the machine in front of you, saved when it is
     // made. Wired only here — Android and the web are told what their pointer is by the host.
+    RecipientsChanged = saved =>
+    {
+        settings = settings with { Recipients = new Dictionary<string, string[]>(saved) };
+        settings.TrySave(settingsPath, Warn);
+    },
+
     PointerChanged = touch =>
     {
         settings = settings with { TouchLayout = touch };
@@ -249,6 +257,7 @@ if (filePicker.IsSupported)
 vm.SetAutoSubmit(settings.Voice.AutoSubmit && !settings.Voice.ReviewBeforeSend, settings.Voice.AutoSubmitDelaySeconds);
 vm.SetFlashOnMention(settings.FlashOnMention);
 vm.SetFollowNewRooms(settings.FollowNewRooms);
+vm.LoadRecipients(settings.Recipients);
 vm.SetVoiceSettings(
     settings.Voice.Engine,
     settings.Voice.Language,

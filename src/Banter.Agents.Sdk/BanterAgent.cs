@@ -452,6 +452,14 @@ public abstract partial class BanterAgent : IAsyncDisposable
             return true;
         }
 
+        // A person chose who acts on this message. That choice replaces the room's dispatch for
+        // it: the agents on the list act, and nobody else does - the delegator included, unless
+        // it is on the list. Only from a person; the server strips it from agents as well.
+        if (ChosenBy(m) is { } chosen)
+        {
+            return chosen;
+        }
+
         // A room opened for two agents to work something out together. Being addressed by another
         // agent counts here and nowhere else: the permission is the room's, not the agent's, so
         // conferring cannot leak back into the main channel where it would not stop.
@@ -492,6 +500,15 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
         return Options.RespondToEveryMessage || Addressed(m);
     }
+
+    /// <summary>
+    /// Whether a person's own list of who should act includes this agent, or null when the
+    /// message carries no list and the room's usual dispatch applies.
+    /// </summary>
+    private bool? ChosenBy(MsgPayload m) =>
+        m.To is { } to && !IsAgentSender(m)
+            ? to.Contains(Nick, StringComparer.OrdinalIgnoreCase)
+            : null;
 
     /// <summary>
     /// Named at all — either "@nick" or the bare nick a delegator uses when handing work over.
@@ -822,9 +839,11 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// </summary>
     private async Task<bool> MayTakeDirectlyAsync(MsgPayload m)
     {
+        // Chosen on a person's list counts as being named: either way the request reached this
+        // third party without a delegator weighing it first.
         if (Options.Locality != AgentLocality.Frontier ||
             IsAgentSender(m) ||
-            !Mentioned(m))
+            !(Mentioned(m) || ChosenBy(m) == true))
         {
             return true;
         }

@@ -45,23 +45,40 @@ public sealed class AttachButtonTests
         Assert.DoesNotContain("hidden", vm.Model.AttachButtonClass);
     }
 
+    /// <summary>A real file to pick: staging reads its size, so a path to nothing is refused.</summary>
+    private static string TempFile(string name)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "banter-attach-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, name);
+        File.WriteAllBytes(path, [1, 2, 3]);
+        return path;
+    }
+
+    /// <summary>
+    /// Choosing a file puts it on the next message; it does not send it. Sent the moment it was
+    /// picked, it arrived as a message of its own - a bare filename the delegator then answered,
+    /// before anybody had written a word about what the file was for.
+    /// </summary>
     [Fact]
-    public async Task ChoosingAFileSendsItToTheRoom()
+    public async Task ChoosingAFileStagesItForTheNextMessage()
     {
         var vm = Ready();
         vm.EnableAttach();
         var sent = new List<(string Room, string Path)>();
+        var file = TempFile("diagram.png");
 
         var app = new BanterChatApp(vm)
         {
-            FilePicker = new StubFilePicker(@"C:\notes\diagram.png"),
+            FilePicker = new StubFilePicker(file),
             AttachAsync = (room, path) => { sent.Add((room, path)); return Task.CompletedTask; },
         };
 
         app.PickAttachment();
-        await SettleAsync(() => sent.Count > 0);
+        await SettleAsync(() => { vm.ApplyPending(); return vm.StagedFor("#main") is not null; });
 
-        Assert.Equal(("#main", @"C:\notes\diagram.png"), Assert.Single(sent));
+        Assert.Equal(file, vm.StagedFor("#main")?.Path);
+        Assert.Empty(sent);
     }
 
     [Fact]
@@ -104,22 +121,19 @@ public sealed class AttachButtonTests
         vm.AddRoom("#other");
         vm.SwitchTo("#main");
         vm.EnableAttach();
-        var sent = new List<(string Room, string Path)>();
+        var file = TempFile("report.pdf");
 
-        var app = new BanterChatApp(vm)
-        {
-            FilePicker = new StubFilePicker("/tmp/report.pdf"),
-            AttachAsync = (room, path) => { sent.Add((room, path)); return Task.CompletedTask; },
-        };
+        var app = new BanterChatApp(vm) { FilePicker = new StubFilePicker(file) };
 
         app.PickAttachment();
 
         // A dialog is modal to the user but not to the app: the room can change underneath it,
         // and the file belongs where they were looking when they chose it.
         vm.SwitchTo("#other");
-        await SettleAsync(() => sent.Count > 0);
+        await SettleAsync(() => { vm.ApplyPending(); return vm.StagedFor("#main") is not null; });
 
-        Assert.Equal("#main", Assert.Single(sent).Room);
+        Assert.NotNull(vm.StagedFor("#main"));
+        Assert.Null(vm.StagedFor("#other"));
     }
 
     [Fact]

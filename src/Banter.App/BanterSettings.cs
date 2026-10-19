@@ -82,6 +82,12 @@ public sealed record BanterSettings
     public bool FollowNewRooms { get; init; } = true;
 
     /// <summary>
+    /// Per room, the agents chosen to act on your messages there. A room absent from this is on
+    /// the default - its delegator decides - and an empty list means nobody acts unless named.
+    /// </summary>
+    public Dictionary<string, string[]> Recipients { get; init; } = [];
+
+    /// <summary>
     /// Hold the connection open while the app is in the background, and say so with a persistent
     /// notification. Android only; the desktop has no equivalent because nothing there takes its
     /// sockets away.

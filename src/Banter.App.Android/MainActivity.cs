@@ -132,6 +132,7 @@ public sealed class MainActivity : CupriActivity
         _viewModel.EnableNotificationAlerts();
         _viewModel.SetFlashOnMention(_settings.FlashOnMention);
         _viewModel.SetFollowNewRooms(_settings.FollowNewRooms);
+        _viewModel.LoadRecipients(_settings.Recipients);
 
         return new BanterChatApp(_viewModel)
         {
@@ -166,9 +167,16 @@ public sealed class MainActivity : CupriActivity
             ScanServerAsync = ScanServerAsync,
             StayConnectedChanged = StayConnectedChanged,
             VoiceSettingsChanged = VoiceSettingsChanged,
+            RecipientsChanged = saved =>
+            {
+                _settings = _settings with { Recipients = new Dictionary<string, string[]>(saved) };
+                _settings.TrySave(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
+            },
             // Quoted, because the picker's copy is named after what the user knows the file as
             // and that name can contain spaces.
             AttachAsync = (room, path) => Session?.UploadAsync(room, $"\"{path}\"") ?? Task.CompletedTask,
+            SendWithFileAsync = (room, text, path, replyTo) =>
+                Session?.SendWithFileAsync(room, text, path, replyTo) ?? Task.CompletedTask,
             VoiceToggleAsync = SetVoiceOpenAsync,
             ReadbackChangedAsync = policy => Session?.SetReadbackAsync(policy) ?? Task.CompletedTask,
 

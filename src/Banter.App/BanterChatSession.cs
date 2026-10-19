@@ -320,15 +320,17 @@ public sealed partial class BanterChatSession : IDisposable
     /// </summary>
     public async Task SendAsync(string room, string text, string replyTo = "")
     {
+        // Read before the first await, on the thread the view-model belongs to.
+        var to = _vm.RecipientsFor(room);
         try
         {
             if (replyTo.Length > 0)
             {
-                await _client.ReplyAsync(room, text, replyTo).ConfigureAwait(false);
+                await _client.ReplyAsync(room, text, replyTo, to).ConfigureAwait(false);
             }
             else
             {
-                await _client.SendMessageAsync(room, text).ConfigureAwait(false);
+                await _client.SendMessageAsync(room, text, to).ConfigureAwait(false);
             }
         }
         catch (BanterClientException ex)
@@ -552,25 +554,68 @@ public sealed partial class BanterChatSession : IDisposable
                 .UploadFileAsync(room, name, bytes, MimeTypes.ForFile(name), description)
                 .ConfigureAwait(false);
 
-            _vm.Post(() => _vm.SetAttachmentInfo(info.FileId, info.Name, info.Size));
-
-            // Show our own upload inline too, from the bytes we already have - no round trip.
-            if (MimeTypes.IsImage(info.MimeType) && bytes.LongLength <= MaxInlineImageBytes)
-            {
-                Directory.CreateDirectory(ImageCacheDirectory);
-                var cached = Path.Combine(ImageCacheDirectory, info.FileId + Path.GetExtension(info.Name));
-                await File.WriteAllBytesAsync(cached, bytes).ConfigureAwait(false);
-                lock (_fetchedImages)
-                {
-                    _fetchedImages.Add(info.FileId);
-                }
-
-                _vm.Post(() => _vm.SetInlineImage(info.FileId, cached));
-            }
+            await RememberUploadAsync(info, bytes).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _vm.Post(() => _vm.System(room, $"upload failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>
+    /// Sends a message with a file on it: the file is uploaded first without an announcement of
+    /// its own, then the words and the file go as one message - so the room, and the agents in
+    /// it, see what was said about the file together with the file. With no words, the file's
+    /// name stands in, as an upload always said.
+    /// </summary>
+    public async Task SendWithFileAsync(string room, string text, string path, string replyTo = "")
+    {
+        // Read before the first await, on the thread the view-model belongs to.
+        var to = _vm.RecipientsFor(room);
+        var name = Path.GetFileName(path);
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(path).ConfigureAwait(false);
+            var info = await _client
+                .UploadFileAsync(room, name, bytes, MimeTypes.ForFile(name), quiet: true)
+                .ConfigureAwait(false);
+            await RememberUploadAsync(info, bytes).ConfigureAwait(false);
+
+            await _client
+                .SendMessageAsync(room, text.Length > 0 ? text : name, info.FileId, replyTo, to)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is BanterClientException or IOException or UnauthorizedAccessException)
+        {
+            // The words go back in the composer and the file back on it, as with any failed send.
+            _vm.Post(() =>
+            {
+                _vm.SendFailed(room, text, $"{name}: {ex.Message}");
+                if (File.Exists(path))
+                {
+                    _vm.StageAttachment(room, path, new FileInfo(path).Length);
+                }
+            });
+        }
+    }
+
+    /// <summary>What this client knows of a file it has just uploaded: its name, and for an
+    /// image, a local copy to draw - from the bytes already in hand, with no round trip.</summary>
+    private async Task RememberUploadAsync(Protocol.FileInfoPayload info, byte[] bytes)
+    {
+        _vm.Post(() => _vm.SetAttachmentInfo(info.FileId, info.Name, info.Size));
+
+        if (MimeTypes.IsImage(info.MimeType) && bytes.LongLength <= MaxInlineImageBytes)
+        {
+            Directory.CreateDirectory(ImageCacheDirectory);
+            var cached = Path.Combine(ImageCacheDirectory, info.FileId + Path.GetExtension(info.Name));
+            await File.WriteAllBytesAsync(cached, bytes).ConfigureAwait(false);
+            lock (_fetchedImages)
+            {
+                _fetchedImages.Add(info.FileId);
+            }
+
+            _vm.Post(() => _vm.SetInlineImage(info.FileId, cached));
         }
     }
 

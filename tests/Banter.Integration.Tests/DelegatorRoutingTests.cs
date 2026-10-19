@@ -235,6 +235,62 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
             human, m => m.Text == "TWO-ANSWERED", within: TimeSpan.FromSeconds(2)));
     }
 
+    // ── A person choosing who acts on their message ──────────────────────────────────────────
+
+    [Fact]
+    public async Task TheAgentsAPersonChoseActAndTheDelegatorStandsAside()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var claude = new MarkerAgent(Frontier(), "CLAUDE-ANSWERED");
+        await claude.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        await human.SendMessageAsync("#main", "search github for something public", to: ["claude"]);
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "CLAUDE-ANSWERED"));
+        // Chosen is not a way round the egress rule: a third party reached directly still says so.
+        Assert.NotNull(await WaitForAsync(human, m => m.Sender == "claude" && m.Text.StartsWith("[egress]")));
+        Assert.Null(await WaitForAsync(human, m => m.Text == "LOCAL-ANSWERED", within: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public async Task AnEmptyChoiceMeansOnlyWhoeverIsNamedActs()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        await human.SendMessageAsync("#main", "just thinking out loud", to: []);
+        Assert.Null(await WaitForAsync(human, m => m.Text == "LOCAL-ANSWERED", within: TimeSpan.FromSeconds(2)));
+
+        // An @ still reaches who it names, list or no list.
+        await human.SendMessageAsync("#main", "@local now you", to: []);
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "LOCAL-ANSWERED"));
+    }
+
+    [Fact]
+    public async Task AnAgentCannotChooseWhoActs()
+    {
+        await using var human = await ReadyRoomAsync();
+        await using var local = new MarkerAgent(Delegator(), "LOCAL-ANSWERED");
+        await local.StartAsync(_transport);
+        await using var helper = new MarkerAgent(LocalHelper("local-2", "notes"), "TWO-ANSWERED");
+        await helper.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        // An agent's list would be a way round the delegator, so the server drops it.
+        await using var scout = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "scout", "pw");
+        await scout.JoinAsync("#main");
+        await scout.SendMessageAsync("#main", "do my notes", to: ["local-2"]);
+
+        Assert.Null(await WaitForAsync(human, m => m.Text == "TWO-ANSWERED", within: TimeSpan.FromSeconds(2)));
+        var said = (await human.GetHistoryAsync("#main", limit: 50)).Messages.Last(m => m.Sender == "scout");
+        Assert.Null(said.To);
+    }
+
     [Fact]
     public async Task ASideRoomsDelegatorAnswersAPersonWithoutBeingNamed()
     {

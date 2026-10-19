@@ -59,9 +59,11 @@ public static class BanterWeb
             // The settings page's one choice a browser keeps; the rest describe a desktop or a
             // phone and are not offered here.
             VoiceSettingsChanged = () => BrowserSettings.FollowNewRooms = _viewModel.FollowNewRooms,
+            RecipientsChanged = saved => BrowserSettings.Recipients = saved,
         };
 
         _viewModel.SetFollowNewRooms(BrowserSettings.FollowNewRooms);
+        _viewModel.LoadRecipients(BrowserSettings.Recipients);
 
         // No server is configured in a browser — there are no command-line arguments to read one
         // from — so the connect screen is where every session starts. The server is the node's

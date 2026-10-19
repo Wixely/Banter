@@ -24,6 +24,11 @@ internal static class BrowserSettings
     private const string ZoomKey = "banter.zoom";
     private const string UserKey = "banter.user";
     private const string FollowKey = "banter.follow-new-rooms";
+    private const string RecipientsKey = "banter.recipients";
+
+    /// <summary>Room names and agent nicks, as JSON: longer than anything else here, so its own
+    /// ceiling. Past it the stored value is ignored rather than half-read.</summary>
+    private const int MaxRecipientsChars = 16 * 1024;
 
     /// <summary>Long enough for anything stored here; a value longer than this was not written by
     /// us and is not worth honouring.</summary>
@@ -87,9 +92,36 @@ internal static class BrowserSettings
         }
     }
 
-    private static unsafe string? Read(string key)
+    /// <summary>
+    /// Per room, the agents chosen to act on your messages there. Unreadable storage is the
+    /// default everywhere, which is the safe direction: the delegator decides.
+    ///
+    /// <para>One room per line, the room then its agents, tab-separated - neither a room name nor
+    /// a nick can hold a tab or a newline. Not JSON: this head is trimmed, and a reflection-based
+    /// serializer is exactly what a trimmer removes the insides of.</para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string[]> Recipients
     {
-        var buffer = new char[MaxChars];
+        get
+        {
+            var saved = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in (Read(RecipientsKey, MaxRecipientsChars) ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = line.Split('\t');
+                if (parts[0].Length > 0)
+                {
+                    saved[parts[0]] = [.. parts.Skip(1).Where(p => p.Length > 0)];
+                }
+            }
+
+            return saved;
+        }
+        set => Write(RecipientsKey, string.Join('\n', value.Select(r => string.Join('\t', [r.Key, .. r.Value]))));
+    }
+
+    private static unsafe string? Read(string key, int capacity = MaxChars)
+    {
+        var buffer = new char[capacity];
         fixed (char* k = key)
         fixed (char* b = buffer)
         {

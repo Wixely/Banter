@@ -194,6 +194,19 @@ internal sealed class ClientSession(
                         break;
                     }
 
+                    // A message carrying a file says "here is this file" to everyone in the room,
+                    // so the file has to be one that room can read. Otherwise a message could name
+                    // a file from a room these readers are not in, and an agent would go and ask
+                    // for it on their behalf.
+                    if (payload is MsgPayload { FileId: { Length: > 0 } attached } carrying
+                        && !(await files.GetGrantedRoomsAsync(attached).ConfigureAwait(false))
+                            .Contains(carrying.Room, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Send(new ErrorPayload("NO_ACCESS", $"That file is not shared with {carrying.Room}."),
+                            replyTo: envelope.MsgId);
+                        break;
+                    }
+
                     await engine.DispatchAsync(this, envelope, payload).ConfigureAwait(false);
                     break;
             }
