@@ -317,6 +317,9 @@ internal sealed partial class RoomEngine(
             case AgentMovePayload move:
                 await HandleAgentMoveAsync(session, envelope, move).ConfigureAwait(false);
                 break;
+            case KickPayload kick:
+                await HandleKickAsync(session, envelope, kick).ConfigureAwait(false);
+                break;
             case TaskPostPayload post:
                 await HandleTaskPostAsync(session, envelope, post).ConfigureAwait(false);
                 break;
@@ -851,6 +854,66 @@ internal sealed partial class RoomEngine(
     }
 
     /// <summary>
+    /// Take somebody out of a room. An admin may remove anybody; a delegator may remove agents
+    /// from the room it runs - the same reach it has for putting them in. Every session of the
+    /// account goes, and each is told, so a client and an agent both know to stop treating the
+    /// room as theirs rather than finding out on the next thing they try to say.
+    /// </summary>
+    private async ValueTask HandleKickAsync(ClientSession session, BanterEnvelope envelope, KickPayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var leaving = room.Members
+            .Where(m => string.Equals(m.Nick, request.Nick, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (leaving.Count == 0)
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"{request.Nick} is not in {room.Name}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var isAgent = leaving[0].IsAgent;
+        var mayRemove = session.IsAdmin
+            || (isAgent && string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase));
+        if (!mayRemove)
+        {
+            session.Send(
+                new ErrorPayload("NOT_ALLOWED", isAgent
+                    ? $"Only an admin or {room.Name}'s delegator may remove an agent from it."
+                    : $"Only an admin may remove somebody from {room.Name}."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        var reason = request.Reason is { Length: > 0 } why ? $"removed by {session.Nick}: {why}" : $"removed by {session.Nick}";
+        foreach (var member in leaving)
+        {
+            room.Members.Remove(member);
+        }
+
+        room.Leaving.Remove(request.Nick);
+        var part = new PartPayload(room.Name, reason, leaving[0].Nick);
+        Broadcast(room, part);
+        foreach (var member in leaving)
+        {
+            member.Send(part);
+        }
+
+        if (room.Agents.Remove(request.Nick))
+        {
+            await ReelectAsync(room).ConfigureAwait(false);
+        }
+
+        session.Send(new OkPayload(), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
     /// Move an agent into a room on a delegator's behalf. The clearance check is the point of
     /// this handler: without it a delegator could pull a frontier agent into a sensitive
     /// sub-room, which is exactly the egress the routing rules exist to prevent.
@@ -858,14 +921,17 @@ internal sealed partial class RoomEngine(
     private async ValueTask HandleAgentMoveAsync(
         ClientSession session, BanterEnvelope envelope, AgentMovePayload request)
     {
-        if (!_rooms.TryGetValue(request.Room, out var room) || !room.Members.Contains(session))
+        // An admin may put anybody in any room - person or agent, whether or not the admin is in
+        // it - which is how a member who fell out of a room gets back. Everybody else is a
+        // delegator moving agents into the room it runs, as before.
+        if (!_rooms.TryGetValue(request.Room, out var room) || (!session.IsAdmin && !room.Members.Contains(session)))
         {
             session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."),
                 replyTo: envelope.MsgId);
             return;
         }
 
-        if (!string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase))
+        if (!session.IsAdmin && !string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase))
         {
             session.Send(new ErrorPayload("NOT_DELEGATOR", $"Only {room.Name}'s delegator may move agents into it."),
                 replyTo: envelope.MsgId);
@@ -882,8 +948,25 @@ internal sealed partial class RoomEngine(
         var target = targets.First();
         if (!target.IsAgent)
         {
-            session.Send(new ErrorPayload("NOT_AN_AGENT", "Only agents can be moved between rooms."),
-                replyTo: envelope.MsgId);
+            if (!session.IsAdmin)
+            {
+                session.Send(new ErrorPayload("NOT_AN_AGENT", "Only agents can be moved between rooms."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+
+            // A person, added by an admin. No clearance to check and no election to run: what
+            // they are owed is the room, announced, and told how it dispatches.
+            foreach (var added in targets.Where(t => room.Members.Add(t)).ToList())
+            {
+                Broadcast(room, new JoinPayload(room.Name, added.Nick));
+                added.Send(new RoomModePayload(room.Name, room.Mode));
+                added.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
+                added.Send(new RoomRegimePayload(room.Name, room.Regime));
+            }
+
+            await AnnounceSystemAsync(room, $"{target.Nick} was added by {session.Nick}.").ConfigureAwait(false);
+            session.Send(new OkPayload(), replyTo: envelope.MsgId);
             return;
         }
 

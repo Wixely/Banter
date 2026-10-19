@@ -67,6 +67,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
         _client.RoomClosed += OnRoomClosed;
+        _client.MemberParted += OnMemberParted;
         _client.MemberJoined += OnMemberJoined;
         _client.TaskChanged += OnTaskChanged;
         _client.Reconnected += OnReconnected;
@@ -253,7 +254,19 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
                 foreach (var room in rooms)
                 {
-                    await RefreshRosterAsync(room, _stopping.Token).ConfigureAwait(false);
+                    // Each room on its own. One this agent is no longer in used to throw here and
+                    // end the whole resync, leaving every later room unread - and the agent still
+                    // holding a roster for a room it had left, so it believed it was there.
+                    try
+                    {
+                        await RefreshRosterAsync(room, _stopping.Token).ConfigureAwait(false);
+                    }
+                    catch (BanterErrorException ex) when (ex.Code == "NOT_IN_ROOM")
+                    {
+                        ForgetRoom(room);
+                        continue;
+                    }
+
 
                     // And what was said while the connection was down. A rejoin restores the
                     // agent's place in the room but says nothing about the gap, which is exactly
@@ -294,13 +307,25 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// a reconnect rejoins every room it has a roster for, and rejoining a closed room would open
     /// it again.
     /// </summary>
-    private void OnRoomClosed(RoomClosePayload p)
+    private void OnRoomClosed(RoomClosePayload p) => ForgetRoom(p.Room);
+
+    /// <summary>Taken out of a room - by an admin, say. Forgotten like a closed one, so the agent
+    /// stops believing it is there and a reconnect does not try to put it back.</summary>
+    private void OnMemberParted(PartPayload p)
+    {
+        if (string.Equals(p.Nick, Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            ForgetRoom(p.Room);
+        }
+    }
+
+    private void ForgetRoom(string room)
     {
         lock (_roomStateLock)
         {
-            _rosters.Remove(p.Room);
-            _delegators.Remove(p.Room);
-            _modes.Remove(p.Room);
+            _rosters.Remove(room);
+            _delegators.Remove(room);
+            _modes.Remove(room);
         }
     }
 
@@ -970,6 +995,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
             _client.DelegatorChanged -= OnDelegatorChanged;
             _client.RoomModeChanged -= OnRoomModeChanged;
             _client.RoomClosed -= OnRoomClosed;
+            _client.MemberParted -= OnMemberParted;
             _client.MemberJoined -= OnMemberJoined;
             _client.TaskChanged -= OnTaskChanged;
             _client.Reconnected -= OnReconnected;

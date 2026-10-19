@@ -32,6 +32,9 @@ public sealed class AgentReconnectTests : IAsyncLifetime
 
     private sealed class EchoAgent(BanterAgentOptions options) : BanterAgent(options)
     {
+        /// <summary>Opens a side room the way a delegator does, by creating it rather than joining.</summary>
+        public Task OpenForTestAsync(string room, string parent) => Client.CreateSubRoomAsync(room, parent, "work");
+
         protected override async IAsyncEnumerable<string> RespondAsync(
             string room, string sender, string prompt,
             [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -99,6 +102,57 @@ public sealed class AgentReconnectTests : IAsyncLifetime
         // at Unknown — present, answering, and quietly ineligible.
         await WaitForRosterAsync(human, a => a.Locality == AgentLocality.Local && a.IsDelegator,
             "scout to be re-elected with Local locality after the restart");
+    }
+
+    /// <summary>
+    /// A room an agent opened is still its room after the connection drops. It used to be
+    /// rejoined only if the agent had JOINED it: a room it created - every side room a delegator
+    /// opens - was not on the client's list, so after a reconnect the server had taken the agent
+    /// out and nothing asked to put it back, while the agent's cached roster still said it was
+    /// there.
+    /// </summary>
+    [Fact]
+    public async Task ARoomTheAgentOpenedIsRejoinedAfterTheConnectionDrops()
+    {
+        var port = _server.Endpoint.Port;
+
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
+        await human.JoinAsync("#main");
+
+        await using var agent = new EchoAgent(new BanterAgentOptions
+        {
+            Server = _server.Endpoint,
+            User = "scout",
+            Password = "pw",
+            Rooms = ["#main"],
+            Locality = AgentLocality.Local,
+            Clearance = DataSensitivity.Sensitive,
+            Skills = ["chat"],
+        });
+        await agent.StartAsync(_transport);
+        await WaitForRosterAsync(human, a => a.IsDelegator, "scout to be elected");
+        await agent.OpenForTestAsync("#side", "#main");
+
+        var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        human.Reconnected += () => reconnected.TrySetResult();
+        await _server.DisposeAsync();
+        _server = new BanterServer(_transport, _accounts, new DbServerStore(_database), _files);
+        await StartOnPortWithRetryAsync(_server, port);
+        await reconnected.Task.WaitAsync(Timeout);
+
+        await human.JoinAsync("#side");
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        var back = false;
+        while (!back && DateTimeOffset.UtcNow < deadline)
+        {
+            back = (await human.GetMembersAsync("#side")).Members.Any(m => m.Nick == "scout");
+            if (!back)
+            {
+                await Task.Delay(50);
+            }
+        }
+
+        Assert.True(back, "scout was not put back in the room it opened");
     }
 
     /// <summary>Polls the roster until scout matches, riding out the observer's own reconnect.</summary>

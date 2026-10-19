@@ -124,6 +124,7 @@ public sealed partial class ChatViewModel
         }
 
         RefreshRegime();
+        RefreshMembership();
 
         var shown = isAdmin ? "rail-button" : "rail-button hidden";
         Model.AgentsButtonClass = shown;

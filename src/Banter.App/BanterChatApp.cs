@@ -559,6 +559,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <span class="agent-meta">{{Locality}} · {{Skills}}</span>
                 </span>
                 <span class="{{PickClass}}" data-pick="{{Nick}}"><span class="pick-box"><span class="pick-tick pick-tick-short"></span><span class="pick-tick pick-tick-long"></span></span></span>
+                <span class="{{RemoveClass}}" data-member-remove="{{Nick}}"><span class="mx-bar mx-a"></span><span class="mx-bar mx-b"></span></span>
               </div>
             </div>
             <div class="{{RosterUsersTitleClass}}">Users</div>
@@ -568,6 +569,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <span class="agent-main">
                   <span class="agent-line"><span class="agent-nick">{{Nick}}</span><span class="member-badge">{{Badge}}</span></span>
                 </span>
+                <span class="{{RemoveClass}}" data-member-remove="{{Nick}}"><span class="mx-bar mx-a"></span><span class="mx-bar mx-b"></span></span>
+              </div>
+            </div>
+            <!-- An admin's way to put somebody in this room: the people and agents they can see in
+                 their other rooms, who are not in this one. /add <nick> reaches anybody else. -->
+            <div class="{{AddableClass}}">
+              <div class="roster-title">Add to this room</div>
+              <div class="addable-row" data-repeat="Addable" data-member-add="{{Nick}}">
+                <span class="add-plus"><span class="add-h"></span><span class="add-v"></span></span><span class="addable-nick">{{Nick}}</span><span class="addable-kind">{{Kind}}</span>
               </div>
             </div>
           </div>
@@ -1954,6 +1964,29 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .pick-tick-long { left: 5px; top: 6px; width: 10px; transform: rotate(-50deg); }
         .pick.on .pick-tick { background: #ffffff; }
 
+        /* Membership, for an admin. A small cross at the end of each member's row to take them
+           out, and a list of who could be put in, each behind a plus - both drawn from bars. */
+        .member-x { position: relative; flex: 0 0 auto; width: 22px; height: 22px; margin-left: 2px;
+                    border-radius: 6px; cursor: pointer; }
+        .member-x:hover { background: #2a303b; }
+        .mx-bar { position: absolute; left: 6px; top: 10px; width: 10px; height: 2px;
+                  border-radius: 1px; background: #5d6572; }
+        .member-x:hover .mx-bar { background: #fb7185; }
+        .mx-a { transform: rotate(45deg); }
+        .mx-b { transform: rotate(-45deg); }
+        .addable { padding-top: 10px; }
+        .addable.hidden { display: none; }
+        .addable-row { display: flex; flex-direction: row; align-items: center; height: 30px;
+                       padding: 0 8px; border-radius: 9px; cursor: pointer; }
+        .addable-row:hover { background: #171b22; }
+        .add-plus { position: relative; flex: 0 0 auto; width: 16px; height: 16px; margin-right: 8px;
+                    border-radius: 5px; border: 1px solid #3b4452; }
+        .add-h { position: absolute; left: 3px; top: 7px; width: 8px; height: 2px; background: #93a5bd; }
+        .add-v { position: absolute; left: 6px; top: 4px; width: 2px; height: 8px; background: #93a5bd; }
+        .addable-row:hover .add-plus { border-color: #34d399; }
+        .addable-nick { flex: 1; min-width: 0; overflow: hidden; font-size: 11px; color: #c8ced7; }
+        .addable-kind { font-size: 9px; color: #747f91; }
+
         /* The third-party warning in the composer: an amber disc with an exclamation mark drawn
            from a bar and a dot. Amber because it is a caution, not a fault - sending is allowed,
            it is just leaving the building. */
@@ -2562,6 +2595,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         body.cupri-coarse .tab { height: 44px; }
         body.cupri-coarse .pick { width: 44px; height: 44px; }
         body.cupri-coarse .staged-x { width: 44px; height: 44px; }
+        body.cupri-coarse .member-x { width: 44px; height: 44px; }
+        body.cupri-coarse .mx-bar { left: 17px; top: 21px; }
+        body.cupri-coarse .addable-row { height: 44px; }
         body.cupri-coarse .staged-x .x-bar { left: 15px; top: 21px; }
         body.cupri-coarse .pick-clear { padding: 13px 10px; }
         /* A finger cannot hover, so every tab's cross is drawn, and big enough to hit. */
@@ -3292,6 +3328,30 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
             ViewModel.ConfirmEndInterregnum(room);
             doc.Refresh();
+            return true;
+        });
+
+        // Membership, for an admin: out of this room, or into it. Through the session's commands,
+        // so the buttons and /remove and /add are one path the server answers the same way.
+        doc.OnAction("data-member-remove", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/remove {e.Value}");
+            return true;
+        });
+
+        doc.OnAction("data-member-add", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/add {e.Value}");
             return true;
         });
 

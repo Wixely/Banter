@@ -469,6 +469,20 @@ public sealed partial class BanterChatSession : IDisposable
             case "part":
                 await Guard(room, () => PartAsync(room)).ConfigureAwait(false);
                 break;
+            case "add" when rest.Length > 0:
+                // Put somebody in this room. The server decides whether you may: an admin can add
+                // anybody, a delegator only agents into the room it runs.
+                await Guard(room, () => _client.AddToRoomAsync(rest.Split(' ')[0].TrimStart('@'), room))
+                    .ConfigureAwait(false);
+                break;
+            case "remove" when rest.Length > 0:
+            {
+                var gap = rest.IndexOf(' ');
+                var nick = (gap < 0 ? rest : rest[..gap]).TrimStart('@');
+                var reason = gap < 0 ? "" : rest[(gap + 1)..].Trim();
+                await Guard(room, () => _client.RemoveFromRoomAsync(nick, room, reason)).ConfigureAwait(false);
+                break;
+            }
             case "regime":
             {
                 // "/regime" says what this room is under; "/regime republic" ends an interregnum
@@ -525,7 +539,7 @@ public sealed partial class BanterChatSession : IDisposable
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
                     "/edit <text> | /delete | " +
-                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
@@ -922,6 +936,21 @@ public sealed partial class BanterChatSession : IDisposable
 
     private void OnParted(Protocol.PartPayload p)
     {
+        // Taken out of the room ourselves. The tab goes, as it does when we leave, and the room we
+        // land in says who did it - otherwise a tab simply vanishing reads as a fault.
+        if (string.Equals(p.Nick, _client.Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            _vm.Post(() =>
+            {
+                _vm.RemoveRoom(p.Room);
+                if (p.Reason is { Length: > 0 } why && _vm.Model.ActiveRoom.Length > 0)
+                {
+                    _vm.System(_vm.Model.ActiveRoom, $"You were taken out of {p.Room} ({why}).");
+                }
+            });
+            return;
+        }
+
         _vm.Post(() => _vm.System(p.Room, p.Reason is { Length: > 0 } r ? $"{p.Nick} left ({r})" : $"{p.Nick} left"));
         _ = RefreshRosterAsync(p.Room);
     }

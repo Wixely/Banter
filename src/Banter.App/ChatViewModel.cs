@@ -1259,6 +1259,7 @@ public sealed partial class ChatViewModel
         Model.Delegator = delegatorRow?.Nick ?? "no delegator";
         RefreshDispatch();
         RefreshPicks();
+        RefreshMembership();
     }
 
     private void ShowUsersFor(string room)
@@ -1270,6 +1271,44 @@ public sealed partial class ChatViewModel
         }
 
         Model.RosterUsersTitleClass = Model.Users.Count > 0 ? "roster-title" : "roster-title hidden";
+        RefreshMembership();
+    }
+
+    /// <summary>
+    /// For an admin, a way out of the room for each member and a way in for the people and agents
+    /// they can see elsewhere. Members could only ever be moved by a delegator, and only agents,
+    /// so somebody who fell out of a room had no way back that a person could give them.
+    /// </summary>
+    private void RefreshMembership()
+    {
+        var cls = IsAdmin ? "member-x" : "no-close";
+        foreach (var row in Model.Agents)
+        {
+            row.RemoveClass = string.Equals(row.Nick, Model.Nick, StringComparison.OrdinalIgnoreCase) ? "no-close" : cls;
+        }
+
+        foreach (var row in Model.Users)
+        {
+            row.RemoveClass = string.Equals(row.Nick, Model.Nick, StringComparison.OrdinalIgnoreCase) ? "no-close" : cls;
+        }
+
+        var room = Model.ActiveRoom;
+        var here = Model.Agents.Select(a => a.Nick).Concat(Model.Users.Select(u => u.Nick))
+            .Append(Model.Nick)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var elsewhere = _agents.Where(r => !string.Equals(r.Key, room, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(r => r.Value).Select(a => (a.Nick, Kind: "agent"))
+            .Concat(_users.Where(r => !string.Equals(r.Key, room, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(r => r.Value).Select(u => (u.Nick, Kind: "person")))
+            .Where(m => !here.Contains(m.Nick))
+            .DistinctBy(m => m.Nick, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(m => m.Kind == "agent" ? 0 : 1).ThenBy(m => m.Nick, StringComparer.OrdinalIgnoreCase)
+            .Select(m => new AddableRow { Nick = m.Nick, Kind = m.Kind })
+            .ToList();
+
+        Model.Addable = IsAdmin ? elsewhere : [];
+        Model.AddableClass = IsAdmin && elsewhere.Count > 0 ? "addable" : "addable hidden";
     }
 
     // ── Task board (PLAN §8b) ────────────────────────────────────────────────────────────────

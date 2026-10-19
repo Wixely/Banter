@@ -220,6 +220,10 @@ public sealed partial class AgentRow
     /// <summary>The box saying whether this agent acts on your messages here: <c>pick</c> or
     /// <c>pick on</c>.</summary>
     public string PickClass { get; set; } = "pick";
+
+    /// <summary>Taking this agent out of the room: <c>member-x</c> for an admin, <c>no-close</c>
+    /// for everybody else.</summary>
+    public string RemoveClass { get; set; } = "no-close";
 }
 
 /// <summary>A unit of work on the room's board (PLAN §8b).</summary>
@@ -348,6 +352,19 @@ public sealed partial class RosterUserRow
     public string Badge { get; set; } = "";
 
     public string RowClass { get; set; } = "member";
+
+    /// <summary>Taking this person out of the room: <c>member-x</c> for an admin, otherwise none.</summary>
+    public string RemoveClass { get; set; } = "no-close";
+}
+
+/// <summary>Somebody an admin could put in the room on screen: seen in another room, not in this one.</summary>
+[CupriBindable]
+public sealed partial class AddableRow
+{
+    public string Nick { get; set; } = "";
+
+    /// <summary>"agent" or "person".</summary>
+    public string Kind { get; set; } = "";
 }
 
 /// <summary>
@@ -583,6 +600,12 @@ public sealed partial class ChatModel
     /// <summary>The header's status pill: <c>on</c> with a delegator, <c>off</c> without one,
     /// hidden before anything is known.</summary>
     public string DispatchClass { get; set; } = "dispatch hidden";
+
+    /// <summary>The roster's "add to this room" list: <c>addable</c>, or hidden when there is
+    /// nobody to add or nobody here may add them.</summary>
+    public string AddableClass { get; set; } = "addable hidden";
+
+    public List<AddableRow> Addable { get; set; } = [];
 
     /// <summary>The roster's reset for who acts on your messages, shown once something is ticked
     /// differently from the default.</summary>

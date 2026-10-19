@@ -372,9 +372,35 @@ public sealed partial class BanterClient : IAsyncDisposable
         string room, string parentRoom, string purpose = "", CancellationToken cancellationToken = default) =>
         CreateRoomAsync(room, parentRoom, purpose, cancellationToken);
 
-    public Task<RoomCreatePayload> CreateRoomAsync(
-        string room, string? parentRoom = null, string purpose = "", CancellationToken cancellationToken = default) =>
-        RequestAsync<RoomCreatePayload>(new RoomCreatePayload(room, parentRoom, purpose), cancellationToken);
+    public async Task<RoomCreatePayload> CreateRoomAsync(
+        string room, string? parentRoom = null, string purpose = "", CancellationToken cancellationToken = default)
+    {
+        var created = await RequestAsync<RoomCreatePayload>(new RoomCreatePayload(room, parentRoom, purpose), cancellationToken)
+            .ConfigureAwait(false);
+
+        // The creator is in the room it opened, and must be put back in it after a reconnect like
+        // any room it joined. It was not on the list, so every side room a delegator opened was
+        // quietly lost on the first dropped connection.
+        Remember(created.Room);
+        return created;
+    }
+
+    /// <summary>A room this session is in, to rejoin after a reconnect.</summary>
+    private void Remember(string room)
+    {
+        lock (_roomsLock)
+        {
+            _joinedRooms.Add(room);
+        }
+    }
+
+    private void Forget(string room)
+    {
+        lock (_roomsLock)
+        {
+            _joinedRooms.Remove(room);
+        }
+    }
 
     /// <summary>
     /// Close a room for everybody in it. An admin may close any room; an agent, a room it is the
@@ -391,6 +417,20 @@ public sealed partial class BanterClient : IAsyncDisposable
     public Task<RoomRegimePayload> SetRoomRegimeAsync(
         string room, RoomRegime regime, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomRegimePayload>(new RoomRegimePayload(room, regime), cancellationToken);
+
+    /// <summary>
+    /// Put somebody in a room. An admin may add anybody, person or agent, to any room; a
+    /// delegator may move agents into the room it runs (see <see cref="MoveAgentAsync"/>).
+    /// </summary>
+    public Task AddToRoomAsync(string nick, string room, string reason = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new AgentMovePayload(nick, room, reason), cancellationToken);
+
+    /// <summary>
+    /// Take somebody out of a room. An admin may remove anybody; a delegator may remove agents
+    /// from the room it runs.
+    /// </summary>
+    public Task RemoveFromRoomAsync(string nick, string room, string reason = "", CancellationToken cancellationToken = default) =>
+        RequestAsync<OkPayload>(new KickPayload(room, nick, reason), cancellationToken);
 
     /// <summary>
     /// Pull an agent into a room you are the delegator of. Refused when the agent is not cleared
@@ -1260,9 +1300,24 @@ public sealed partial class BanterClient : IAsyncDisposable
                         MessageDeleted?.Invoke(delete);
                         break;
                     case JoinPayload join:
+                        // Put into a room by somebody else - moved by a delegator, added by an
+                        // admin, or added as an operator to a room an agent opened. Those rooms
+                        // are ours to rejoin too; only the ones we joined ourselves were.
+                        if (string.Equals(join.Nick, Nick, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Remember(join.Room);
+                        }
+
                         MemberJoined?.Invoke(join);
                         break;
                     case PartPayload part:
+                        // Taken out - by an admin, or by leaving on another device. Rejoining it
+                        // on the next reconnect would undo exactly that.
+                        if (string.Equals(part.Nick, Nick, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Forget(part.Room);
+                        }
+
                         MemberParted?.Invoke(part);
                         break;
                     case TopicPayload topic:
