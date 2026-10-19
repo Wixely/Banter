@@ -39,6 +39,9 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
         /// <summary>Joins a room, standing in for the delegator moving this agent into one.</summary>
         public Task JoinForTestAsync(string room) => Client.JoinAsync(room);
 
+        /// <summary>Whether this agent's roster has caught up with <paramref name="nick"/> being an agent.</summary>
+        public bool KnowsAgent(string nick) => KnownAgents.Contains(nick, StringComparer.OrdinalIgnoreCase);
+
         protected override async IAsyncEnumerable<string> RespondAsync(
             string room, string sender, string prompt,
             [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -284,6 +287,18 @@ public sealed class DelegatorRoutingTests : IAsyncLifetime
         // An agent's list would be a way round the delegator, so the server drops it.
         await using var scout = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "scout", "pw");
         await scout.JoinAsync("#main");
+
+        // Not before the delegator knows scout is an agent. It learns that from a roster read on
+        // the join, and a message that beats the read is taken for a person's - which the
+        // delegator acts on and hands to local-2, failing this for a reason it is not testing.
+        // That race failed on CI once in two runs.
+        var deadline = DateTimeOffset.UtcNow + Timeout;
+        while (!local.KnowsAgent("scout") && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
+
+        Assert.True(local.KnowsAgent("scout"), "the delegator never learned scout is an agent");
         await scout.SendMessageAsync("#main", "do my notes", to: ["local-2"]);
 
         Assert.Null(await WaitForAsync(human, m => m.Text == "TWO-ANSWERED", within: TimeSpan.FromSeconds(2)));
