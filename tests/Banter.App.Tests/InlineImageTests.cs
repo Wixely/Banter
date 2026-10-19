@@ -53,10 +53,13 @@ public sealed class InlineImageTests(ITestOutputHelper output) : IDisposable
         doc.BuildDisplayList(1100, 760);
         var px = doc.RenderToPixels(1100, 760, SKColors.Black);
 
+        // Close to the image's own (255, 140, 0) and no further. A broad "orange" also took in the
+        // antialiased rim of the amber status dot in the header - eight pixels on Linux, none on
+        // Windows, which rasterise that edge differently - and so failed on CI with no image at all.
         long count = 0;
         for (var i = 0; i + 3 < px.Length; i += 4)
         {
-            if (px[i] > 200 && px[i + 1] is > 100 and < 190 && px[i + 2] < 60)
+            if (px[i] > 245 && px[i + 1] is > 128 and < 152 && px[i + 2] < 16)
             {
                 count++;
             }
