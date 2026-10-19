@@ -591,11 +591,18 @@ public sealed partial class BanterChatSession : IDisposable
                 });
                 await LoadToolsAsync(rest).ConfigureAwait(false);
                 break;
+            case "about":
+                _vm.Post(() =>
+                {
+                    _vm.ShowSettingsPanel(true);
+                    _vm.ShowSettingsSection("about");
+                });
+                break;
             case "help":
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
                     "/edit <text> | /delete | " +
-                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /room | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /room | /about | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));

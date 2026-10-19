@@ -203,6 +203,11 @@ public sealed partial class ChatViewModel
         SettingsSection = section;
         Model.SettingsSections = SectionChoices(section);
         Model.YouFieldsClass = FieldClass(section == "you");
+        Model.AboutFieldsClass = FieldClass(section == "about");
+        if (section == "about")
+        {
+            FillAbout();
+        }
         Model.AlertFieldsClass = FieldClass(section == "alerts");
         Model.ListeningFieldsClass = FieldClass(section == "listening");
         Model.TranscriptFieldsClass = FieldClass(section == "transcripts");
@@ -226,6 +231,7 @@ public sealed partial class ChatViewModel
             ("listening", "Listening"),
             ("transcripts", "Transcripts"),
             ("speaking", "Speaking"),
+            ("about", "About"),
         }.Select(o => new ChoiceRow
         {
             Value = o.Item1,

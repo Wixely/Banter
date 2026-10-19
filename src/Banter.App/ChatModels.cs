@@ -361,6 +361,14 @@ public sealed partial class RosterUserRow
     public string RemoveClass { get; set; } = "no-close";
 }
 
+/// <summary>One of the About tab's short explanations.</summary>
+[CupriBindable]
+public sealed partial class HelpRow
+{
+    public string Title { get; set; } = "";
+    public string Text { get; set; } = "";
+}
+
 /// <summary>Somebody an admin could put in the room on screen: seen in another room, not in this one.</summary>
 [CupriBindable]
 public sealed partial class AddableRow
@@ -949,6 +957,17 @@ public sealed partial class ChatModel
     public List<ChoiceRow> SettingsSections { get; set; } = [];
 
     public string YouFieldsClass { get; set; } = "mgmt-field";
+
+    /// <summary>The About tab's fields.</summary>
+    public string AboutFieldsClass { get; set; } = "mgmt-field hidden";
+
+    /// <summary>This build of Banter, as people read a version.</summary>
+    public string AboutVersion { get; set; } = "";
+
+    /// <summary>The CupriFace build it runs on.</summary>
+    public string AboutEngine { get; set; } = "";
+
+    public List<HelpRow> HelpItems { get; set; } = [];
 
     public string AlertFieldsClass { get; set; } = "mgmt-field hidden";
 

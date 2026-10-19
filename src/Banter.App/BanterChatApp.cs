@@ -701,6 +701,24 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <div class="{{RowClass}}" data-repeat="SettingsSections" data-settings-section="{{Value}}">{{Label}}</div>
                 </div>
                 <div class="mgmt-fields">
+                  <div class="{{AboutFieldsClass}}">
+                    <div class="mgmt-label">Banter</div>
+                    <div class="mgmt-control">
+                      <div class="about-version">Version {{AboutVersion}}</div>
+                      <div class="mgmt-hint">On CupriFace {{AboutEngine}}</div>
+                      <div class="about-link-row"><a class="about-link" href="{{{ChatViewModel.ProjectUrl}}}">{{{ChatViewModel.ProjectUrl.Replace("https://", "")}}}</a></div>
+                      <div class="mgmt-hint">The source, the releases, and where to report a problem.</div>
+                    </div>
+                  </div>
+                  <div class="{{AboutFieldsClass}}">
+                    <div class="mgmt-label">How it works</div>
+                    <div class="mgmt-control">
+                      <div class="help-item" data-repeat="HelpItems">
+                        <div class="help-title">{{Title}}</div>
+                        <div class="help-text">{{Text}}</div>
+                      </div>
+                    </div>
+                  </div>
                   <div class="{{YouFieldsClass}}">
                     <div class="mgmt-label">Account</div>
                     <div class="mgmt-control">
@@ -2341,6 +2359,18 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .settings-tab { padding: 5px 12px; margin-right: 6px; font-size: 12px; color: #8d97a6;
                         background: #151920; border: 1px solid #262d38; border-radius: 8px; }
         .settings-tab.on { color: #f3f5f7; background: #1f2530; border-color: #3b4453; }
+        .about-version { font-size: 15px; font-weight: bold; color: #f3f5f7; }
+        /* In a row of its own, so it is as wide as its text: a column stretches its children, and the
+           engine has no align-self to say otherwise. */
+        .about-link-row { display: flex; flex-direction: row; }
+        .about-link { display: inline-block; margin-top: 10px; padding: 6px 12px; border-radius: 9px;
+                      font-size: 12px; font-weight: bold; color: #fb7185; background: #1b2029;
+                      border: 1px solid #333a46; cursor: pointer; }
+        .about-link:hover { background: #242a34; }
+        .help-item { padding: 10px 12px; margin-bottom: 8px; border-radius: 10px; background: #131820;
+                     border: 1px solid #1c222b; }
+        .help-title { font-size: 12px; font-weight: bold; color: #e6eaf0; }
+        .help-text { font-size: 11px; color: #9aa3b0; margin-top: 3px; }
         /* The voice list is the one thing here that grows with the room, so it scrolls rather
            than pushing the rest of the page off the bottom. Its own class rather than a modifier
            on .mgmt-rows: that rule carries flex:1, which in a column with no height of its own
@@ -2694,6 +2724,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         body.cupri-coarse .staged-x { width: 44px; height: 44px; }
         body.cupri-coarse .member-x { width: 44px; height: 44px; }
         body.cupri-coarse .room-menu { width: 44px; height: 44px; }
+        body.cupri-coarse .about-link { padding: 14px 16px; }
         body.cupri-coarse .rm-dot { top: 21px; }
         body.cupri-coarse .rm-a { left: 16px; }
         body.cupri-coarse .rm-b { left: 21px; }
