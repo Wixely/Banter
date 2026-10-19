@@ -362,7 +362,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
               <div class="section-title">Rooms</div>
               <div class="rooms">
                 <div class="{{TabClass}}" data-repeat="Rooms" data-room="{{Name}}">
-                  <span class="hash">#</span><span class="tab-name">{{Label}}</span><span class="{{BadgeClass}}">{{Badge}}</span><span class="{{CloseClass}}" data-room-close="{{Name}}"><span class="tab-x tab-x-a"></span><span class="tab-x tab-x-b"></span></span>
+                  <span class="hash">#</span><span class="tab-name">{{Label}}</span><span class="{{GlobalClass}}">global</span><span class="{{BadgeClass}}">{{Badge}}</span><span class="{{CloseClass}}" data-room-close="{{Name}}"><span class="tab-x tab-x-a"></span><span class="tab-x tab-x-b"></span></span>
+                </div>
+                <!-- Starts the command rather than asking for a name in a dialog of its own: the
+                     composer is where this app types, and /create is also how to say "top". -->
+                <div class="new-room" data-new-room="1">
+                  <span class="add-plus"><span class="add-h"></span><span class="add-v"></span></span><span class="new-room-text">New room here</span>
                 </div>
                 <div class="{{BrowseClass}}">
                   <div class="section-title">Other rooms</div>
@@ -397,6 +402,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 <span class="topic">{{Topic}}</span>
               </div>
               <!-- Who is running the room, as a status pill rather than a sentence. -->
+              <!-- The room's own settings: where it sits, and who may draw on it. -->
+              <cupri-tooltip text="Room settings">
+                <span class="room-menu" data-roompanel-open="1"><span class="rm-dot rm-a"></span><span class="rm-dot rm-b"></span><span class="rm-dot rm-c"></span></span>
+              </cupri-tooltip>
               <span class="{{DispatchClass}}"><span class="pill-dot"></span><span class="pill-text">{{Dispatch}}</span><cupri-tooltip text="{{RegimeTip}}"><span class="{{RegimeClass}}" data-regime="1">{{RegimeMark}}</span></cupri-tooltip></span>
             </div>
             <div class="{{LoadOlderClass}}" data-load-older="1">{{LoadOlderText}}</div>
@@ -612,6 +621,63 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           {{{UsersPage}}}
           {{{WorkPage}}}
           {{{HubsPage}}}
+          <div class="{{RoomPanelClass}}">
+            <div class="mgmt-backdrop" data-roompanel-close="1"></div>
+            <div class="mgmt-card room-card">
+              <div class="mgmt-x page-close" data-roompanel-close="1">
+                <div class="x-bar x-a"></div>
+                <div class="x-bar x-b"></div>
+              </div>
+              <div class="mgmt-pane">
+                <div class="mgmt-detail-head">
+                  <div class="mgmt-list-heading">
+                    <div class="mgmt-title">{{RoomPanelTitle}}</div>
+                    <div class="mgmt-subtitle">Where this room sits, and who may draw on what is said in it.</div>
+                  </div>
+                </div>
+                <div class="mgmt-fields">
+                  <div class="{{RoomPanelReadClass}}">
+                    <div class="room-read-line">{{RoomPanelPlace}}</div>
+                    <div class="room-read-line">{{RoomPanelDisclosure}}</div>
+                    <div class="mgmt-hint">An admin can change these, and so can this room's delegator or the main room's.</div>
+                  </div>
+                  <div class="{{RoomPanelEditClass}}">
+                    <div class="mgmt-field">
+                      <div class="mgmt-label">Who may draw on it</div>
+                      <div class="mgmt-control">
+                        <div class="mgmt-choices stack">
+                          <div class="{{RowClass}}" data-repeat="DisclosureChoices" data-disclosure="{{Value}}">
+                            <div class="{{DotClass}}"></div>
+                            <div class="mgmt-choice-text">
+                              <div class="mgmt-choice-label">{{Label}}</div>
+                              <div class="mgmt-choice-hint">{{Hint}}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="{{DisclosureWarningClass}}">This room is Global. Every agent can read what is said here, wherever it is - say nothing here you would not say in every room.</div>
+                        <div class="mgmt-hint">Within the room everybody reads everything; this is about the way out, when an agent elsewhere asks for what was said here.</div>
+                      </div>
+                    </div>
+                    <div class="mgmt-field">
+                      <div class="mgmt-label">Inside</div>
+                      <div class="mgmt-control">
+                        <div class="mgmt-choices stack">
+                          <div class="{{RowClass}}" data-repeat="ParentChoices" data-room-parent="{{Value}}">
+                            <div class="{{DotClass}}"></div>
+                            <div class="mgmt-choice-text">
+                              <div class="mgmt-choice-label">{{Label}}</div>
+                              <div class="mgmt-choice-hint">{{Hint}}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="mgmt-hint">Moving a room changes what Children reaches - rooms beneath one that shares with its children see what it says.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="{{SettingsPanelClass}} settings-overlay">
             <div class="mgmt-backdrop" data-settings-close="1"></div>
             <div class="mgmt-card settings-card">
@@ -1964,6 +2030,36 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .pick-tick-long { left: 5px; top: 6px; width: 10px; transform: rotate(-50deg); }
         .pick.on .pick-tick { background: #ffffff; }
 
+        /* The room tree and its settings. */
+        .room-global { flex: 0 0 auto; margin-left: 6px; padding: 1px 6px; border-radius: 6px;
+                       font-size: 9px; font-weight: bold; color: #fbbf24; background: #3a2a07; }
+        .new-room { display: flex; flex-direction: row; align-items: center; height: 30px; margin-top: 4px;
+                    padding: 0 10px; border-radius: 9px; cursor: pointer; color: #808b9c; }
+        .new-room:hover { background: #171b22; color: #c8ced7; }
+        .new-room-text { font-size: 12px; }
+        .room-menu { position: relative; flex: 0 0 auto; width: 26px; height: 24px; margin-right: 8px;
+                     border-radius: 7px; cursor: pointer; }
+        .room-menu:hover { background: #1b2029; }
+        .rm-dot { position: absolute; top: 11px; width: 3px; height: 3px; border-radius: 2px; background: #8d97a6; }
+        .rm-a { left: 7px; }
+        .rm-b { left: 12px; }
+        .rm-c { left: 17px; }
+        .room-overlay { align-items: center; justify-content: center; }
+        /* Qualified by .mgmt-card, because that rule comes later and would win a tie - and its
+           flex: 1 is what made this card the full width of the window. */
+        .mgmt-card.room-card { flex: 0 0 600px; height: 600px; box-sizing: border-box; max-height: calc(100% - 64px); }
+        .mgmt-choices.stack { flex-direction: column; }
+        /* A column turns a choice's flex: 1 into a share of the HEIGHT, and the cards crushed into
+           each other. Stacked, each is as tall as what is in it. */
+        .mgmt-choices.stack .mgmt-choice { flex: 0 0 auto; margin-bottom: 6px; }
+        .mgmt-choice.warn .mgmt-choice-label { color: #fbbf24; }
+        .room-warning { margin-top: 4px; padding: 8px 10px; border-radius: 9px; font-size: 11px;
+                        color: #fde68a; background: #2d2207; border: 1px solid #5c4410; }
+        .room-warning.hidden { display: none; }
+        .room-read.hidden { display: none; }
+        .room-edit.hidden { display: none; }
+        .room-read-line { font-size: 13px; color: #e6eaf0; margin-bottom: 8px; }
+
         /* Membership, for an admin. A small cross at the end of each member's row to take them
            out, and a list of who could be put in, each behind a plus - both drawn from bars. */
         .member-x { position: relative; flex: 0 0 auto; width: 22px; height: 22px; margin-left: 2px;
@@ -2548,6 +2644,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
              takes those margins away, so the clamp would leave a 64px band of room showing
              below a card that is meant to BE the screen. */
           .settings-card { flex: 1; width: 100%; height: 100%; max-height: 100%; }
+          .mgmt-card.room-card { flex: 1; width: 100%; height: 100%; max-height: 100%; }
 
           /* A picker above what it picks. Capped rather than free so a long list cannot push the
              detail off the bottom: the list scrolls inside its own share, which is a shorter
@@ -2596,6 +2693,12 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         body.cupri-coarse .pick { width: 44px; height: 44px; }
         body.cupri-coarse .staged-x { width: 44px; height: 44px; }
         body.cupri-coarse .member-x { width: 44px; height: 44px; }
+        body.cupri-coarse .room-menu { width: 44px; height: 44px; }
+        body.cupri-coarse .rm-dot { top: 21px; }
+        body.cupri-coarse .rm-a { left: 16px; }
+        body.cupri-coarse .rm-b { left: 21px; }
+        body.cupri-coarse .rm-c { left: 26px; }
+        body.cupri-coarse .new-room { height: 44px; }
         body.cupri-coarse .mx-bar { left: 17px; top: 21px; }
         body.cupri-coarse .addable-row { height: 44px; }
         body.cupri-coarse .staged-x .x-bar { left: 15px; top: 21px; }
@@ -3328,6 +3431,50 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
 
             ViewModel.ConfirmEndInterregnum(room);
             doc.Refresh();
+            return true;
+        });
+
+        // The room panel, and the two things it changes. Through the session's commands, so the
+        // panel and /move and /disclosure are one path the server answers the same way.
+        doc.OnAction("data-roompanel-open", _ =>
+        {
+            ViewModel.ShowRoomPanel(true);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-roompanel-close", _ =>
+        {
+            ViewModel.ShowRoomPanel(false);
+            doc.Refresh();
+            return true;
+        });
+
+        doc.OnAction("data-disclosure", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/disclosure {e.Value}");
+            return true;
+        });
+
+        // An empty value is "Top level", which is a real choice - so this does not bail on it.
+        doc.OnAction("data-room-parent", e =>
+        {
+            var room = ViewModel.Model.ActiveRoom;
+            _ = CommandAsync(room, $"/move {room} {(string.IsNullOrEmpty(e.Value) ? "top" : e.Value)}");
+            return true;
+        });
+
+        doc.OnAction("data-new-room", _ =>
+        {
+            ViewModel.Model.Composer = "/create #";
+            PickedARoom(doc);
+            doc.Refresh();
+            doc.Focus(".composer");
             return true;
         });
 

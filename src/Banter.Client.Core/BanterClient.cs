@@ -373,9 +373,11 @@ public sealed partial class BanterClient : IAsyncDisposable
         CreateRoomAsync(room, parentRoom, purpose, cancellationToken);
 
     public async Task<RoomCreatePayload> CreateRoomAsync(
-        string room, string? parentRoom = null, string purpose = "", CancellationToken cancellationToken = default)
+        string room, string? parentRoom = null, string purpose = "", CancellationToken cancellationToken = default,
+        RoomDisclosure? disclosure = null)
     {
-        var created = await RequestAsync<RoomCreatePayload>(new RoomCreatePayload(room, parentRoom, purpose), cancellationToken)
+        var created = await RequestAsync<RoomCreatePayload>(
+                new RoomCreatePayload(room, parentRoom, purpose, disclosure), cancellationToken)
             .ConfigureAwait(false);
 
         // The creator is in the room it opened, and must be put back in it after a reconnect like
@@ -408,6 +410,23 @@ public sealed partial class BanterClient : IAsyncDisposable
     /// </summary>
     public Task CloseRoomAsync(string room, string reason = "", CancellationToken cancellationToken = default) =>
         RequestAsync<OkPayload>(new RoomClosePayload(room, reason), cancellationToken);
+
+    /// <summary>Put a room under <paramref name="parentRoom"/>, or at the top level when it is
+    /// null. An admin or the main room's delegator.</summary>
+    public Task<RoomMovePayload> MoveRoomAsync(string room, string? parentRoom, CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomMovePayload>(new RoomMovePayload(room, parentRoom), cancellationToken);
+
+    /// <summary>Set who may draw on a room from elsewhere. The room's delegator, the main
+    /// delegator, or an admin. Answers with the disclosure in force afterwards.</summary>
+    public Task<RoomDisclosurePayload> SetRoomDisclosureAsync(
+        string room, RoomDisclosure disclosure, CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomDisclosurePayload>(new RoomDisclosurePayload(room, disclosure), cancellationToken);
+
+    /// <summary>Read another room's recent messages while acting in <paramref name="fromRoom"/>,
+    /// as far as its disclosure allows. Refused with <c>NOT_DISCLOSED</c> otherwise.</summary>
+    public Task<HistoryChunkPayload> RecallRoomAsync(
+        string room, string fromRoom, int limit = 20, CancellationToken cancellationToken = default) =>
+        RequestAsync<HistoryChunkPayload>(new RoomRecallPayload(room, fromRoom, limit), cancellationToken);
 
     /// <summary>
     /// Change a room's regime; admin only. <see cref="RoomRegime.Republic"/> ends an interregnum,
@@ -554,6 +573,12 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     /// <summary>Raised when a room's dispatch mode changes.</summary>
     public event Action<RoomModePayload>? RoomModeChanged;
+
+    /// <summary>Raised when any room is moved - the tree is in everybody's room list.</summary>
+    public event Action<RoomMovePayload>? RoomMoved;
+
+    /// <summary>Raised when a room you are in has its disclosure changed.</summary>
+    public event Action<RoomDisclosurePayload>? RoomDisclosureChanged;
 
     /// <summary>Raised when a room's regime changes, and on joining one.</summary>
     public event Action<RoomRegimePayload>? RoomRegimeChanged;
@@ -1331,6 +1356,12 @@ public sealed partial class BanterClient : IAsyncDisposable
                         break;
                     case RoomRegimePayload regime:
                         RoomRegimeChanged?.Invoke(regime);
+                        break;
+                    case RoomMovePayload roomMoved:
+                        RoomMoved?.Invoke(roomMoved);
+                        break;
+                    case RoomDisclosurePayload disclosure:
+                        RoomDisclosureChanged?.Invoke(disclosure);
                         break;
                     case RoomClosePayload closed:
                         // Out of the rejoin set first: a reconnect that joined it again would

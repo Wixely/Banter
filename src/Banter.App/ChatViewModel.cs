@@ -223,6 +223,7 @@ public sealed partial class ChatViewModel
 
         Model.ActiveRoom = room;
         RefreshStaged();
+        RefreshRoomPanel();
         foreach (var tab in Model.Rooms)
         {
             tab.TabClass = tab.Name == room ? "tab active" : "tab";
@@ -1065,12 +1066,25 @@ public sealed partial class ChatViewModel
         foreach (var row in Model.Rooms)
         {
             row.Label = Label(row.Name, _roomParents.GetValueOrDefault(row.Name));
+            row.GlobalClass = DisclosureOf(row.Name) == Protocol.RoomDisclosure.Global ? "room-global" : "no-close";
+        }
+
+        // In tree order, each room under the one it sits in. Stable, so rooms the server has not
+        // described yet keep the order they were joined in.
+        var ordered = Model.Rooms.OrderBy(r => TreeKey(r.Name), StringComparer.Ordinal).ToList();
+        if (!ordered.SequenceEqual(Model.Rooms))
+        {
+            Model.Rooms.Clear();
+            Model.Rooms.AddRange(ordered);
         }
     }
 
-    /// <summary>A sub-room is shown indented under its parent rather than as a peer.</summary>
-    private static string Label(string name, string? parent) =>
-        parent is { Length: > 0 } ? "  └ " + name : name;
+    /// <summary>A sub-room is shown indented under its parent rather than as a peer - by depth,
+    /// now that a room can sit any number of levels down.</summary>
+    private string Label(string name, string? parent) =>
+        // Non-breaking, because ordinary spaces collapse when the label is laid out and every
+        // level would sit at the same depth.
+        parent is { Length: > 0 } ? new string(' ', ((DepthOf(name) - 1) * 3) + 2) + "└ " + name : name;
 
     // ── Agent roster (PLAN §8a) ──────────────────────────────────────────────────────────────
 

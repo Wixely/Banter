@@ -89,7 +89,8 @@ public sealed record RoomSummary(
     [property: Key(0)] string Name,
     [property: Key(1)] string? Topic,
     [property: Key(2)] int MemberCount,
-    [property: Key(3)] string? ParentRoom = null);
+    [property: Key(3)] string? ParentRoom = null,
+    [property: Key(4)] RoomDisclosure Disclosure = RoomDisclosure.Members);
 
 [MessagePackObject]
 public sealed record RoomMembersPayload(
@@ -614,7 +615,9 @@ public sealed record RoomDelegatorPayload(
 public sealed record RoomCreatePayload(
     [property: Key(0)] string Room,
     [property: Key(1)] string? ParentRoom = null,
-    [property: Key(2)] string Purpose = "");
+    [property: Key(2)] string Purpose = "",
+    // Null takes the parent's, or Members for a room at the top level.
+    [property: Key(3)] RoomDisclosure? Disclosure = null);
 
 /// <summary>
 /// Move an agent into a room. Issued by a room's delegator to pull a chosen agent into a
@@ -663,6 +666,62 @@ public enum RoomRegime
     /// </summary>
     Interregnum = 1,
 }
+
+/// <summary>
+/// Who may draw on what was said in a room from anywhere else - a room's disclosure.
+///
+/// <para>Within a room, everybody in it reads everything; that is what a room is, and none of
+/// this changes it. What this governs is the one way out: an agent in one room asking for what
+/// was said in another (<see cref="RoomRecallPayload"/>). Every rule below is checked by the
+/// server on each request, so an agent that remembers a room's name has not thereby got a key.</para>
+///
+/// <para>Clearance applies on top, always: an agent not cleared for a room's sensitivity is
+/// refused whatever its disclosure says. Global widens who may ask; it does not lower the bar.</para>
+/// </summary>
+public enum RoomDisclosure
+{
+    /// <summary>Agents in the room may draw on it from any room they are in. The default, and
+    /// what a room has always been.</summary>
+    Members = 0,
+
+    /// <summary>Only from inside the room itself. An agent in it cannot carry what it learned
+    /// here into another room, not even one it is also in.</summary>
+    Isolated = 1,
+
+    /// <summary>From inside the room, or from any room beneath it - a side room can use what the
+    /// room that opened it knows, whoever is in it.</summary>
+    Children = 2,
+
+    /// <summary>Any agent, from any room, in it or not. Wide on purpose: worth a warning wherever
+    /// it can be chosen.</summary>
+    Global = 3,
+}
+
+/// <summary>Move a room: under <see cref="ParentRoom"/>, or to the top level when that is null.
+/// The server's reply and its announcement to everybody carry <see cref="MovedBy"/>.</summary>
+[MessagePackObject]
+public sealed record RoomMovePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string? ParentRoom,
+    [property: Key(2)] string? MovedBy = null);
+
+/// <summary>A room's disclosure. Sent to set it, and by the server to say what it now is.</summary>
+[MessagePackObject]
+public sealed record RoomDisclosurePayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] RoomDisclosure Disclosure,
+    [property: Key(2)] string? ChangedBy = null);
+
+/// <summary>
+/// Ask for <see cref="Room"/>'s recent messages while acting in <see cref="FromRoom"/>. The
+/// server answers with a <see cref="HistoryChunkPayload"/>, or refuses with
+/// <c>NOT_DISCLOSED</c> when the room's disclosure does not reach that far.
+/// </summary>
+[MessagePackObject]
+public sealed record RoomRecallPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] string FromRoom,
+    [property: Key(2)] int Limit = 20);
 
 /// <summary>A room's regime. <see cref="Reason"/> and <see cref="ChangedBy"/> say why and who,
 /// on a change; both are empty on the copy sent to somebody joining.</summary>

@@ -403,5 +403,20 @@ public static class SchemaManifest
                 PRIMARY KEY (upstream, agent)
             );
             """),
+        new(12,
+            "room-tree-and-disclosure",
+            // Where a room sits, and who may draw on it from elsewhere. The parent lived only in
+            // memory before this, so every restart flattened the room tree to the top level.
+            // Disclosure defaults to Members - 0 - which is what every room already was.
+            SqliteSql:
+            """
+            ALTER TABLE rooms ADD COLUMN parent TEXT NULL;
+            ALTER TABLE rooms ADD COLUMN disclosure INTEGER NOT NULL DEFAULT 0;
+            """,
+            PostgresSql:
+            """
+            ALTER TABLE rooms ADD COLUMN parent TEXT NULL;
+            ALTER TABLE rooms ADD COLUMN disclosure BIGINT NOT NULL DEFAULT 0;
+            """),
     ];
 }

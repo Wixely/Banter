@@ -163,6 +163,48 @@ public abstract partial class BanterAgent
                 return $"{agent} is in {target} and has been told: {instruction}";
             }),
 
+        new("move_room",
+            "Put a room under another room, or at the top level. Only the main room's delegator "
+            + "may do this (or an admin): where a room sits decides what rooms beneath another may "
+            + "draw on. Leave out 'parent' to move it to the top level.",
+            """
+            {"type":"object","properties":{
+              "room":{"type":"string","description":"The room to move."},
+              "parent":{"type":"string","description":"The room to put it under. Omit for the top level."}
+            },"required":["room"]}
+            """,
+            async (_, args, ct) =>
+            {
+                var target = Text(args, "room");
+                var parent = Optional(args, "parent") is { Length: > 0 } p ? p : null;
+                await Client.MoveRoomAsync(target, parent, ct).ConfigureAwait(false);
+                return parent is null ? $"Moved {target} to the top level." : $"Moved {target} under {parent}.";
+            }),
+
+        new("set_room_disclosure",
+            "Set who may draw on a room from elsewhere. members: agents in it, from any room they "
+            + "are in (the default). isolated: only from inside it. children: from it or any room "
+            + "beneath it. global: any agent from anywhere - only when what is said there is meant "
+            + "for everybody. You may change the rooms you run; the main room's delegator, any room.",
+            """
+            {"type":"object","properties":{
+              "room":{"type":"string","description":"The room. Defaults to this one."},
+              "disclosure":{"type":"string","enum":["members","isolated","children","global"]}
+            },"required":["disclosure"]}
+            """,
+            async (room, args, ct) =>
+            {
+                var target = Optional(args, "room") is { Length: > 0 } named ? named : room;
+                var wanted = Text(args, "disclosure");
+                if (!Enum.TryParse<RoomDisclosure>(wanted, ignoreCase: true, out var disclosure))
+                {
+                    throw new InvalidOperationException($"'{wanted}' is not one of members, isolated, children, global.");
+                }
+
+                var now = await Client.SetRoomDisclosureAsync(target, disclosure, ct).ConfigureAwait(false);
+                return $"{target} is now {now.Disclosure.ToString().ToLowerInvariant()}.";
+            }),
+
         new("close_room",
             "Close a room for everybody in it, once what it was opened for is finished. Usually a "
             + "side room you opened: close it when the work is done, so the room list holds what "
@@ -218,6 +260,41 @@ public abstract partial class BanterAgent
                 });
 
                 return $"Agents in {room} besides you:\n{string.Join("\n", lines)}";
+            }),
+
+        new("recall_room",
+            "Read the recent messages of another room, to use what was said there. Whether you may "
+            + "depends on that room: some are shared only with the agents in them, some with the "
+            + "rooms beneath them, some with nobody outside. If you are refused, say so - do not "
+            + "guess at what the room contains.",
+            """
+            {"type":"object","properties":{
+              "room":{"type":"string","description":"The room to read."},
+              "limit":{"type":"integer","description":"How many recent messages, up to 50. Default 20."}
+            },"required":["room"]}
+            """,
+            async (room, args, ct) =>
+            {
+                var target = Text(args, "room");
+                var limit = args.TryGetProperty("limit", out var l) && l.TryGetInt32(out var n) ? n : 20;
+                try
+                {
+                    var page = await Client.RecallRoomAsync(target, room, limit, ct).ConfigureAwait(false);
+                    if (page.Messages.Count == 0)
+                    {
+                        return $"{target} has nothing in it yet.";
+                    }
+
+                    // Framed as somewhere else's conversation, so it is read as reference rather
+                    // than as things said to this agent here.
+                    return $"The last {page.Messages.Count} messages in {target} (reference only - not said to you here):\n"
+                         + string.Join("\n", page.Messages.Select(m => $"{m.Sender}: {m.Text}"));
+                }
+                catch (BanterErrorException ex) when (ex.Code is "NOT_DISCLOSED" or "NOT_CLEARED")
+                {
+                    // An answer, not a failure: the model should tell the room it could not look.
+                    return $"Not allowed: {ex.Message.Split(": ", 2)[^1]}";
+                }
             }),
 
         new("ask_operator",

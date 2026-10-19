@@ -260,6 +260,10 @@ public sealed partial class RoomRow
 
     /// <summary>The tab's close control: <c>tab-close</c> for an admin, <c>no-close</c> otherwise.</summary>
     public string CloseClass { get; set; } = "no-close";
+
+    /// <summary>A tag on the tab of a Global room - <c>room-global</c> - because what is said there
+    /// can be read from anywhere, and the tab is where somebody decides to type in it.</summary>
+    public string GlobalClass { get; set; } = "no-close";
 }
 
 /// <summary>
@@ -600,6 +604,30 @@ public sealed partial class ChatModel
     /// <summary>The header's status pill: <c>on</c> with a delegator, <c>off</c> without one,
     /// hidden before anything is known.</summary>
     public string DispatchClass { get; set; } = "dispatch hidden";
+
+    /// <summary>The room panel: where the room on screen sits, and who may draw on it.</summary>
+    public string RoomPanelClass { get; set; } = "mgmt hidden";
+
+    public string RoomPanelTitle { get; set; } = "";
+
+    /// <summary>"Inside #parent" or "At the top level", for somebody who cannot change it.</summary>
+    public string RoomPanelPlace { get; set; } = "";
+
+    /// <summary>The disclosure in words, for somebody who cannot change it.</summary>
+    public string RoomPanelDisclosure { get; set; } = "";
+
+    /// <summary>The choices, shown to an admin.</summary>
+    public string RoomPanelEditClass { get; set; } = "room-edit hidden";
+
+    /// <summary>The same as plain text, shown to everybody else.</summary>
+    public string RoomPanelReadClass { get; set; } = "room-read";
+
+    public List<ChoiceRow> ParentChoices { get; set; } = [];
+
+    public List<ChoiceRow> DisclosureChoices { get; set; } = [];
+
+    /// <summary>Shown while the room is Global.</summary>
+    public string DisclosureWarningClass { get; set; } = "room-warning hidden";
 
     /// <summary>The roster's "add to this room" list: <c>addable</c>, or hidden when there is
     /// nobody to add or nobody here may add them.</summary>

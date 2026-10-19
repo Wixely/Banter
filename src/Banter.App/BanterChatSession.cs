@@ -73,6 +73,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.RoomModeChanged += OnRoomModeChanged;
         _client.RoomClosed += OnRoomClosed;
         _client.RoomRegimeChanged += OnRoomRegime;
+        _client.RoomMoved += OnRoomMoved;
+        _client.RoomDisclosureChanged += OnRoomDisclosure;
         _client.MemberJoined += OnJoined;
         _client.MemberParted += OnParted;
         _client.TopicChanged += OnTopic;
@@ -154,7 +156,7 @@ public sealed partial class BanterChatSession : IDisposable
         {
             var listing = await _client.ListRoomsAsync(cancellationToken).ConfigureAwait(false);
             _vm.Post(() => _vm.SetRoomListing(
-                listing.Rooms.Select(r => (r.Name, r.ParentRoom, r.MemberCount))));
+                listing.Rooms.Select(r => (r.Name, r.ParentRoom, r.MemberCount, r.Disclosure))));
         }
         catch (Exception)
         {
@@ -225,6 +227,13 @@ public sealed partial class BanterChatSession : IDisposable
 
     private void OnRoomModeChanged(Protocol.RoomModePayload p) =>
         _vm.Post(() => _vm.SetDispatchMode(p.Room, p.Mode.ToString().ToLowerInvariant()));
+
+    /// <summary>The tree changed somewhere; the list is re-read rather than patched, because a
+    /// move can change the depth of every room beneath the one that moved.</summary>
+    private void OnRoomMoved(Protocol.RoomMovePayload p) => _ = RefreshRoomsAsync();
+
+    private void OnRoomDisclosure(Protocol.RoomDisclosurePayload p) =>
+        _vm.Post(() => _vm.SetRoomDisclosure(p.Room, p.Disclosure));
 
     private void OnRoomRegime(Protocol.RoomRegimePayload p) =>
         _vm.Post(() => _vm.SetRegime(p.Room, p.Regime == Protocol.RoomRegime.Interregnum));
@@ -469,6 +478,53 @@ public sealed partial class BanterChatSession : IDisposable
             case "part":
                 await Guard(room, () => PartAsync(room)).ConfigureAwait(false);
                 break;
+            case "create" when rest.StartsWith('#'):
+            {
+                // A new room goes under the one you are in, which is nearly always where the
+                // thing it is for came from. "top" puts it at the top level instead.
+                var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var name = parts[0];
+                var parent = parts.Skip(1).Any(p => p.Equals("top", StringComparison.OrdinalIgnoreCase)) ? null : room;
+                await Guard(room, async () =>
+                {
+                    await _client.CreateRoomAsync(name, parent).ConfigureAwait(false);
+                    await JoinAsync(name).ConfigureAwait(false);
+                    _vm.Post(() => _vm.SwitchTo(name));
+                }).ConfigureAwait(false);
+                break;
+            }
+            case "create":
+                _vm.Post(() => _vm.System(room, "usage: /create #name [top] - inside this room, or at the top level"));
+                break;
+            case "move" when rest.Length > 0:
+            {
+                // "/move #parent", "/move top", or "/move #room #parent|top".
+                var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var (target, to) = parts.Length >= 2 ? (parts[0], parts[1]) : (room, parts[0]);
+                var parent = to.Equals("top", StringComparison.OrdinalIgnoreCase) ? null : to;
+                await Guard(room, () => _client.MoveRoomAsync(target, parent)).ConfigureAwait(false);
+                break;
+            }
+            case "disclosure" when rest.Length > 0:
+            {
+                var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var target = parts.FirstOrDefault(p => p.StartsWith('#')) ?? room;
+                var wanted = parts.FirstOrDefault(p => !p.StartsWith('#')) ?? "";
+                if (Enum.TryParse<Protocol.RoomDisclosure>(wanted, ignoreCase: true, out var disclosure))
+                {
+                    await Guard(room, () => _client.SetRoomDisclosureAsync(target, disclosure)).ConfigureAwait(false);
+                }
+                else
+                {
+                    _vm.Post(() => _vm.System(room, "usage: /disclosure members|isolated|children|global [#room]"));
+                }
+
+                break;
+            }
+            case "disclosure":
+            case "room":
+                _vm.Post(() => _vm.ShowRoomPanel(true));
+                break;
             case "add" when rest.Length > 0:
                 // Put somebody in this room. The server decides whether you may: an admin can add
                 // anybody, a delegator only agents into the room it runs.
@@ -539,7 +595,7 @@ public sealed partial class BanterChatSession : IDisposable
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
                     "/edit <text> | /delete | " +
-                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /room | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
@@ -1021,6 +1077,8 @@ public sealed partial class BanterChatSession : IDisposable
         _client.RoomModeChanged -= OnRoomModeChanged;
         _client.RoomClosed -= OnRoomClosed;
         _client.RoomRegimeChanged -= OnRoomRegime;
+        _client.RoomMoved -= OnRoomMoved;
+        _client.RoomDisclosureChanged -= OnRoomDisclosure;
         _client.MemberJoined -= OnJoined;
         _client.MemberParted -= OnParted;
         _client.TopicChanged -= OnTopic;

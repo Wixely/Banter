@@ -85,6 +85,9 @@ internal sealed partial class RoomEngine(
         /// <summary>How the delegator may be chosen. See <see cref="RoomRegime"/>.</summary>
         public RoomRegime Regime { get; set; } = RoomRegime.Republic;
 
+        /// <summary>Who may draw on this room from elsewhere. See <see cref="RoomDisclosure"/>.</summary>
+        public RoomDisclosure Disclosure { get; set; } = RoomDisclosure.Members;
+
         /// <summary>Parent room when this is a sub-room, so the side channel stays traceable
         /// back to the conversation that spawned it.</summary>
         public string? ParentRoom { get; set; }
@@ -103,7 +106,20 @@ internal sealed partial class RoomEngine(
     {
         foreach (var persisted in await store.GetRoomsAsync(cancellationToken).ConfigureAwait(false))
         {
-            _rooms[persisted.Name] = new Room(persisted.Name, persisted.Topic);
+            _rooms[persisted.Name] = new Room(persisted.Name, persisted.Topic)
+            {
+                ParentRoom = persisted.Parent,
+                Disclosure = Enum.IsDefined((RoomDisclosure)persisted.Disclosure)
+                    ? (RoomDisclosure)persisted.Disclosure
+                    : RoomDisclosure.Members,
+            };
+        }
+
+        // A parent that no longer exists - closed while the server was down, say - leaves its
+        // children at the top level rather than hanging off a name nothing answers to.
+        foreach (var orphan in _rooms.Values.Where(r => r.ParentRoom is { } p && !_rooms.ContainsKey(p)))
+        {
+            orphan.ParentRoom = null;
         }
 
         _loop = Task.Run(async () =>
@@ -289,7 +305,8 @@ internal sealed partial class RoomEngine(
                             r.Topic,
                             // Count people, not connections: a user on two devices is one member.
                             r.Members.Select(m => m.Nick).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-                            r.ParentRoom))
+                            r.ParentRoom,
+                            r.Disclosure))
                         .ToArray()),
                     replyTo: envelope.MsgId);
                 break;
@@ -313,6 +330,15 @@ internal sealed partial class RoomEngine(
                 break;
             case RoomRegimePayload regime:
                 await HandleRoomRegimeAsync(session, envelope, regime).ConfigureAwait(false);
+                break;
+            case RoomMovePayload roomMove:
+                await HandleRoomMoveAsync(session, envelope, roomMove).ConfigureAwait(false);
+                break;
+            case RoomDisclosurePayload disclosure:
+                await HandleRoomDisclosureAsync(session, envelope, disclosure).ConfigureAwait(false);
+                break;
+            case RoomRecallPayload recall:
+                await HandleRoomRecallAsync(session, envelope, recall).ConfigureAwait(false);
                 break;
             case AgentMovePayload move:
                 await HandleAgentMoveAsync(session, envelope, move).ConfigureAwait(false);
@@ -546,6 +572,200 @@ internal sealed partial class RoomEngine(
         await AnnounceSystemAsync(room, text).ConfigureAwait(false);
     }
 
+    // ── The room tree, and who may draw on a room ─────────────────────────────────────────────
+
+    /// <summary>
+    /// The room everybody starts in, whose delegator runs the server's rooms as a whole: it may
+    /// move rooms, set any room's disclosure, close any room, and bring agents in or out of any
+    /// room - what an admin can do with rooms, short of anything about people.
+    /// </summary>
+    public const string MainRoom = "#main";
+
+    private bool IsMainDelegator(ClientSession session) =>
+        session.IsAgent
+        && _rooms.TryGetValue(MainRoom, out var main)
+        && string.Equals(main.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether <paramref name="room"/> sits anywhere beneath <paramref name="ancestor"/>.
+    /// Bounded, so a tree that is somehow cyclic answers rather than spins.</summary>
+    private bool IsBeneath(Room room, Room ancestor)
+    {
+        var at = room.ParentRoom;
+        for (var depth = 0; at is not null && depth < 64; depth++)
+        {
+            if (string.Equals(at, ancestor.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            at = _rooms.TryGetValue(at, out var up) ? up.ParentRoom : null;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Put a room under another, or at the top level. An admin or the main delegator - nobody
+    /// else, because where a room sits decides what its Children disclosure reaches, and a room
+    /// placed under another to borrow what that room knows is exactly what this must not allow.
+    /// </summary>
+    private async ValueTask HandleRoomMoveAsync(ClientSession session, BanterEnvelope envelope, RoomMovePayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (!session.IsAdmin && !IsMainDelegator(session))
+        {
+            session.Send(new ErrorPayload("NOT_ALLOWED", $"Only an admin or {MainRoom}'s delegator may move rooms."),
+                replyTo: envelope.MsgId);
+            return;
+        }
+
+        Room? parent = null;
+        if (request.ParentRoom is { Length: > 0 } parentName)
+        {
+            if (!_rooms.TryGetValue(parentName, out parent))
+            {
+                session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {parentName}."), replyTo: envelope.MsgId);
+                return;
+            }
+
+            if (ReferenceEquals(parent, room) || IsBeneath(parent, room))
+            {
+                session.Send(new ErrorPayload("BAD_MOVE", $"{room.Name} cannot go inside itself."), replyTo: envelope.MsgId);
+                return;
+            }
+        }
+
+        room.ParentRoom = parent?.Name;
+
+        // Never more permissive than where it now sits, for the same reason a new side room is not.
+        if (parent is not null && parent.Sensitivity > room.Sensitivity)
+        {
+            room.Sensitivity = parent.Sensitivity;
+        }
+
+        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure).ConfigureAwait(false);
+
+        // Everybody, not only the room's members: the tree is in every client's room list.
+        var moved = new RoomMovePayload(room.Name, room.ParentRoom, session.Nick);
+        foreach (var anyone in _sessionsByNick.Values.SelectMany(s => s).ToList())
+        {
+            anyone.Send(moved);
+        }
+
+        await AnnounceSystemAsync(room, room.ParentRoom is { } now
+            ? $"{session.Nick} moved this room under {now}."
+            : $"{session.Nick} moved this room to the top level.").ConfigureAwait(false);
+        session.Send(moved, replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Change who may draw on a room from elsewhere. The room's own delegator, the main
+    /// delegator, or an admin. Asking for the disclosure it already has is a read.
+    /// </summary>
+    private async ValueTask HandleRoomDisclosureAsync(
+        ClientSession session, BanterEnvelope envelope, RoomDisclosurePayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (room.Disclosure != request.Disclosure)
+        {
+            var may = session.IsAdmin
+                || IsMainDelegator(session)
+                || string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase);
+            if (!may)
+            {
+                session.Send(
+                    new ErrorPayload("NOT_ALLOWED", $"Only an admin, {room.Name}'s delegator or {MainRoom}'s delegator may change this."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+
+            room.Disclosure = request.Disclosure;
+            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure).ConfigureAwait(false);
+            Broadcast(room, new RoomDisclosurePayload(room.Name, room.Disclosure, session.Nick));
+            await AnnounceSystemAsync(room, $"{session.Nick} set this room to {room.Disclosure}: " + room.Disclosure switch
+            {
+                RoomDisclosure.Isolated => "nothing said here can be drawn on from any other room.",
+                RoomDisclosure.Children => "rooms beneath this one may draw on what is said here.",
+                RoomDisclosure.Global => "ANY agent may draw on what is said here, from any room, whether or not it is in this one.",
+                _ => "agents in this room may draw on it from the other rooms they are in.",
+            }).ConfigureAwait(false);
+        }
+
+        session.Send(new RoomDisclosurePayload(room.Name, room.Disclosure), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// An agent in <c>FromRoom</c> asking for what was said in <c>Room</c>. The room's disclosure
+    /// decides, checked here on every request; clearance applies on top whatever it says.
+    /// </summary>
+    private async ValueTask HandleRoomRecallAsync(ClientSession session, BanterEnvelope envelope, RoomRecallPayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        // The room the request is made from is one the asker is in - otherwise Children could be
+        // satisfied by naming any side room at all.
+        if (!_rooms.TryGetValue(request.FromRoom, out var from) || !from.Members.Contains(session))
+        {
+            session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.FromRoom}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        var inside = ReferenceEquals(from, room);
+        var allowed = room.Disclosure switch
+        {
+            RoomDisclosure.Isolated => inside,
+            RoomDisclosure.Children => inside || IsBeneath(from, room),
+            RoomDisclosure.Global => true,
+            _ => room.Members.Contains(session),
+        };
+
+        if (!allowed)
+        {
+            session.Send(new ErrorPayload("NOT_DISCLOSED", room.Disclosure switch
+            {
+                RoomDisclosure.Isolated => $"{room.Name} is isolated: what is said there stays there.",
+                RoomDisclosure.Children => $"{room.Name} is shared only with rooms beneath it, and {from.Name} is not one.",
+                _ => $"{room.Name} is shared only with the agents in it.",
+            }), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (session.IsAgent)
+        {
+            var candidate = session.Announcement is { } announced
+                ? ToCandidate(announced, 0)
+                : new AgentCandidate(session.Nick, AgentLocality.Unknown, DataSensitivity.Unknown, [], 1, 0);
+            if (!DelegatorElection.CanReceive(candidate, room.Sensitivity))
+            {
+                session.Send(new ErrorPayload("NOT_CLEARED",
+                    $"You are not cleared for {room.Sensitivity.ToString().ToLowerInvariant()} content in {room.Name}."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+        }
+
+        var page = await store.GetHistoryPageAsync(room.Name, null, Math.Clamp(request.Limit, 1, 50)).ConfigureAwait(false);
+        var messages = (page?.Messages ?? [])
+            .Where(m => m.DeletedAt is null)
+            .Select(m => new MsgPayload(m.Room, m.Sender, m.Text, m.Timestamp, m.FileId, m.MessageId, m.EditedAt ?? 0, 0, m.ReplyTo))
+            .ToArray();
+        session.Send(new HistoryChunkPayload(room.Name, messages, null), replyTo: envelope.MsgId);
+    }
+
     /// <summary>Changes a room's regime and says so, to the room and in its timeline.</summary>
     private async ValueTask SetRegimeAsync(Room room, RoomRegime regime, string reason, string? by = null)
     {
@@ -754,8 +974,13 @@ internal sealed partial class RoomEngine(
             room.ParentRoom = parent.Name;
         }
 
+        // A side room keeps its parent's discretion unless it is asked for something else: work
+        // moved out of an isolated room into a side room should not become shareable by moving.
+        room.Disclosure = request.Disclosure ?? parent?.Disclosure ?? RoomDisclosure.Members;
+
         _rooms[room.Name] = room;
         await store.UpsertRoomAsync(room.Name, room.Topic).ConfigureAwait(false);
+        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure).ConfigureAwait(false);
 
         // The creator joins immediately: a sub-room nobody is in is not useful, and the
         // delegator needs to be in it to run it.
@@ -818,6 +1043,7 @@ internal sealed partial class RoomEngine(
 
         Room? parent = room.ParentRoom is { } parentName && _rooms.TryGetValue(parentName, out var p) ? p : null;
         var mayClose = session.IsAdmin
+            || IsMainDelegator(session)
             || string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase)
             || (parent is not null && string.Equals(parent.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase));
         if (!mayClose)
@@ -839,6 +1065,14 @@ internal sealed partial class RoomEngine(
         room.Leaving.Clear();
         _rooms.Remove(room.Name);
         await store.DeleteRoomAsync(room.Name).ConfigureAwait(false);
+
+        // Its side rooms move up a level rather than hanging off a room that is gone - and keep
+        // whatever Children disclosure reached, which is the closed room's own parent now.
+        foreach (var child in _rooms.Values.Where(r => string.Equals(r.ParentRoom, room.Name, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            child.ParentRoom = room.ParentRoom;
+            await store.SetRoomPlacementAsync(child.Name, child.ParentRoom, (int)child.Disclosure).ConfigureAwait(false);
+        }
 
         // Said where the room came from, so the conversation that opened it also shows it ending.
         if (parent is not null)
@@ -880,7 +1114,8 @@ internal sealed partial class RoomEngine(
 
         var isAgent = leaving[0].IsAgent;
         var mayRemove = session.IsAdmin
-            || (isAgent && string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase));
+            || (isAgent && (IsMainDelegator(session)
+                            || string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase)));
         if (!mayRemove)
         {
             session.Send(
@@ -924,14 +1159,16 @@ internal sealed partial class RoomEngine(
         // An admin may put anybody in any room - person or agent, whether or not the admin is in
         // it - which is how a member who fell out of a room gets back. Everybody else is a
         // delegator moving agents into the room it runs, as before.
-        if (!_rooms.TryGetValue(request.Room, out var room) || (!session.IsAdmin && !room.Members.Contains(session)))
+        var main = IsMainDelegator(session);
+        if (!_rooms.TryGetValue(request.Room, out var room)
+            || (!session.IsAdmin && !main && !room.Members.Contains(session)))
         {
             session.Send(new ErrorPayload("NOT_IN_ROOM", $"You are not in {request.Room}."),
                 replyTo: envelope.MsgId);
             return;
         }
 
-        if (!session.IsAdmin && !string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase))
+        if (!session.IsAdmin && !main && !string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase))
         {
             session.Send(new ErrorPayload("NOT_DELEGATOR", $"Only {room.Name}'s delegator may move agents into it."),
                 replyTo: envelope.MsgId);

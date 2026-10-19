@@ -210,6 +210,15 @@ public enum BanterMessageType : ushort
     /// on joining; an admin → server to change it.</summary>
     RoomRegime = 118,
 
+    /// <summary>Put a room under another, or at the top level. Admin or the main delegator.</summary>
+    RoomMove = 119,
+
+    /// <summary>A room's disclosure: who may draw on what was said in it from elsewhere.</summary>
+    RoomDisclosure = 120,
+
+    /// <summary>Agent → server: read another room's recent messages, as its disclosure allows.</summary>
+    RoomRecall = 121,
+
     // Both of the above are answered with a HubReport rather than an Ok: the page that asked is
     // showing the state they just changed, and a second round trip to find out what it is now is a
     // window in which the page is wrong.
