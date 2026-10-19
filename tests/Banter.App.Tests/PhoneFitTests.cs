@@ -21,8 +21,13 @@ public sealed class PhoneFitTests(ITestOutputHelper output)
     /// that runs off the side; <c>CF0071</c> is the one that was actually happening here — a box
     /// squeezed to no width at all, which is what a flex row does to its children rather than
     /// letting them overflow.
+    ///
+    /// <para><c>CF0075</c> (CupriFace 0.44.0) is the third: contents painting over a sibling - a
+    /// card squeezed below its text, which spills under its neighbour without ever reaching the
+    /// edge, so neither of the other two can see it. Zero on every page at every size when it
+    /// arrived, and gated so it stays there.</para>
     /// </summary>
-    private static readonly string[] Invisible = ["CF0071", "CF0072"];
+    private static readonly string[] Invisible = ["CF0071", "CF0072", "CF0075"];
 
     [Theory]
     [MemberData(nameof(AppPages.OnSmall), MemberType = typeof(AppPages))]
