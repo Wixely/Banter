@@ -80,6 +80,19 @@ public sealed class PresenceTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheServersOwnNoticesAreNeverMarked()
+    {
+        var vm = Room();
+        vm.SetRoomUsers("#main", [("alice", "")]);
+
+        // "jade opened #x for: ..." comes from the server's nick, which no roster lists - and it
+        // was shown as "banter left the room", as though the server had gone somewhere.
+        vm.Append("#main", "banter", "jade opened #names-c6fb for: cheese names", 0);
+
+        Assert.DoesNotContain("away", ClassOf(vm, "banter"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void YourOwnMessagesAndSystemLinesAreNeverMarked()
     {
         var vm = Room();

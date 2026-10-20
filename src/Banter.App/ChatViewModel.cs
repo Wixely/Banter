@@ -606,7 +606,10 @@ public sealed partial class ChatViewModel
     private string WithPresence(string room, string sender, string rowClass)
     {
         var bare = rowClass.Replace(" away", "");
+        // The server's own notices - "jade opened #x for: ..." - arrive as ordinary messages from
+        // the system nick, which is in no room's roster, so they read as somebody who had left.
         if (bare.Contains("system", StringComparison.Ordinal)
+            || sender == "banter"
             || string.Equals(sender, Model.Nick, StringComparison.OrdinalIgnoreCase)
             || !KnowsWhoIsHere(room)
             || IsHere(room, sender))
