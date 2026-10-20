@@ -675,6 +675,12 @@ public sealed partial class ChatViewModel
 
         _pendingAct = ConfirmAct.CloseRoom;
         _pendingRoom = room;
+
+        // Asked from the room list, which on a phone is a drawer over the chat. The question
+        // names the room, so the list has done its part; left up, it is the thing the answer
+        // would have to be found behind.
+        ResetRooms();
+
         Model.ConfirmTitle = $"Close {room}?";
         Model.ConfirmBody = "It closes for everybody in it, people and agents, and leaves the room "
             + "list. What was said there is kept.";

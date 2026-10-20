@@ -48,6 +48,38 @@ public sealed class RoomCloseAndStatusTests
         Assert.All(late.Model.Rooms, r => Assert.Equal("tab-close", r.CloseClass));
     }
 
+    /// <summary>
+    /// Reported from a phone: "Close #room?" appeared behind the room drawer it was asked from.
+    /// The drawer is fixed and the engine paints fixed elements above everything else whatever
+    /// its z-index, so an absolute confirm with a higher z-index still lost. Two things now: the
+    /// drawer goes when the question is asked, and the question is on top even if it is not.
+    /// </summary>
+    [Fact]
+    public void TheQuestionIsOverTheRoomDrawerOnAPhone()
+    {
+        var vm = TwoRooms(admin: true);
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+        doc.InputProfile = CupriFace.Interaction.InputProfile.Touch;
+
+        vm.ToggleRooms(narrow: true);
+        Assert.True(vm.RoomsShowing);
+        vm.ConfirmCloseRoom("#other");
+        Assert.False(vm.RoomsShowing);
+
+        // And with the drawer put back up, the question still wins the tap.
+        vm.ToggleRooms(narrow: true);
+        doc.Refresh();
+        var p = BanterChatApp.Presentation(412, 915);
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        var card = Walk(doc.Root).First(n =>
+            n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("confirm-card") == true && n.Node.Width > 0).Node;
+        var box = CupriFace.Interaction.HitTesting.AbsoluteBox(card);
+        var hit = doc.HitTest(box.X + (box.W / 2), box.Y + (box.H / 2));
+        Assert.NotNull(hit?.Element?.Closest(".confirm-card"));
+    }
+
     [Fact]
     public void ClickingTheCrossAsksAndDoesNotSwitchRooms()
     {

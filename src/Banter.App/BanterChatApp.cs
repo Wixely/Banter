@@ -2443,7 +2443,11 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         /* ── Confirming something destructive ──────────────────────────────────────────────
            Above the page that raised it, and deliberately small: it asks one question about one
            named thing, and the page behind stays visible so the answer has its context. */
-        .confirm { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex;
+        /* Fixed, not absolute: the room drawer on a phone is fixed, and the engine paints every
+           fixed element on a top layer above everything that is not, whatever its z-index - so a
+           z-index: 40 confirm sat behind a z-index: 20 drawer, and "Close #room?" appeared under
+           the list it was asked from. */
+        .confirm { position: fixed; left: 0; top: 0; width: 100%; height: 100%; display: flex;
                    align-items: center; justify-content: center; z-index: 40; }
         .confirm.hidden { display: none; }
         .confirm-backdrop { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
