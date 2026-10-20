@@ -67,6 +67,8 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 .ConfigureAwait(false);
 
         _client.MessageReceived += OnMessage;
+        _client.MessageStreamStarted += OnStreamStarted;
+        _client.MessageStreamEnded += OnStreamEnded;
         _client.AttributesSet += OnAttributesSet;
         _client.Evicted += OnEvicted;
         _client.DelegatorChanged += OnDelegatorChanged;
@@ -420,6 +422,55 @@ public abstract partial class BanterAgent : IAsyncDisposable
         {
             // Normal shutdown.
         }
+    }
+
+    /// <summary>
+    /// Streams in flight, by id, with where and from whom - the END that finishes one says
+    /// neither, and that is when there is something to hear.
+    /// </summary>
+    private readonly Dictionary<string, (string Room, string Sender)> _openStreams = new(StringComparer.Ordinal);
+
+    private void OnStreamStarted(MsgStreamStartPayload s)
+    {
+        lock (_roomStateLock)
+        {
+            _openStreams[s.StreamId] = (s.Room, s.Sender);
+        }
+    }
+
+    /// <summary>
+    /// A streamed message is a message. An agent's reply arrives as a stream, so without this an
+    /// agent heard people and never other agents: a delegator's "@scout, take this" went past
+    /// scout unheard, and a model's context held everything said in the room except what the
+    /// other models said. Delivered whole, once finished, by the same path as a plain message -
+    /// the deltas are a display matter, and a decision to answer wants the whole of the text.
+    /// </summary>
+    private void OnStreamEnded(MsgStreamEndPayload e)
+    {
+        (string Room, string Sender) from;
+        lock (_roomStateLock)
+        {
+            // A stream that began before this agent was in the room has no start here. Nothing
+            // to attribute it to, so nothing to do: the room's history still has it.
+            if (!_openStreams.Remove(e.StreamId, out from))
+            {
+                return;
+            }
+        }
+
+        // Our own, already recorded by whoever produced it. Marked seen so a backfill does not
+        // read it back to us as something we missed.
+        if (string.Equals(from.Sender, Nick, StringComparison.OrdinalIgnoreCase))
+        {
+            if (e.MessageId is { Length: > 0 } own)
+            {
+                MarkSeen(from.Room, own);
+            }
+
+            return;
+        }
+
+        OnMessage(new MsgPayload(from.Room, from.Sender, e.FinalText, e.Timestamp, null, e.MessageId));
     }
 
     private void OnMessage(MsgPayload m)
@@ -985,6 +1036,8 @@ public abstract partial class BanterAgent : IAsyncDisposable
         if (_client is not null)
         {
             _client.MessageReceived -= OnMessage;
+            _client.MessageStreamStarted -= OnStreamStarted;
+            _client.MessageStreamEnded -= OnStreamEnded;
             _client.AttributesSet -= OnAttributesSet;
             _client.Evicted -= OnEvicted;
             _client.DelegatorChanged -= OnDelegatorChanged;

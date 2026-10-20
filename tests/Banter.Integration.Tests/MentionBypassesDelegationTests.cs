@@ -217,6 +217,33 @@ public sealed class MentionBypassesDelegationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AStreamedHandOffReachesTheAgentNamed()
+    {
+        // Reported from a real room: the delegator, asked to bring scout in, wrote "@scout ..."
+        // and scout never answered. An agent's reply goes out as a stream, and agents listened
+        // only for plain messages - so people were heard and other agents never were. The
+        // routing tests pass because a routed hand-off is a plain message; this is the model
+        // speaking for itself, which is how a delegator actually talks to another agent.
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
+        await human.JoinAsync("#main");
+
+        await using var delegator = new EchoAgent(Options("local-a", AgentLocality.Local), "@scout what do you make of this?");
+        await delegator.StartAsync(_transport);
+        await using var scout = new EchoAgent(Options("scout", AgentLocality.Local), "from-scout");
+        await scout.StartAsync(_transport);
+
+        await WaitForDelegatorAsync(human, "local-a");
+
+        await human.SendMessageAsync("#main", "ask scout about it");
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "from-scout"));
+        Assert.Contains("what do you make of this", scout.Answered.Single(), StringComparison.Ordinal);
+
+        // And the delegator did not take its own streamed words for somebody else's.
+        Assert.Single(delegator.Answered);
+    }
+
+    [Fact]
     public async Task NamingANumberedAgentDoesNotSummonTheOneItIsNumberedAfter()
     {
         // Found on a release run: "@local-2 get started" also started a turn in "local", because
