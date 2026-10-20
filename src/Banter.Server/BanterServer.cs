@@ -168,6 +168,22 @@ public sealed class BanterServer(
             {
                 return;
             }
+            catch (System.Net.Sockets.SocketException) when (_stopping.IsCancellationRequested)
+            {
+                // Disposing the listener under a pending accept ends it with "Operation canceled"
+                // as a SocketException on Linux, where Windows raises the ObjectDisposedException
+                // above. Either way the server is stopping, and this task faulting on the way out
+                // surfaced as an unhandled exception that failed whatever test was running.
+                return;
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+                // One connection failed to be accepted - reset mid-handshake, say. Not a reason to
+                // stop accepting the rest; the pause keeps a listener that is somehow broken from
+                // turning this into a spin.
+                await Task.Delay(50, _stopping.Token).ConfigureAwait(false);
+                continue;
+            }
 
             var session = new ClientSession(
                 connection, _codec, accounts, _engine, files, relics, identities, accountAdmin);
