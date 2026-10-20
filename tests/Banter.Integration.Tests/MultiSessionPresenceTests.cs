@@ -151,12 +151,32 @@ public sealed class MultiSessionPresenceTests : IAsyncLifetime
         await using var bob = await ConnectAsync("bob");
         await bob.JoinAsync("#main");
 
+        var said = new List<string>();
+        bob.MemberParted += p => { lock (said) { said.Add($"part {p.Nick}"); } };
+        bob.MemberJoined += j => { lock (said) { said.Add($"join {j.Nick}"); } };
+
         var phone = await ConnectAsync("alice");
         await phone.JoinAsync("#main");
 
-        var said = new List<string>();
-        bob.MemberParted += p => said.Add($"part {p.Nick}");
-        bob.MemberJoined += j => said.Add($"join {j.Nick}");
+        // Alice's first arrival IS announced, and bob hears it on his own connection some time
+        // after alice's join is acknowledged on hers. Subscribing after the join and hoping it
+        // had landed made this fail about one run in ten; waiting for it is what tells the
+        // arrival apart from what follows.
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (true)
+        {
+            lock (said)
+            {
+                if (said.Contains("join alice"))
+                {
+                    said.Clear();
+                    break;
+                }
+            }
+
+            Assert.True(DateTimeOffset.UtcNow < deadline, "bob never heard alice arrive");
+            await Task.Delay(25);
+        }
 
         // Out of the foreground and back, well inside the grace.
         await phone.DisposeAsync();
@@ -169,7 +189,10 @@ public sealed class MultiSessionPresenceTests : IAsyncLifetime
         // 50ms. The grace is thirty seconds and is deliberately not what this waits on.
         await Task.Delay(400);
 
-        Assert.Empty(said);
+        lock (said)
+        {
+            Assert.Empty(said);
+        }
 
         // And alice is in the room throughout, which is the state the silence is claiming.
         var members = await bob.GetMembersAsync("#main");
