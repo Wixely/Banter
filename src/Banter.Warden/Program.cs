@@ -184,6 +184,7 @@ var agentOptions = new BanterAgentOptions
     Clearance = clearance,
     Skills = skills,
     Description = Arg("--description") ?? $"{model} via {endpoint}",
+    Persona = Arg("--persona") ?? "",
     CostTier = costTier,
     WantsDelegator = Has("--delegator"),
     WorkMode = workMode,

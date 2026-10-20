@@ -26,13 +26,14 @@ public sealed partial class BanterClient
         int? costTier = null,
         bool? wantsDelegator = null,
         AgentWorkMode? workMode = null,
+        string? persona = null,
         CancellationToken cancellationToken = default) =>
         RequestAsync<AgentEnrolmentCodePayload>(
             new AgentIdentityCreatePayload(
                 nick, rooms, skills,
                 locality.ToString().ToLowerInvariant(),
                 clearance.ToString().ToLowerInvariant(),
-                costTier, wantsDelegator, workMode?.ToString()),
+                costTier, wantsDelegator, workMode?.ToString(), persona),
             cancellationToken);
 
     /// <summary>
@@ -42,6 +43,8 @@ public sealed partial class BanterClient
     /// <param name="costTier">An override to set, or null to leave the current state alone —
     /// unless <paramref name="clearCostTier"/> is true, which hands the choice back to the agent.
     /// <paramref name="wantsDelegator"/>/<paramref name="clearWantsDelegator"/> mirror this.</param>
+    /// <param name="persona">Prompt text the agent's model is given as who it is. Null leaves it
+    /// alone; an empty string takes it away.</param>
     public Task<OkPayload> UpdateAgentAsync(
         string nick,
         IReadOnlyList<string>? rooms = null,
@@ -54,6 +57,7 @@ public sealed partial class BanterClient
         bool clearWantsDelegator = false,
         AgentWorkMode? workMode = null,
         bool clearWorkMode = false,
+        string? persona = null,
         CancellationToken cancellationToken = default) =>
         RequestAsync<OkPayload>(
             new AgentIdentityUpdatePayload(
@@ -65,7 +69,8 @@ public sealed partial class BanterClient
                 SetWantsDelegator: wantsDelegator is not null || clearWantsDelegator,
                 WantsDelegator: clearWantsDelegator ? null : wantsDelegator,
                 SetWorkMode: workMode is not null || clearWorkMode,
-                WorkMode: clearWorkMode ? null : workMode?.ToString()),
+                WorkMode: clearWorkMode ? null : workMode?.ToString(),
+                Persona: persona),
             cancellationToken);
 
     /// <summary>Removes an agent. Its key stops working on the next thing it tries.</summary>

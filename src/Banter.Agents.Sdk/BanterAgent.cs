@@ -84,7 +84,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         await _client.AnnounceAgentAsync(
             new AgentAnnouncePayload(
                 Options.User, Options.Locality, Options.Clearance, Options.Skills,
-                Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode),
+                Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode, Options.Persona),
             cancellationToken).ConfigureAwait(false);
 
         // Before joining anything, so the first message in a room can already use tools.
@@ -246,7 +246,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
                 await Client.AnnounceAgentAsync(
                     new AgentAnnouncePayload(
                         Options.User, Options.Locality, Options.Clearance, Options.Skills,
-                        Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode),
+                        Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode, Options.Persona),
                     _stopping.Token).ConfigureAwait(false);
 
                 await RefreshToolsAsync(_stopping.Token).ConfigureAwait(false);
@@ -392,6 +392,15 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// takes effect on the next request rather than the next restart.
     /// </summary>
     private AgentWorkMode EffectiveWorkMode => EffectiveAttributes?.WorkMode ?? Options.WorkMode;
+
+    /// <summary>
+    /// Who this agent is, as prompt text: what the admin set on its identity if anything, and
+    /// otherwise what <see cref="BanterAgentOptions.Persona"/> asked for. Read live, so an
+    /// admin's change reaches the next turn rather than the next restart. Empty when nobody has
+    /// said - and on a server too old to carry it, where the agent's own word stands.
+    /// </summary>
+    protected string Persona =>
+        EffectiveAttributes?.Persona is { Length: > 0 } granted ? granted : Options.Persona;
 
     private void OnAttributesSet(AgentAnnouncePayload effective)
     {

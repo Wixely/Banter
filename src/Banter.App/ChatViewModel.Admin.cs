@@ -226,6 +226,7 @@ public sealed partial class ChatViewModel
         Model.AgentFormRooms = Model.ActiveRoom.Length > 0 ? Model.ActiveRoom : "#main";
         Model.AgentFormSkills = "chat";
         Model.AgentFormCost = "";
+        Model.AgentFormPersona = "";
         Model.AgentLocalityChoices = LocalityChoices("local");
         Model.AgentClearanceChoices = ClearanceChoices("sensitive");
         Model.AgentDelegatorChoices = DelegatorChoices("auto");
@@ -268,6 +269,7 @@ public sealed partial class ChatViewModel
         Model.AgentFormRooms = string.Join(", ", identity.Rooms);
         Model.AgentFormSkills = string.Join(", ", identity.Skills);
         Model.AgentFormCost = identity.CostTier?.ToString() ?? "";
+        Model.AgentFormPersona = identity.Persona;
         Model.AgentLocalityChoices = LocalityChoices(identity.Locality);
         Model.AgentClearanceChoices = ClearanceChoices(identity.Clearance);
         Model.AgentDelegatorChoices = DelegatorChoices(
@@ -360,6 +362,7 @@ public sealed partial class ChatViewModel
         Model.AgentFormRooms.Trim(),
         Model.AgentFormSkills.Trim(),
         Model.AgentFormCost.Trim(),
+        Model.AgentFormPersona.Trim(),
         Chosen(Model.AgentLocalityChoices),
         Chosen(Model.AgentClearanceChoices),
         Chosen(Model.AgentDelegatorChoices),
@@ -418,7 +421,8 @@ public sealed partial class ChatViewModel
                 "workwhenalone" => AgentWorkMode.WorkWhenAlone,
                 "delegateandwork" => AgentWorkMode.DelegateAndWork,
                 _ => null,
-            });
+            },
+            Model.AgentFormPersona.Trim());
     }
 
     // ── Users: the list ──────────────────────────────────────────────────────────────────────

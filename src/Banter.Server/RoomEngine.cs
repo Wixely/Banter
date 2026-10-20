@@ -872,6 +872,7 @@ internal sealed partial class RoomEngine(
             CostTier = identity.CostTier ?? announced.CostTier,
             WantsDelegator = identity.WantsDelegator ?? announced.WantsDelegator,
             WorkMode = identity.WorkMode ?? announced.WorkMode,
+            Persona = identity.Persona.Length > 0 ? identity.Persona : announced.Persona,
         };
     }
 

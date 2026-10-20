@@ -48,6 +48,13 @@ public sealed record BanterAgentOptions
     /// <summary>Human-readable summary shown in the roster.</summary>
     public string Description { get; init; } = "";
 
+    /// <summary>
+    /// Who this agent is, as prompt text its model is given on every turn, after the system
+    /// prompt: a manner, a trait, a standing instruction. An admin can set one on the identity,
+    /// and that outranks this; <see cref="BanterAgent.Persona"/> is whichever is in force.
+    /// </summary>
+    public string Persona { get; init; } = "";
+
     /// <summary>Lower is cheaper. A tie-break in election and routing.</summary>
     public int CostTier { get; init; } = 1;
 

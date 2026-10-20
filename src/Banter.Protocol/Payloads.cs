@@ -549,7 +549,11 @@ public sealed record AgentAnnouncePayload(
     [property: Key(4)] string Description = "",
     [property: Key(5)] int CostTier = 1,
     [property: Key(6)] bool WantsDelegator = false,
-    [property: Key(7)] AgentWorkMode WorkMode = AgentWorkMode.DelegateAndWork);
+    [property: Key(7)] AgentWorkMode WorkMode = AgentWorkMode.DelegateAndWork,
+    // Who this agent is, as prompt text its model is given on every turn. An admin's identity
+    // sets it over the agent's own; the effective announcement carries whichever won. Trailing
+    // and optional, so an older peer simply does not see it.
+    [property: Key(8)] string Persona = "");
 
 /// <summary>
 /// What a delegator does with work nobody else can take.
@@ -975,7 +979,9 @@ public sealed record AgentIdentityPayload(
     // older peer simply does not see them.
     [property: Key(8)] int? CostTier = null,
     [property: Key(9)] bool? WantsDelegator = null,
-    [property: Key(10)] string? WorkMode = null);
+    [property: Key(10)] string? WorkMode = null,
+    // Prompt text the agent's model is given, over whatever the agent asked for. Empty is none.
+    [property: Key(11)] string Persona = "");
 
 /// <summary>Admin → server: create an identity. Everything but the nick may be changed later.</summary>
 [MessagePackObject]
@@ -987,7 +993,8 @@ public sealed record AgentIdentityCreatePayload(
     [property: Key(4)] string Clearance,
     [property: Key(5)] int? CostTier = null,
     [property: Key(6)] bool? WantsDelegator = null,
-    [property: Key(7)] string? WorkMode = null);
+    [property: Key(7)] string? WorkMode = null,
+    [property: Key(8)] string? Persona = null);
 
 /// <summary>
 /// Server → admin: the identity, and the one-time code to redeem wherever the agent will run.
@@ -1021,7 +1028,10 @@ public sealed record AgentIdentityUpdatePayload(
     [property: Key(7)] bool SetWantsDelegator = false,
     [property: Key(8)] bool? WantsDelegator = null,
     [property: Key(9)] bool SetWorkMode = false,
-    [property: Key(10)] string? WorkMode = null);
+    [property: Key(10)] string? WorkMode = null,
+    // No Set flag: null leaves it alone and an empty string clears it, because for prompt text
+    // "none" IS the empty string rather than a separate state.
+    [property: Key(11)] string? Persona = null);
 
 /// <summary>Admin → server: remove an identity. Any session holding its key is dropped.</summary>
 [MessagePackObject]

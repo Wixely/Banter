@@ -45,6 +45,14 @@ public sealed record AgentIdentity
     /// </summary>
     public AgentWorkMode? WorkMode { get; init; }
 
+    /// <summary>
+    /// Who this agent is, as prompt text its model is given on every turn - a manner, a trait, a
+    /// standing instruction. Set here it outranks whatever the agent's own configuration says, so
+    /// an operator can give an agent a character without a hand on the machine it runs on. Empty
+    /// means the agent's own word stands.
+    /// </summary>
+    public string Persona { get; init; } = "";
+
     /// <summary>SubjectPublicKeyInfo of the enrolled key, or null until a machine has enrolled.</summary>
     public byte[]? PublicKey { get; init; }
 
@@ -86,13 +94,15 @@ public interface IAgentIdentityStore
     Task<string?> ReissueAsync(string nick, DateTimeOffset now, CancellationToken cancellationToken = default);
 
     /// <summary>Null leaves a field alone. The override tuples set when <c>Set</c> is true —
-    /// to the value given, where null clears the override back to "the agent decides".</summary>
+    /// to the value given, where null clears the override back to "the agent decides". A persona
+    /// needs no flag: empty is how it is cleared.</summary>
     Task<bool> UpdateAsync(
         string nick, IReadOnlyList<string>? rooms, IReadOnlyList<string>? skills,
         AgentLocality? locality, DataSensitivity? clearance,
         (bool Set, int? Value) costTier = default,
         (bool Set, bool? Value) wantsDelegator = default,
         (bool Set, AgentWorkMode? Value) workMode = default,
+        string? persona = null,
         CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(string nick, CancellationToken cancellationToken = default);

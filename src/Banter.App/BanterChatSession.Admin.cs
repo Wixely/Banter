@@ -29,7 +29,7 @@ public sealed partial class BanterChatSession
         {
             var created = await _client.CreateAgentAsync(
                 form.Nick, form.Rooms, form.Skills, form.Locality, form.Clearance,
-                form.CostTier, form.WantsDelegator, form.WorkMode).ConfigureAwait(false);
+                form.CostTier, form.WantsDelegator, form.WorkMode, form.Persona).ConfigureAwait(false);
 
             // The code is shown before the list is refreshed: the refresh is housekeeping, and the
             // code is the one thing here that exists for a moment and then never again.
@@ -62,7 +62,10 @@ public sealed partial class BanterChatSession
                 clearance: form.Clearance,
                 costTier: form.CostTier, clearCostTier: form.CostTier is null,
                 wantsDelegator: form.WantsDelegator, clearWantsDelegator: form.WantsDelegator is null,
-                workMode: form.WorkMode, clearWorkMode: form.WorkMode is null)
+                workMode: form.WorkMode, clearWorkMode: form.WorkMode is null,
+                // The form shows the whole of it, so what is in the box is what the agent gets -
+                // an emptied box included.
+                persona: form.Persona)
                 .ConfigureAwait(false);
 
             await LoadAgentIdentitiesAsync().ConfigureAwait(false);

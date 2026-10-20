@@ -345,12 +345,18 @@ internal sealed class ClientSession(
                         CostTier = create.CostTier,
                         WantsDelegator = create.WantsDelegator,
                         WorkMode = ParseWorkMode(create.WorkMode),
+                        Persona = create.Persona?.Trim() ?? "",
                     },
                     now,
                     cancellationToken).ConfigureAwait(false);
 
                 Send(new AgentEnrolmentCodePayload(create.Nick, code, (now + IdentityWindow).ToUnixTimeSeconds()),
                     replyTo: envelope.MsgId);
+
+                // An agent of this name may already be running on a password. The identity binds
+                // it now, as an update would: an admin giving a live agent a character should not
+                // have to restart it to see the change.
+                await engine.ReapplyIdentityAsync(create.Nick).ConfigureAwait(false);
                 break;
             }
 
@@ -382,6 +388,7 @@ internal sealed class ClientSession(
                     (update.SetCostTier, update.CostTier),
                     (update.SetWantsDelegator, update.WantsDelegator),
                     (update.SetWorkMode, ParseWorkMode(update.WorkMode)),
+                    update.Persona?.Trim(),
                     cancellationToken).ConfigureAwait(false);
 
                 if (changed)
@@ -440,7 +447,8 @@ internal sealed class ClientSession(
         identity.EnrolmentPending,
         identity.CostTier,
         identity.WantsDelegator,
-        identity.WorkMode?.ToString().ToLowerInvariant());
+        identity.WorkMode?.ToString().ToLowerInvariant(),
+        identity.Persona);
 
     private static AgentLocality ParseLocality(string value) =>
         Enum.TryParse<AgentLocality>(value, ignoreCase: true, out var parsed) ? parsed : AgentLocality.Local;

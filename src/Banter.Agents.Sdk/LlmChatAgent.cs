@@ -104,7 +104,10 @@ public sealed class LlmChatAgent : BanterAgent
         List<ChatTurn> messages;
         lock (_contextLock)
         {
-            messages = [ChatTurn.System(_llm.SystemPrompt)];
+            // Who this agent is comes after what every agent is told, so it can override the
+            // general manner; read each turn, so an admin's change applies to the next answer.
+            var persona = Persona;
+            messages = [ChatTurn.System(persona.Length > 0 ? $"{_llm.SystemPrompt}\n\n{persona}" : _llm.SystemPrompt)];
             if (_context.TryGetValue(room, out var turns))
             {
                 messages.AddRange(turns);

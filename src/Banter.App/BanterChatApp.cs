@@ -1137,6 +1137,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 "Comma separated."),
             Field("Skills", TextControl("{{AgentFormSkills}}", "notes, minutes"),
                 "What the delegator matches on when handing out work."),
+            Field("Personality", TextControl("{{AgentFormPersona}}", "Dry and brief. Answers in bullet points where it can."),
+                "Given to the agent's model as who it is, on every turn, over whatever the agent "
+                + "was started with. Empty leaves the agent's own."),
             Field("Runs on", ChoiceControl("AgentLocalityChoices", "data-agent-locality"),
                 "The axis that decides whether anything said in the room may leave it."),
             Field("Clearance", ChoiceControl("AgentClearanceChoices", "data-agent-clearance"),

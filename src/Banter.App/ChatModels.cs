@@ -309,7 +309,8 @@ public sealed record AgentForm(
     DataSensitivity Clearance,
     int? CostTier,
     bool? WantsDelegator,
-    AgentWorkMode? WorkMode);
+    AgentWorkMode? WorkMode,
+    string Persona);
 
 /// <summary>One agent identity on the agents page.</summary>
 [CupriBindable]
@@ -843,6 +844,7 @@ public sealed partial class ChatModel
     public string AgentFormRooms { get; set; } = "";
     public string AgentFormSkills { get; set; } = "";
     public string AgentFormCost { get; set; } = "";
+    public string AgentFormPersona { get; set; } = "";
     public string AgentFingerprint { get; set; } = "";
     public List<ChoiceRow> AgentLocalityChoices { get; set; } = [];
     public List<ChoiceRow> AgentClearanceChoices { get; set; } = [];

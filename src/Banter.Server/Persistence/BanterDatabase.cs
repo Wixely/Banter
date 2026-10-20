@@ -418,5 +418,12 @@ public static class SchemaManifest
             ALTER TABLE rooms ADD COLUMN parent TEXT NULL;
             ALTER TABLE rooms ADD COLUMN disclosure BIGINT NOT NULL DEFAULT 0;
             """),
+        new(13,
+            "agent-identity-persona",
+            // Prompt text an admin gives an agent, read as its own by the model on every turn.
+            // Nullable like the other overrides, and read back as empty: none and "" mean the
+            // same thing here, and a flag to tell them apart would be a distinction nobody wants.
+            SqliteSql: "ALTER TABLE agent_identities ADD COLUMN persona TEXT NULL;",
+            PostgresSql: "ALTER TABLE agent_identities ADD COLUMN persona TEXT NULL;"),
     ];
 }
