@@ -1655,12 +1655,15 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .main { display: flex; flex-direction: column; flex: 1; background: #111419; }
         .header { height: 66px; display: flex; flex-direction: row; align-items: center;
                   padding: 0 18px; border-bottom: 1px solid #20262f; }
-        .header-title { display: flex; flex-direction: column; flex: 1; }
-        .room-name { font-size: 14px; font-weight: bold; }
+        /* min-width: 0 and a clipped name, or a long room name is the title's width: since
+           CupriFace 0.44 a flex item does not shrink below its content, so the name pushed the
+           ... button and the pill off the right edge, where nothing could tap them. */
+        .header-title { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        .room-name { font-size: 14px; font-weight: bold; white-space: nowrap; overflow: hidden; }
         /* Hidden until the title is actually a control - see the narrow block. A chevron on a
            desktop header would promise something that does nothing there. */
         .room-caret { display: none; }
-        .topic { color: #8d97a6; font-size: 11px; margin-top: 2px; }
+        .topic { color: #8d97a6; font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; }
         /* Who is running the room, as a pill: a dot that says whether anybody is, and the mode
            and delegator beside it. */
         .dispatch { display: flex; flex-direction: row; align-items: center; flex: 0 0 auto;

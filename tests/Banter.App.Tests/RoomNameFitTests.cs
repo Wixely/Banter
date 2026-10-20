@@ -97,6 +97,57 @@ public sealed class RoomNameFitTests(ITestOutputHelper output)
         Assert.True(memberBox.W > 1f, $"the member count laid out {memberBox.W:F0} wide");
     }
 
+    /// <summary>
+    /// The header: a long name pushed the room's ... button and the delegator pill past the right
+    /// edge, where they could not be tapped. Reported from a phone with a side room called
+    /// #sciro-cheese-names-brainstorm-c6fb open; the same rule failed on a desktop with a longer
+    /// one. The title shrinks and clips, and the controls keep their place.
+    /// </summary>
+    [Theory]
+    [InlineData(412, 915)]
+    [InlineData(1280, 800)]
+    public void ALongRoomNameDoesNotPushTheRoomMenuOffTheHeader(int width, int height)
+    {
+        var vm = new ChatViewModel();
+        vm.SetNick("alice");
+        vm.AddRoom("#main");
+        vm.AddRoom("#sciro-cheese-names-brainstorm-c6fb-and-then-some-more-words-after-it");
+        vm.SwitchTo("#sciro-cheese-names-brainstorm-c6fb-and-then-some-more-words-after-it");
+        vm.Connected("tcp://h:7770", "alice");
+        vm.SetAgents("#sciro-cheese-names-brainstorm-c6fb-and-then-some-more-words-after-it", [("jade", true, "chat", true)]);
+
+        var app = new BanterChatApp(vm);
+        using var doc = app.CreateDocument();
+        if (width < 700)
+        {
+            doc.InputProfile = InputProfile.Touch;
+        }
+
+        doc.Refresh();
+        var p = BanterChatApp.Presentation(width, height);
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        var name = First(doc, "room-name");
+        var menu = First(doc, "room-menu");
+        var nameBox = HitTesting.AbsoluteBox(name);
+        var menuBox = HitTesting.AbsoluteBox(menu);
+        output.WriteLine($"{width}px: name {nameBox.X:F0}..{nameBox.X + nameBox.W:F0} overflow={name.Style.Overflow}; menu {menuBox.X:F0}..{menuBox.X + menuBox.W:F0}");
+
+        Assert.True(menuBox.X + menuBox.W <= width + 0.5f, $"the menu ends at {menuBox.X + menuBox.W:F0} in a {width}px window");
+        Assert.True(nameBox.X + nameBox.W <= menuBox.X + 0.5f, $"the name ends at {nameBox.X + nameBox.W:F0} and the menu starts at {menuBox.X:F0}");
+        Assert.NotEqual(OverflowMode.Visible, name.Style.Overflow);
+
+        // The pill too, when it is showing: it is how a phone knows who is running the room.
+        var pill = Walk(doc.Root).FirstOrDefault(n =>
+            n.Element?.GetAttribute("class")?.Split(' ').Contains("dispatch") == true && n.Width > 0);
+        if (pill is not null)
+        {
+            var pillBox = HitTesting.AbsoluteBox(pill);
+            output.WriteLine($"pill {pillBox.X:F0}..{pillBox.X + pillBox.W:F0}");
+            Assert.True(pillBox.X + pillBox.W <= width + 0.5f, $"the pill ends at {pillBox.X + pillBox.W:F0} in a {width}px window");
+        }
+    }
+
     /// <summary>The joined-room tab has the same shape of problem with its unread badge, and the
     /// same pair of rules. A fix applied to one of two lists is the kind that looks complete.</summary>
     [Fact]
