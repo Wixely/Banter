@@ -448,7 +448,9 @@ internal sealed class ClientSession(
         identity.CostTier,
         identity.WantsDelegator,
         identity.WorkMode?.ToString().ToLowerInvariant(),
-        identity.Persona);
+        identity.Persona,
+        identity.LastSdk,
+        identity.LastSeenAt?.ToUnixTimeSeconds() ?? 0);
 
     private static AgentLocality ParseLocality(string value) =>
         Enum.TryParse<AgentLocality>(value, ignoreCase: true, out var parsed) ? parsed : AgentLocality.Local;

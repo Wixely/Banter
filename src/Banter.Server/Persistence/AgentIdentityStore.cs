@@ -37,6 +37,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         public bool? WantsDelegator { get; set; }
         public string? WorkMode { get; set; }
         public string? Persona { get; set; }
+        public string? LastSdk { get; set; }
+        public long? LastSeenAt { get; set; }
         public byte[]? PublicKey { get; set; }
         public byte[]? EnrolmentHash { get; set; }
         public byte[]? EnrolmentSalt { get; set; }
@@ -164,6 +166,14 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         return changed > 0;
     }
 
+    public async Task RecordSeenAsync(string nick, string sdk, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await connection.ExecuteAsync(
+            "UPDATE agent_identities SET last_sdk = @Sdk, last_seen_at = @Seen WHERE nick = @Nick",
+            new { Nick = Normalize(nick), Sdk = sdk, Seen = now.ToUnixTimeSeconds() }).ConfigureAwait(false);
+    }
+
     public async Task<bool> DeleteAsync(string nick, CancellationToken cancellationToken = default)
     {
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -179,7 +189,7 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
             """
             SELECT nick AS Nick, rooms AS Rooms, skills AS Skills, locality AS Locality,
                    clearance AS Clearance, cost_tier AS CostTier, wants_delegator AS WantsDelegator,
-                   work_mode AS WorkMode, persona AS Persona,
+                   work_mode AS WorkMode, persona AS Persona, last_sdk AS LastSdk, last_seen_at AS LastSeenAt,
                    public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
                    enrolment_salt AS EnrolmentSalt, enrolment_expires_at AS EnrolmentExpiresAt
               FROM agent_identities WHERE nick = @Nick
@@ -196,7 +206,7 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
             """
             SELECT nick AS Nick, rooms AS Rooms, skills AS Skills, locality AS Locality,
                    clearance AS Clearance, cost_tier AS CostTier, wants_delegator AS WantsDelegator,
-                   work_mode AS WorkMode, persona AS Persona,
+                   work_mode AS WorkMode, persona AS Persona, last_sdk AS LastSdk, last_seen_at AS LastSeenAt,
                    public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
                    enrolment_salt AS EnrolmentSalt, enrolment_expires_at AS EnrolmentExpiresAt
               FROM agent_identities ORDER BY nick
@@ -226,7 +236,7 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
             """
             SELECT nick AS Nick, rooms AS Rooms, skills AS Skills, locality AS Locality,
                    clearance AS Clearance, cost_tier AS CostTier, wants_delegator AS WantsDelegator,
-                   work_mode AS WorkMode, persona AS Persona,
+                   work_mode AS WorkMode, persona AS Persona, last_sdk AS LastSdk, last_seen_at AS LastSeenAt,
                    public_key AS PublicKey, enrolment_hash AS EnrolmentHash,
                    enrolment_salt AS EnrolmentSalt, enrolment_expires_at AS EnrolmentExpiresAt
               FROM agent_identities WHERE enrolment_hash IS NOT NULL
@@ -284,6 +294,8 @@ public sealed class AgentIdentityStore(BanterDatabase database) : IAgentIdentity
         WantsDelegator = row.WantsDelegator,
         WorkMode = Enum.TryParse<AgentWorkMode>(row.WorkMode, ignoreCase: true, out var mode) ? mode : null,
         Persona = row.Persona ?? "",
+        LastSdk = row.LastSdk ?? "",
+        LastSeenAt = row.LastSeenAt is { } seen ? DateTimeOffset.FromUnixTimeSeconds(seen) : null,
         PublicKey = row.PublicKey,
         EnrolmentPending = row.EnrolmentHash is not null,
     };

@@ -943,6 +943,13 @@ internal sealed partial class RoomEngine(
         var owned = await ClampToIdentityAsync(requested).ConfigureAwait(false);
         session.Announcement = owned;
 
+        // What it connected with, for the agents page. An SDK older than the field says nothing,
+        // which is recorded as such: "connected, said no version" is the answer in that case.
+        if (identities is not null)
+        {
+            await identities.RecordSeenAsync(session.Nick, announce.Sdk ?? "", DateTimeOffset.UtcNow).ConfigureAwait(false);
+        }
+
         foreach (var room in _rooms.Values.Where(r => r.Members.Contains(session)))
         {
             var existing = room.Agents.TryGetValue(session.Nick, out var current)

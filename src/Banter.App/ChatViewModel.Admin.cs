@@ -184,7 +184,10 @@ public sealed partial class ChatViewModel
             Initials = InitialsOf(i.Nick),
             Detail = $"{i.Locality} · {i.Clearance} · {string.Join(", ", i.Rooms)}"
                 + (i.CostTier is { } cost ? $" · cost {cost}" : "")
-                + (i.WantsDelegator is { } wants ? (wants ? " · delegator pinned" : " · delegator never") : ""),
+                + (i.WantsDelegator is { } wants ? (wants ? " · delegator pinned" : " · delegator never") : "")
+                // Which SDK it runs decides how it behaves in a room, so it is on the row, not
+                // only in the form: a glance down the list should show the one that is behind.
+                + (i.LastSeenAt > 0 ? (i.LastSdk is { Length: > 0 } sdk ? $" · SDK {sdk}" : " · SDK unknown (old)") : ""),
 
             // What an operator most needs to know at a glance is whether this identity is actually
             // usable, and if so which key is answering for it.
@@ -273,6 +276,7 @@ public sealed partial class ChatViewModel
         // with default(string), not the record's "". Crashed the Android client on the first tap
         // of an agent against a 0.14.1 server.
         Model.AgentFormPersona = identity.Persona ?? "";
+        Model.AgentFormSeen = SeenText(identity.LastSdk, identity.LastSeenAt);
         Model.AgentLocalityChoices = LocalityChoices(identity.Locality);
         Model.AgentClearanceChoices = ClearanceChoices(identity.Clearance);
         Model.AgentDelegatorChoices = DelegatorChoices(
@@ -315,6 +319,22 @@ public sealed partial class ChatViewModel
         Model.AgentDetailTitle = "";
         Model.AgentDetailSubtitle = "";
         Model.AgentRemoveClass = "mgmt-remove hidden";
+    }
+
+    /// <summary>
+    /// What the agent last connected with, as people read it. An SDK older than the version
+    /// field connects and says nothing, which is worth distinguishing from never having
+    /// connected: the first is an agent to rebuild, the second one to enrol.
+    /// </summary>
+    public static string SeenText(string? sdk, long seenAtUnix)
+    {
+        if (seenAtUnix <= 0)
+        {
+            return "never connected";
+        }
+
+        var when = DateTimeOffset.FromUnixTimeSeconds(seenAtUnix).ToLocalTime().ToString("d MMM HH:mm", global::System.Globalization.CultureInfo.InvariantCulture);
+        return sdk is { Length: > 0 } ? $"SDK {sdk}, {when}" : $"an SDK too old to say which, {when}";
     }
 
     public bool AgentIsNew => _agentMode == DetailMode.New;

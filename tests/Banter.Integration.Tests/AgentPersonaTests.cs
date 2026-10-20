@@ -153,6 +153,28 @@ public sealed class AgentPersonaTests(ITestOutputHelper output) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheIdentityRemembersWhatTheAgentLastConnectedWith()
+    {
+        await using var admin = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "root", "pw");
+        await admin.CreateAgentAsync("local", ["#main"], ["chat"]).WaitAsync(Patience);
+
+        var before = Assert.Single(await admin.ListAgentsAsync().WaitAsync(Patience));
+        Assert.Equal("", before.LastSdk);
+        Assert.Equal(0, before.LastSeenAt);
+
+        // Three reports in one day came down to not knowing which SDK an agent was running.
+        Assert.Matches(@"^\d+\.\d+\.\d+", BanterAgent.SdkVersion);
+        var model = new RecordingModel();
+        await using var local = new LlmChatAgent(Agent(""), Model, model);
+        await local.StartAsync(_transport);
+
+        var after = Assert.Single(await admin.ListAgentsAsync().WaitAsync(Patience));
+        output.WriteLine($"{after.Nick}: SDK {after.LastSdk} at {after.LastSeenAt}");
+        Assert.Equal(BanterAgent.SdkVersion, after.LastSdk);
+        Assert.InRange(after.LastSeenAt, DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds(), DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeSeconds());
+    }
+
+    [Fact]
     public async Task AnAdminsPersonaOutranksTheAgentsAndReachesTheNextTurn()
     {
         await using var admin = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "root", "pw");

@@ -855,6 +855,9 @@ public sealed partial class ChatModel
     public string AgentFormSkills { get; set; } = "";
     public string AgentFormCost { get; set; } = "";
     public string AgentFormPersona { get; set; } = "";
+
+    /// <summary>"0.15.1, 20 Oct 14:05" - what the agent last connected with and when, or "never".</summary>
+    public string AgentFormSeen { get; set; } = "";
     public string AgentFingerprint { get; set; } = "";
     public List<ChoiceRow> AgentLocalityChoices { get; set; } = [];
     public List<ChoiceRow> AgentClearanceChoices { get; set; } = [];

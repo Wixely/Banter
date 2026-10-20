@@ -1183,6 +1183,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                 + "mid-answer cannot hand anything out."),
             Field("Cost", TextControl("{{AgentFormCost}}", "agent decides"),
                 "Lower is cheaper, and only ever a tie-break. Empty lets the agent say."),
+            Field("Last connected", ReadOnlyControl("{{AgentFormSeen}}"),
+                "What this agent announced itself with, and when. An agent behind the server's SDK "
+                + "behaves by older rules in a room; rebuild it against the current one.",
+                "{{AgentKeyFieldClass}}"),
             Field("Key", ReadOnlyControl("{{AgentFingerprint}}") + "\n" +
                 InlineAction("{{AgentReissueClass}}", "Reissue key"),
                 "The key answering for this agent. One identity holds one key, so reissuing "

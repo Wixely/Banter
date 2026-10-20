@@ -1,3 +1,4 @@
+using System.Reflection;
 using Banter.Client.Core;
 using Banter.Core;
 using Banter.Protocol;
@@ -28,6 +29,32 @@ public abstract partial class BanterAgent : IAsyncDisposable
     protected BanterClient Client => _client ?? throw new InvalidOperationException("Agent is not started.");
 
     public string Nick => _client?.Nick ?? Options.User;
+
+    /// <summary>
+    /// The version of this SDK, as "0.15.1": what the agent announces, so the server can show
+    /// which SDK each agent runs. Read from the assembly, which CI stamps with the release number;
+    /// a local build reports the VersionPrefix it was built from.
+    /// </summary>
+    public static string SdkVersion { get; } = ReadSdkVersion();
+
+    private static string ReadSdkVersion()
+    {
+        var informational = typeof(BanterAgent).Assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (informational is not { Length: > 0 })
+        {
+            return typeof(BanterAgent).Assembly.GetName().Version?.ToString(3) ?? "";
+        }
+
+        var plus = informational.IndexOf('+');
+        return plus < 0 ? informational : informational[..plus];
+    }
+
+    /// <summary>What this agent tells the server it is: the options, and the SDK they run on.</summary>
+    private AgentAnnouncePayload Announcement() => new(
+        Options.User, Options.Locality, Options.Clearance, Options.Skills,
+        Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode, Options.Persona,
+        SdkVersion);
 
     /// <summary>Raised for every turn the agent takes, for logging or supervision.</summary>
     public event Action<string, string>? TurnStarted;
@@ -82,11 +109,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
 
         // Announce before joining, so the attributes are already on file when the server runs
         // the election our arrival triggers.
-        await _client.AnnounceAgentAsync(
-            new AgentAnnouncePayload(
-                Options.User, Options.Locality, Options.Clearance, Options.Skills,
-                Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode, Options.Persona),
-            cancellationToken).ConfigureAwait(false);
+        await _client.AnnounceAgentAsync(Announcement(), cancellationToken).ConfigureAwait(false);
 
         // Before joining anything, so the first message in a room can already use tools.
         await RefreshToolsAsync(cancellationToken).ConfigureAwait(false);
@@ -244,11 +267,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         {
             try
             {
-                await Client.AnnounceAgentAsync(
-                    new AgentAnnouncePayload(
-                        Options.User, Options.Locality, Options.Clearance, Options.Skills,
-                        Options.Description, Options.CostTier, Options.WantsDelegator, Options.WorkMode, Options.Persona),
-                    _stopping.Token).ConfigureAwait(false);
+                await Client.AnnounceAgentAsync(Announcement(), _stopping.Token).ConfigureAwait(false);
 
                 await RefreshToolsAsync(_stopping.Token).ConfigureAwait(false);
 

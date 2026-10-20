@@ -439,5 +439,19 @@ public static class SchemaManifest
             // which is what every room already was.
             SqliteSql: "ALTER TABLE rooms ADD COLUMN sensitivity INTEGER NOT NULL DEFAULT 3;",
             PostgresSql: "ALTER TABLE rooms ADD COLUMN sensitivity BIGINT NOT NULL DEFAULT 3;"),
+        new(16,
+            "agent-identity-last-seen",
+            // What an identity last connected with, and when. Which SDK an agent runs decides how
+            // it behaves in a room, and three reports in a day turned on not being able to tell.
+            SqliteSql:
+            """
+            ALTER TABLE agent_identities ADD COLUMN last_sdk TEXT NULL;
+            ALTER TABLE agent_identities ADD COLUMN last_seen_at INTEGER NULL;
+            """,
+            PostgresSql:
+            """
+            ALTER TABLE agent_identities ADD COLUMN last_sdk TEXT NULL;
+            ALTER TABLE agent_identities ADD COLUMN last_seen_at BIGINT NULL;
+            """),
     ];
 }

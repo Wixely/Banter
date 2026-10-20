@@ -555,7 +555,11 @@ public sealed record AgentAnnouncePayload(
     // Who this agent is, as prompt text its model is given on every turn. An admin's identity
     // sets it over the agent's own; the effective announcement carries whichever won. Trailing
     // and optional, so an older peer simply does not see it.
-    [property: Key(8)] string Persona = "");
+    [property: Key(8)] string Persona = "",
+    // The Banter SDK this agent was built against, as "0.15.1". Recorded on its identity and
+    // shown on the agents page, because which SDK an agent runs decides how it behaves in a room
+    // and there was no way to tell from the outside. Empty from an SDK older than the field.
+    [property: Key(9)] string Sdk = "");
 
 /// <summary>
 /// What a delegator does with work nobody else can take.
@@ -1027,7 +1031,12 @@ public sealed record AgentIdentityPayload(
     [property: Key(9)] bool? WantsDelegator = null,
     [property: Key(10)] string? WorkMode = null,
     // Prompt text the agent's model is given, over whatever the agent asked for. Empty is none.
-    [property: Key(11)] string Persona = "");
+    [property: Key(11)] string Persona = "",
+    // What this identity last connected with, and when (Unix seconds; 0 for never). The SDK is
+    // whatever the agent announced, so an agent older than the field shows as connected with
+    // nothing said - which is itself the answer.
+    [property: Key(12)] string LastSdk = "",
+    [property: Key(13)] long LastSeenAt = 0);
 
 /// <summary>Admin → server: create an identity. Everything but the nick may be changed later.</summary>
 [MessagePackObject]

@@ -53,6 +53,13 @@ public sealed record AgentIdentity
     /// </summary>
     public string Persona { get; init; } = "";
 
+    /// <summary>The Banter SDK this identity last announced itself with, or empty: never
+    /// connected, or connected from an SDK too old to say.</summary>
+    public string LastSdk { get; init; } = "";
+
+    /// <summary>When it last announced itself, or null for never.</summary>
+    public DateTimeOffset? LastSeenAt { get; init; }
+
     /// <summary>SubjectPublicKeyInfo of the enrolled key, or null until a machine has enrolled.</summary>
     public byte[]? PublicKey { get; init; }
 
@@ -106,6 +113,10 @@ public interface IAgentIdentityStore
         CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(string nick, CancellationToken cancellationToken = default);
+
+    /// <summary>Notes that the identity just announced itself, and with which SDK. A nick with no
+    /// identity is not an error: password agents have none to note it on.</summary>
+    Task RecordSeenAsync(string nick, string sdk, DateTimeOffset now, CancellationToken cancellationToken = default);
 
     Task<AgentIdentity?> FindAsync(string nick, CancellationToken cancellationToken = default);
 

@@ -131,6 +131,30 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheAgentsPageSaysWhatEachAgentLastConnectedWith()
+    {
+        var vm = Room();
+        var seen = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        vm.SetAgentIdentities([
+            Identity("dagger") with { LastSdk = "0.15.1", LastSeenAt = seen },
+            Identity("relic") with { LastSdk = "", LastSeenAt = seen },
+            Identity("scout", enrolled: false),
+        ]);
+
+        // On the row, because the one that is behind should show at a glance down the list.
+        Assert.Contains("SDK 0.15.1", vm.Model.AdminAgents.Single(r => r.Nick == "dagger").Detail, StringComparison.Ordinal);
+        Assert.Contains("SDK unknown (old)", vm.Model.AdminAgents.Single(r => r.Nick == "relic").Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("SDK", vm.Model.AdminAgents.Single(r => r.Nick == "scout").Detail, StringComparison.Ordinal);
+
+        vm.SelectAdminAgent("dagger");
+        Assert.StartsWith("SDK 0.15.1, ", vm.Model.AgentFormSeen, StringComparison.Ordinal);
+        vm.SelectAdminAgent("relic");
+        Assert.StartsWith("an SDK too old to say which", vm.Model.AgentFormSeen, StringComparison.Ordinal);
+        vm.SelectAdminAgent("scout");
+        Assert.Equal("never connected", vm.Model.AgentFormSeen);
+    }
+
+    [Fact]
     public void AnAgentFromAServerWithoutPersonasCanStillBeEdited()
     {
         var vm = Room();
