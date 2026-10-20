@@ -37,10 +37,23 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
     private BanterServer _server = null!;
 
     /// <summary>An agent whose "model" calls whichever tools a test queues up for it.</summary>
-    private sealed class ToolingAgent(BanterAgentOptions options) : BanterAgent(options)
+    private sealed class ToolingAgent : BanterAgent
     {
+        private volatile bool _answering;
+
+        public ToolingAgent(BanterAgentOptions options) : base(options)
+        {
+            // Turns never overlap, so the first end after an answer starts is that answer's.
+            TurnEnded += (_, _) => _answering = false;
+        }
+
         public Queue<(string Tool, string Args)> Plan { get; } = new();
         public List<string> Results { get; } = [];
+
+        /// <summary>A result lands mid-turn, while the reply is still being sent, and a message
+        /// that arrives then is dropped rather than queued. A test that follows one turn with
+        /// another waits for this, or it is racing the first turn's last few round trips.</summary>
+        public bool Answering => _answering;
 
         public IReadOnlyList<string> ToolNamesIn(string room) =>
             [.. ToolsFor(room).Select(t => t.Name)];
@@ -62,6 +75,7 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
             string room, string sender, string prompt,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
+            _answering = true;
             while (Plan.Count > 0)
             {
                 var (tool, args) = Plan.Dequeue();
@@ -167,6 +181,7 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
         boss.Plan.Enqueue(("open_side_room", """{"purpose":"the release notes"}"""));
         await human.SendMessageAsync("#main", "@local open a room for the release notes");
         await UntilAsync(() => Task.FromResult(boss.Results.Count == 1), "the room was never opened");
+        await UntilAsync(() => Task.FromResult(!boss.Answering), "the first turn never finished");
         var room = RoomNameIn(boss.Results[0]);
 
         // Asked from the main room, about the side room - the delegator of the parent is who may.
@@ -252,6 +267,7 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
         boss.Plan.Enqueue(("open_side_room", """{"purpose":"the release notes"}"""));
         await human.SendMessageAsync("#main", "@local write the release notes");
         await UntilAsync(() => Task.FromResult(boss.Results.Count == 1), "the room was never opened");
+        await UntilAsync(() => Task.FromResult(!boss.Answering), "the first turn never finished");
 
         var room = RoomNameIn(boss.Results[0]);
         output.WriteLine($"opened {room}");
@@ -317,6 +333,7 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
         boss.Plan.Enqueue(("open_side_room", """{"purpose":"web search"}"""));
         await human.SendMessageAsync("#main", "@local yes, add local-3");
         await UntilAsync(() => Task.FromResult(boss.Results.Count == 1), "the delegator never opened a room");
+        await UntilAsync(() => Task.FromResult(!boss.Answering), "the first turn never finished");
 
         var side = RoomNameIn(boss.Results[0]);
         boss.Plan.Enqueue(("invite_agent",

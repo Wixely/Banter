@@ -584,25 +584,9 @@ public sealed partial class ChatViewModel
         return rowClass + " tome";
     }
 
-    /// <summary>Whether text carries an explicit <c>@nick</c> for this user, ending where the nick does.</summary>
-    public bool MentionsMe(string text)
-    {
-        var nick = Model.Nick;
-        if (nick.Length == 0)
-        {
-            return false;
-        }
-
-        var at = text.IndexOf('@' + nick, StringComparison.OrdinalIgnoreCase);
-        if (at < 0)
-        {
-            return false;
-        }
-
-        // "@adminstrator" is not admin, the same rule the agent SDK applies to its own nick.
-        var after = at + 1 + nick.Length;
-        return after >= text.Length || !char.IsLetterOrDigit(text[after]);
-    }
+    /// <summary>Whether text carries an explicit <c>@nick</c> for this user, ending where the nick
+    /// does - "@adminstrator" is not admin - by the same rule agents answer to.</summary>
+    public bool MentionsMe(string text) => Banter.Client.Core.Mentions.Names(text, Model.Nick);
 
     /// <summary>
     /// How many messages have named this user since anything last looked. Counted rather than

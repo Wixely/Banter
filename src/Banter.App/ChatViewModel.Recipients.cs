@@ -154,20 +154,5 @@ public sealed partial class ChatViewModel
     }
 
     /// <summary>An explicit <c>@nick</c>, ending where the nick does - the rule agents answer to.</summary>
-    private static bool NamesWithAt(string text, string nick)
-    {
-        var at = text.IndexOf('@' + nick, StringComparison.OrdinalIgnoreCase);
-        while (at >= 0)
-        {
-            var after = at + 1 + nick.Length;
-            if (after >= text.Length || !char.IsLetterOrDigit(text[after]))
-            {
-                return true;
-            }
-
-            at = text.IndexOf('@' + nick, after, StringComparison.OrdinalIgnoreCase);
-        }
-
-        return false;
-    }
+    private static bool NamesWithAt(string text, string nick) => Banter.Client.Core.Mentions.Names(text, nick);
 }

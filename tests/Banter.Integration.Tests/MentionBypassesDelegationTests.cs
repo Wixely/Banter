@@ -27,6 +27,7 @@ public sealed class MentionBypassesDelegationTests : IAsyncLifetime
         .AddUser("human", "pw")
         .AddUser("local-a", "pw", isAgent: true)
         .AddUser("scout", "pw", isAgent: true)
+        .AddUser("scout-2", "pw", isAgent: true)
         .AddUser("third", "pw", isAgent: true);
 
     private string _root = null!;
@@ -214,6 +215,44 @@ public sealed class MentionBypassesDelegationTests : IAsyncLifetime
 
         Assert.Null(await WaitForAsync(human, m => m.Text == "from-scout", TimeSpan.FromSeconds(2)));
     }
+
+    [Fact]
+    public async Task NamingANumberedAgentDoesNotSummonTheOneItIsNumberedAfter()
+    {
+        // Found on a release run: "@local-2 get started" also started a turn in "local", because
+        // a mention ended at the first character that was not a letter or digit. The turn it took
+        // held its one-at-a-time gate, and the next message actually meant for it was dropped.
+        await using var human = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "human", "pw");
+        await human.JoinAsync("#main");
+
+        await using var delegator = new EchoAgent(Options("local-a", AgentLocality.Local), "from-the-delegator");
+        await delegator.StartAsync(_transport);
+        await using var scout = new EchoAgent(Options("scout", AgentLocality.Local), "from-scout");
+        await scout.StartAsync(_transport);
+        await using var second = new EchoAgent(Options("scout-2", AgentLocality.Local), "from-scout-2");
+        await second.StartAsync(_transport);
+
+        await WaitForDelegatorAsync(human, "local-a");
+
+        await human.SendMessageAsync("#main", "@scout-2 what do you make of this?");
+
+        Assert.NotNull(await WaitForAsync(human, m => m.Text == "from-scout-2"));
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        Assert.Empty(scout.Answered);
+    }
+
+    [Theory]
+    [InlineData("@scout what now", true)]
+    [InlineData("ask @scout.", true)]
+    [InlineData("@scout, @third: both of you", true)]
+    [InlineData("@scout-2 and @scout", true)]
+    [InlineData("@scouting the area", false)]
+    [InlineData("@scout-2 what now", false)]
+    [InlineData("@scout_b what now", false)]
+    [InlineData("@scout.b what now", false)]
+    [InlineData("scout, what now", false)]
+    public void AMentionEndsWhereTheNickDoes(string text, bool namesScout) =>
+        Assert.Equal(namesScout, Mentions.Names(text, "scout"));
 
     [Fact]
     public async Task AThirdPartyAgentAnnouncesTheEgressBeforeAnswering()

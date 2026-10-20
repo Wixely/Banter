@@ -32,6 +32,11 @@ public abstract partial class BanterAgent : IAsyncDisposable
     /// <summary>Raised for every turn the agent takes, for logging or supervision.</summary>
     public event Action<string, string>? TurnStarted;
 
+    /// <summary>Raised when a turn is over and the agent will take the next message - whether it
+    /// answered, handed the work over, or failed. A message that arrives during a turn is not
+    /// queued, so this is how a supervisor knows the agent is listening again.</summary>
+    public event Action<string, string>? TurnEnded;
+
     /// <summary>Produce a reply to <paramref name="prompt"/> in <paramref name="room"/>.
     /// Yield the reply in pieces; each is streamed to the room as it arrives.</summary>
     protected abstract IAsyncEnumerable<string> RespondAsync(
@@ -549,18 +554,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
     private bool Mentioned(MsgPayload m) => MentionsNick(m.Text, Nick);
 
     /// <summary>Whether <paramref name="text"/> carries an explicit <c>@nick</c> for that nick.</summary>
-    private static bool MentionsNick(string text, string nick)
-    {
-        var at = text.IndexOf('@' + nick, StringComparison.OrdinalIgnoreCase);
-        if (at < 0)
-        {
-            return false;
-        }
-
-        // "@scouting the area" is not scout. The mention has to end where the nick does.
-        var after = at + 1 + nick.Length;
-        return after >= text.Length || !char.IsLetterOrDigit(text[after]);
-    }
+    private static bool MentionsNick(string text, string nick) => Mentions.Names(text, nick);
 
     /// <summary>
     /// Whether the message names, with an explicit <c>@</c>, some other agent that is actually in
@@ -969,6 +963,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         finally
         {
             _turnGate.Release();
+            TurnEnded?.Invoke(m.Room, m.Sender);
         }
     }
 
