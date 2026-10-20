@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   packages: read
+  actions: read          # a tag reads main's run of the same commit (see main_verdict.py)
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
@@ -41,7 +42,20 @@ jobs:
         run: dotnet restore Banter.slnx
       - name: Build
         run: dotnet build Banter.slnx --no-restore --configuration Release
+      - name: Take main's verdict for this commit (on a v* tag)
+        id: verdict
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A tag is cut on a commit main has just run - usually in the same push, so the two runs
+        # start together. Running the suite a second time here only ever changed the answer by
+        # losing a race main had won: 0.13.1, 0.14.0 and 0.15.0 were each a tag run failing on a
+        # commit that was green on main, and each cost a version number. So the tag waits for
+        # main's verdict and takes it. A commit never pushed to main still gets tested here, and
+        # a commit main FAILED is refused - the fix goes to main first, then the tag.
+        run: python3 .github/scripts/main_verdict.py
       - name: Test
+        if: steps.verdict.outputs.tested != 'true'
         # -m:1 runs the test projects one at a time. Without it MSBuild starts all seven at once,
         # so 190 integration tests - which stand up real servers and measure elapsed time - share
         # two cores with 607 rendering tests. Three different integration tests failed on three
@@ -258,11 +272,22 @@ jobs:
         run: dotnet build src/Banter.Server.Nodestar/Banter.Server.Nodestar.csproj --configuration Release
       - name: Build the web head's tests
         run: dotnet build tests/Banter.App.Web.Tests/Banter.App.Web.Tests.csproj --configuration Release
+      - name: Take main's verdict for this commit (on a v* tag)
+        id: verdict
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The same gate as the build job's, for the same reason: main has driven a browser through
+        # this exact head already. The publish above still happens, because what ships is what
+        # was built here.
+        run: python3 .github/scripts/main_verdict.py
       # Playwright ships its own browser build and will not fall back to a system one. --with-deps
       # because a bare ubuntu runner has none of the shared libraries Chromium wants.
       - name: Install the browser
+        if: steps.verdict.outputs.tested != 'true'
         run: pwsh tests/Banter.App.Web.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Test the web head
+        if: steps.verdict.outputs.tested != 'true'
         run: dotnet test tests/Banter.App.Web.Tests/Banter.App.Web.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=web.trx" --results-directory artifacts/test-results
       # The client the mesh server ships, handed to `publish-mesh` rather than published a second
       # time there. Reusing this one is the point: it is the exact bundle the browser tests above
