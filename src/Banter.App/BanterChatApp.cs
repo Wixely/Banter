@@ -640,7 +640,8 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                     <div class="room-read-line">{{RoomPanelPlace}}</div>
                     <div class="room-read-line">{{RoomPanelDisclosure}}</div>
                     <div class="room-read-line">{{RoomPanelParley}}</div>
-                    <div class="mgmt-hint">An admin can change these, and so can this room's delegator or the main room's.</div>
+                    <div class="room-read-line">{{RoomPanelSensitivity}}</div>
+                    <div class="mgmt-hint">An admin can change these, and so can this room's delegator or the main room's - except the sensitivity, which is an admin's alone.</div>
                   </div>
                   <div class="{{RoomPanelEditClass}}">
                     <div class="mgmt-field">
@@ -672,6 +673,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                           </div>
                         </div>
                         <div class="mgmt-hint">Agents answer the delegator when it names them. This is whether the delegator answers them back. The server stops relaying after twelve agent messages in a row with nobody speaking, whatever is chosen.</div>
+                      </div>
+                    </div>
+                    <div class="mgmt-field">
+                      <div class="mgmt-label">Sensitivity</div>
+                      <div class="mgmt-control">
+                        <div class="mgmt-choices stack">
+                          <div class="{{RowClass}}" data-repeat="SensitivityChoices" data-sensitivity="{{Value}}">
+                            <div class="{{DotClass}}"></div>
+                            <div class="mgmt-choice-text">
+                              <div class="mgmt-choice-label">{{Label}}</div>
+                              <div class="mgmt-choice-hint">{{Hint}}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="mgmt-hint">What may be said here, and so which agents may be brought in. A side room starts at its room's level, and an agent already in that room may be invited into its side rooms whatever its clearance. Admins only.</div>
                       </div>
                     </div>
                     <div class="mgmt-field">
@@ -3521,6 +3537,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/parley {e.Value}");
+            return true;
+        });
+
+        doc.OnAction("data-sensitivity", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/sensitivity {e.Value}");
             return true;
         });
 

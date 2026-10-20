@@ -102,10 +102,27 @@ public sealed class RoomTreePanelTests
 
         Click(doc, "data-disclosure", "isolated");
         Click(doc, "data-parley", "open");
+        Click(doc, "data-sensitivity", "public");
         // Last, because moving the room closes the panel.
         Click(doc, "data-room-parent", "");
 
-        Assert.Equal(["#side /disclosure isolated", "#side /parley open", "#side /move #side top"], commands);
+        Assert.Equal(["#side /disclosure isolated", "#side /parley open", "#side /sensitivity public", "#side /move #side top"], commands);
+    }
+
+    [Fact]
+    public void TheSensitivityIsSensitiveUntilTheServerSaysOtherwise()
+    {
+        var vm = Tree(admin: true);
+        vm.ShowRoomPanel(true);
+        Assert.Contains("selected", vm.Model.SensitivityChoices.Single(c => c.Value == "sensitive").RowClass);
+
+        vm.SetRoomSensitivities([("#side", DataSensitivity.Public)]);
+        Assert.Contains("selected", vm.Model.SensitivityChoices.Single(c => c.Value == "public").RowClass);
+
+        var reader = Tree(admin: false);
+        reader.SetRoomSensitivity("#side", DataSensitivity.Internal);
+        reader.ShowRoomPanel(true);
+        Assert.StartsWith("Internal", reader.Model.RoomPanelSensitivity, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -143,9 +160,27 @@ public sealed class RoomTreePanelTests
         var p = BanterChatApp.Presentation(1280, 800);
         doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
         var hit = Walk(doc.Root).First(n => n.Node.Element?.GetAttribute(attribute) == value && n.Node.Width > 0);
+
+        // The panel's fields scroll inside the card, and four settings no longer fit an 800px
+        // window unscrolled. A row below the card's bottom is laid out but not clickable there,
+        // so scroll it into view the way a person would, with the wheel over the fields.
+        var fields = Walk(doc.Root).FirstOrDefault(n =>
+            n.Node.Width > 0
+            && n.Node.Element?.GetAttribute("class")?.Split(' ').Contains("mgmt-fields") == true
+            && hit.X >= n.X && hit.X < n.X + n.Node.Width);
+        if (fields.Node is not null && hit.Y + hit.Node.Height > fields.Y + fields.Node.Height)
+        {
+            var overshoot = hit.Y + hit.Node.Height - (fields.Y + fields.Node.Height) + 8;
+            doc.DispatchWheel(fields.X + (fields.Node.Width / 2), fields.Y + (fields.Node.Height / 2), overshoot);
+            doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+            hit = Walk(doc.Root).First(n => n.Node.Element?.GetAttribute(attribute) == value && n.Node.Width > 0);
+        }
+
         doc.DispatchClick(hit.X + (hit.Node.Width / 2), hit.Y + (hit.Node.Height / 2));
     }
 
+    /// <summary>Where each node is on screen - a scrolled box's children sit higher than their
+    /// layout says by however far it has scrolled, which is what a click has to be aimed at.</summary>
     private static IEnumerable<(RenderNode Node, float X, float Y)> Walk(RenderNode n, float px = 0, float py = 0)
     {
         var x = px + n.X;
@@ -153,7 +188,7 @@ public sealed class RoomTreePanelTests
         yield return (n, x, y);
         foreach (var c in n.Children)
         {
-            foreach (var d in Walk(c, x, y))
+            foreach (var d in Walk(c, x, y - n.ScrollY))
             {
                 yield return d;
             }

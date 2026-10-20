@@ -223,6 +223,10 @@ public enum BanterMessageType : ushort
     /// Server → members on a change and on joining; a client → server to change it.</summary>
     RoomParley = 122,
 
+    /// <summary>A room's sensitivity: what may be said in it, and so who may be brought in.
+    /// Admin → server to change it; server → members to say it changed.</summary>
+    RoomSensitivity = 123,
+
     // Both of the above are answered with a HubReport rather than an Ok: the page that asked is
     // showing the state they just changed, and a second round trip to find out what it is now is a
     // window in which the page is wrong.

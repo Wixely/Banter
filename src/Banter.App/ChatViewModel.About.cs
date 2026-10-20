@@ -56,6 +56,11 @@ public sealed partial class ChatViewModel
         ("Third-party agents",
             "A frontier agent runs on somebody else's servers. An amber mark in the message box means what you are writing "
             + "would reach one. A third party checks a request is safe to receive before answering, and is not sent your files."),
+        ("Room sensitivity",
+            "Each room is Public, Internal or Sensitive (the default): what may be said in it, and so which agents may be "
+            + "brought in. A side room starts at its room's level, and an agent already in that room may be invited into its "
+            + "side rooms whatever its clearance. Only an admin changes a room's sensitivity, under its ... menu or /sensitivity; "
+            + "an agent's clearance is set on the agents page."),
         ("R and I beside the delegator",
             "R is a republic: the delegator is elected the usual way. I is an interregnum: a local delegator left, so the seat is "
             + "held for a local agent and no third party can take it. An admin can end it from the I."),
@@ -76,7 +81,8 @@ public sealed partial class ChatViewModel
             + "agent's reply only ever come from Banter's own storage; a web address becomes a link and is not loaded."),
         ("Who can change what",
             "Admins can add and remove members, close and move rooms, and change any room's settings. A room's delegator can "
-            + "manage the agents and settings of the rooms it runs, and the delegator of #main can do so in every room."),
+            + "manage the agents and settings of the rooms it runs, and the delegator of #main can do so in every room - "
+            + "except a room's sensitivity, which only an admin sets."),
         ("Commands",
             "Type /help in any room for the list: /create, /join, /move, /close, /add, /remove, /disclosure, /parley, /regime and more."),
     ];

@@ -22,7 +22,8 @@ public sealed class SubRoomTests : IAsyncLifetime
         .AddUser("admin", "pw", isAgent: false, isAdmin: true)
         .AddUser("local", "pw", isAgent: true)
         .AddUser("local-2", "pw", isAgent: true)
-        .AddUser("claude", "pw", isAgent: true);
+        .AddUser("claude", "pw", isAgent: true)
+        .AddUser("codex", "pw", isAgent: true);
 
     private string _root = null!;
     private BanterDatabase _database = null!;
@@ -107,19 +108,69 @@ public sealed class SubRoomTests : IAsyncLifetime
         await local.JoinAsync("#main");
         await WaitForDelegatorAsync(human, "#main", "local");
 
+        // In the room already, reading everything said in it.
         await using var claude = await ConnectAsync("claude");
         await claude.AnnounceAgentAsync(Announce("claude", AgentLocality.Frontier, DataSensitivity.Public, "web"));
         await claude.JoinAsync("#main");
 
+        // Not in the room. For this one a side room of it WOULD be a way in.
+        await using var codex = await ConnectAsync("codex");
+        await codex.AnnounceAgentAsync(Announce("codex", AgentLocality.Frontier, DataSensitivity.Public, "web"));
+
         await local.CreateRoomAsync("#task-2", parentRoom: "#main", purpose: "research");
         await WaitForDelegatorAsync(local, "#task-2", "local");
 
-        // The whole point: opening a child room must not create somewhere a frontier agent may
-        // read what the parent room was protecting.
+        // The point of inheriting: opening a child room must not create somewhere an agent may
+        // read what the parent room was protecting from it.
         var error = await Assert.ThrowsAsync<BanterErrorException>(() =>
-            local.MoveAgentAsync("claude", "#task-2"));
-
+            local.MoveAgentAsync("codex", "#task-2"));
         Assert.Equal("NOT_CLEARED", error.Code);
+        Assert.Contains("not in #main", error.Message, StringComparison.Ordinal);
+
+        // But the room's own agent may go into the room's own side room, whatever its clearance:
+        // it reads the parent already, so the side room shows it nothing new. Reported from a
+        // real room, where a delegator could not take the agent it was asked to work with into
+        // the room it had just opened for the two of them.
+        await local.MoveAgentAsync("claude", "#task-2");
+        Assert.Contains((await local.GetMembersAsync("#task-2")).Members, m => m.Nick == "claude");
+    }
+
+    [Fact]
+    public async Task AnAdminSetsWhatMayBeSaidInARoom()
+    {
+        await using var admin = await ConnectAsync("admin");
+        await admin.JoinAsync("#main");
+        await using var human = await ConnectAsync("human");
+        await human.JoinAsync("#main");
+
+        await using var local = await ConnectAsync("local");
+        await local.AnnounceAgentAsync(Announce("local", AgentLocality.Local, DataSensitivity.Sensitive));
+        await local.JoinAsync("#main");
+        await WaitForDelegatorAsync(human, "#main", "local");
+
+        await using var codex = await ConnectAsync("codex");
+        await codex.AnnounceAgentAsync(Announce("codex", AgentLocality.Frontier, DataSensitivity.Public, "web"));
+
+        await local.CreateRoomAsync("#task-3", parentRoom: "#main", purpose: "names for a cheese");
+        await WaitForDelegatorAsync(local, "#task-3", "local");
+        Assert.Equal(DataSensitivity.Sensitive, (await human.ListRoomsAsync()).Rooms.Single(r => r.Name == "#task-3").Sensitivity);
+
+        // The clearance boundary is an admin's: not a person's, and not the delegator's, which
+        // could otherwise let in whoever it liked.
+        Assert.Equal("NOT_ALLOWED", (await Assert.ThrowsAsync<BanterErrorException>(
+            () => human.SetRoomSensitivityAsync("#task-3", DataSensitivity.Public))).Code);
+        Assert.Equal("NOT_ALLOWED", (await Assert.ThrowsAsync<BanterErrorException>(
+            () => local.SetRoomSensitivityAsync("#task-3", DataSensitivity.Public))).Code);
+
+        var told = new TaskCompletionSource<RoomSensitivityPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        local.RoomSensitivityChanged += s => told.TrySetResult(s);
+        Assert.Equal(DataSensitivity.Public, (await admin.SetRoomSensitivityAsync("#task-3", DataSensitivity.Public)).Sensitivity);
+        Assert.Equal("admin", (await told.Task.WaitAsync(Timeout)).ChangedBy);
+        Assert.Equal(DataSensitivity.Public, (await human.ListRoomsAsync()).Rooms.Single(r => r.Name == "#task-3").Sensitivity);
+
+        // Which is what lets an agent from outside the room in - the cheese names are public.
+        await local.MoveAgentAsync("codex", "#task-3");
+        Assert.Contains((await local.GetMembersAsync("#task-3")).Members, m => m.Nick == "codex");
     }
 
     [Fact]

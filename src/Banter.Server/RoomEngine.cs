@@ -118,6 +118,12 @@ internal sealed partial class RoomEngine(
                 Parley = Enum.IsDefined((RoomParley)persisted.Parley)
                     ? (RoomParley)persisted.Parley
                     : RoomParley.Pairs,
+                // Unknown is not a level a room can be at: it would read as Sensitive in every
+                // check anyway, so it is stored and shown as what it means.
+                Sensitivity = Enum.IsDefined((DataSensitivity)persisted.Sensitivity)
+                              && (DataSensitivity)persisted.Sensitivity != DataSensitivity.Unknown
+                    ? (DataSensitivity)persisted.Sensitivity
+                    : DataSensitivity.Sensitive,
             };
         }
 
@@ -313,7 +319,8 @@ internal sealed partial class RoomEngine(
                             r.Members.Select(m => m.Nick).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                             r.ParentRoom,
                             r.Disclosure,
-                            r.Parley))
+                            r.Parley,
+                            r.Sensitivity))
                         .ToArray()),
                     replyTo: envelope.MsgId);
                 break;
@@ -343,6 +350,9 @@ internal sealed partial class RoomEngine(
                 break;
             case RoomParleyPayload parley:
                 await HandleRoomParleyAsync(session, envelope, parley).ConfigureAwait(false);
+                break;
+            case RoomSensitivityPayload sensitivity:
+                await HandleRoomSensitivityAsync(session, envelope, sensitivity).ConfigureAwait(false);
                 break;
             case RoomDisclosurePayload disclosure:
                 await HandleRoomDisclosureAsync(session, envelope, disclosure).ConfigureAwait(false);
@@ -660,7 +670,7 @@ internal sealed partial class RoomEngine(
             room.Sensitivity = parent.Sensitivity;
         }
 
-        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
+        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley, (int)room.Sensitivity).ConfigureAwait(false);
 
         // Everybody, not only the room's members: the tree is in every client's room list.
         var moved = new RoomMovePayload(room.Name, room.ParentRoom, session.Nick);
@@ -702,7 +712,7 @@ internal sealed partial class RoomEngine(
             }
 
             room.Disclosure = request.Disclosure;
-            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
+            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley, (int)room.Sensitivity).ConfigureAwait(false);
             Broadcast(room, new RoomDisclosurePayload(room.Name, room.Disclosure, session.Nick));
             await AnnounceSystemAsync(room, $"{session.Nick} set this room to {room.Disclosure}: " + room.Disclosure switch
             {
@@ -714,6 +724,56 @@ internal sealed partial class RoomEngine(
         }
 
         session.Send(new RoomDisclosurePayload(room.Name, room.Disclosure), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Change what may be said in a room, and so which agents may be brought into it. Admin only:
+    /// this is the clearance boundary, and a delegator that could lower it could let in whoever
+    /// it liked. Asking for the level it already has is a read.
+    ///
+    /// <para>Not cascaded to side rooms. Each was set - or inherited - deliberately, and a side
+    /// room looser than its parent is the admin's call: the parent's words still reach it only as
+    /// its disclosure and each agent's clearance allow.</para>
+    /// </summary>
+    private async ValueTask HandleRoomSensitivityAsync(
+        ClientSession session, BanterEnvelope envelope, RoomSensitivityPayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (request.Sensitivity == DataSensitivity.Unknown)
+        {
+            session.Send(new ErrorPayload("BAD_SENSITIVITY", "A room is public, internal or sensitive."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (room.Sensitivity != request.Sensitivity)
+        {
+            if (!session.IsAdmin)
+            {
+                session.Send(new ErrorPayload("NOT_ALLOWED", "Only an admin may change a room's sensitivity."), replyTo: envelope.MsgId);
+                return;
+            }
+
+            room.Sensitivity = request.Sensitivity;
+            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley, (int)room.Sensitivity).ConfigureAwait(false);
+            Broadcast(room, new RoomSensitivityPayload(room.Name, room.Sensitivity, session.Nick));
+            await AnnounceSystemAsync(room, $"{session.Nick} set this room to {room.Sensitivity.ToString().ToLowerInvariant()}: " + room.Sensitivity switch
+            {
+                DataSensitivity.Public => "only what could be posted anywhere is said here, and any agent may be brought in.",
+                DataSensitivity.Internal => "ordinary work, not for outside eyes; agents cleared for internal may be brought in.",
+                _ => "anything may be said here, and only agents cleared for sensitive may be brought in.",
+            }).ConfigureAwait(false);
+
+            // The seat may now belong to somebody else: a raised bar can unseat a delegator that
+            // is no longer cleared, and a lowered one can admit a better candidate.
+            await ReelectAsync(room).ConfigureAwait(false);
+        }
+
+        session.Send(new RoomSensitivityPayload(room.Name, room.Sensitivity), replyTo: envelope.MsgId);
     }
 
     /// <summary>
@@ -744,7 +804,7 @@ internal sealed partial class RoomEngine(
             }
 
             room.Parley = request.Parley;
-            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
+            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley, (int)room.Sensitivity).ConfigureAwait(false);
             Broadcast(room, new RoomParleyPayload(room.Name, room.Parley, session.Nick));
             await AnnounceSystemAsync(room, $"{session.Nick} set this room's parley to {room.Parley}: " + room.Parley switch
             {
@@ -1035,7 +1095,7 @@ internal sealed partial class RoomEngine(
 
         _rooms[room.Name] = room;
         await store.UpsertRoomAsync(room.Name, room.Topic).ConfigureAwait(false);
-        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
+        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley, (int)room.Sensitivity).ConfigureAwait(false);
 
         // The creator joins immediately: a sub-room nobody is in is not useful, and the
         // delegator needs to be in it to run it.
@@ -1127,7 +1187,7 @@ internal sealed partial class RoomEngine(
         foreach (var child in _rooms.Values.Where(r => string.Equals(r.ParentRoom, room.Name, StringComparison.OrdinalIgnoreCase)).ToList())
         {
             child.ParentRoom = room.ParentRoom;
-            await store.SetRoomPlacementAsync(child.Name, child.ParentRoom, (int)child.Disclosure, (int)child.Parley).ConfigureAwait(false);
+            await store.SetRoomPlacementAsync(child.Name, child.ParentRoom, (int)child.Disclosure, (int)child.Parley, (int)child.Sensitivity).ConfigureAwait(false);
         }
 
         // Said where the room came from, so the conversation that opened it also shows it ending.
@@ -1268,13 +1328,25 @@ internal sealed partial class RoomEngine(
             ? ToCandidate(announced, 0)
             : new AgentCandidate(target.Nick, AgentLocality.Unknown, DataSensitivity.Unknown, [], 1, 0);
 
-        if (!DelegatorElection.CanReceive(candidate, room.Sensitivity))
+        // Cleared for the room - or already in the room this one was opened from, at the same or
+        // a higher level, where it reads everything anyway. A side room inherits its parent's
+        // sensitivity so that opening one cannot move a conversation somewhere a less-cleared
+        // agent may read it; an agent that is in the parent is not that agent, and refusing it
+        // meant a delegator could not take the room's own agents into the room's own side room.
+        // An agent from elsewhere is still refused: for it the side room WOULD be a way in.
+        var parent = room.ParentRoom is { } above && _rooms.TryGetValue(above, out var p) ? p : null;
+        var readsTheParent = parent is not null
+            && parent.Sensitivity >= room.Sensitivity
+            && targets.Any(t => parent.Members.Contains(t));
+        if (!DelegatorElection.CanReceive(candidate, room.Sensitivity) && !readsTheParent)
         {
+            var level = room.Sensitivity.ToString().ToLowerInvariant();
             session.Send(
                 new ErrorPayload(
                     "NOT_CLEARED",
-                    $"'{request.Nick}' is not cleared for {room.Sensitivity.ToString().ToLowerInvariant()} " +
-                    $"content in {room.Name}."),
+                    $"'{request.Nick}' is not cleared for {level} content in {room.Name}"
+                    + (parent is not null ? $", and is not in {parent.Name}, which {room.Name} was opened from" : "")
+                    + $". An admin can raise its clearance on the agents page, or lower {room.Name}'s sensitivity from the room's panel."),
                 replyTo: envelope.MsgId);
             return;
         }

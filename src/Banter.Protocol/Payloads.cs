@@ -91,7 +91,8 @@ public sealed record RoomSummary(
     [property: Key(2)] int MemberCount,
     [property: Key(3)] string? ParentRoom = null,
     [property: Key(4)] RoomDisclosure Disclosure = RoomDisclosure.Members,
-    [property: Key(5)] RoomParley Parley = RoomParley.Pairs);
+    [property: Key(5)] RoomParley Parley = RoomParley.Pairs,
+    [property: Key(6)] DataSensitivity Sensitivity = DataSensitivity.Sensitive);
 
 [MessagePackObject]
 public sealed record RoomMembersPayload(
@@ -753,6 +754,17 @@ public enum RoomParley
     /// <summary>The delegator answers any agent that names it, however many are in the room.</summary>
     Open = 2,
 }
+
+/// <summary>
+/// A room's sensitivity: the most sensitive material that may be said in it, and so which agents
+/// may be brought into it. Sent by an admin to set it, and by the server to say what it now is.
+/// Admin only - it is the clearance boundary itself, which is why no agent has a tool for it.
+/// </summary>
+[MessagePackObject]
+public sealed record RoomSensitivityPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] DataSensitivity Sensitivity,
+    [property: Key(2)] string? ChangedBy = null);
 
 /// <summary>A room's parley. Sent to set it, and by the server to say what it now is.</summary>
 [MessagePackObject]

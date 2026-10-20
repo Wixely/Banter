@@ -640,6 +640,11 @@ public sealed partial class ChatModel
 
     public List<ChoiceRow> ParleyChoices { get; set; } = [];
 
+    /// <summary>The sensitivity in words, for somebody who cannot change it.</summary>
+    public string RoomPanelSensitivity { get; set; } = "";
+
+    public List<ChoiceRow> SensitivityChoices { get; set; } = [];
+
     /// <summary>Shown while the room is Global.</summary>
     public string DisclosureWarningClass { get; set; } = "room-warning hidden";
 

@@ -432,5 +432,12 @@ public static class SchemaManifest
             // with two agents in it to do.
             SqliteSql: "ALTER TABLE rooms ADD COLUMN parley INTEGER NOT NULL DEFAULT 0;",
             PostgresSql: "ALTER TABLE rooms ADD COLUMN parley BIGINT NOT NULL DEFAULT 0;"),
+        new(15,
+            "room-sensitivity",
+            // The room's sensitivity lived only in memory, so every room was Sensitive - the
+            // default - after every restart, and nothing could set it anyway. 3 is Sensitive,
+            // which is what every room already was.
+            SqliteSql: "ALTER TABLE rooms ADD COLUMN sensitivity INTEGER NOT NULL DEFAULT 3;",
+            PostgresSql: "ALTER TABLE rooms ADD COLUMN sensitivity BIGINT NOT NULL DEFAULT 3;"),
     ];
 }

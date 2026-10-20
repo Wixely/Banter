@@ -51,6 +51,29 @@ public sealed partial class ChatViewModel
 
     public RoomParley ParleyOf(string room) => _parleys.GetValueOrDefault(room, RoomParley.Pairs);
 
+    /// <summary>Each room's sensitivity, as the server last said. Sensitive until it says.</summary>
+    private readonly Dictionary<string, DataSensitivity> _sensitivities = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The listing's sensitivities, beside <see cref="SetRoomListing"/>.</summary>
+    public void SetRoomSensitivities(IEnumerable<(string Room, DataSensitivity Sensitivity)> rooms)
+    {
+        foreach (var (room, sensitivity) in rooms)
+        {
+            _sensitivities[room] = sensitivity;
+        }
+
+        RefreshRoomPanel();
+    }
+
+    /// <summary>One room's sensitivity changed, said by the server.</summary>
+    public void SetRoomSensitivity(string room, DataSensitivity sensitivity)
+    {
+        _sensitivities[room] = sensitivity;
+        RefreshRoomPanel();
+    }
+
+    public DataSensitivity SensitivityOf(string room) => _sensitivities.GetValueOrDefault(room, DataSensitivity.Sensitive);
+
     /// <summary>How deep a room sits. Bounded, so a tree that is somehow cyclic still draws.</summary>
     private int DepthOf(string room)
     {
@@ -126,6 +149,12 @@ public sealed partial class ChatViewModel
         Model.ParleyChoices = Choices(parley.ToString().ToLowerInvariant(),
             [.. Enum.GetValues<RoomParley>().Select(p => (p.ToString().ToLowerInvariant(), ParleyLabel(p), ParleyHint(p)))]);
 
+        var sensitivity = SensitivityOf(room);
+        Model.RoomPanelSensitivity = SensitivityLabel(sensitivity) + " - " + SensitivityHint(sensitivity);
+        Model.SensitivityChoices = Choices(sensitivity.ToString().ToLowerInvariant(),
+            [.. new[] { DataSensitivity.Public, DataSensitivity.Internal, DataSensitivity.Sensitive }
+                .Select(s => (s.ToString().ToLowerInvariant(), SensitivityLabel(s), SensitivityHint(s)))]);
+
         // Anywhere but inside itself.
         var places = _roomParents.Keys.Concat(Model.Rooms.Select(r => r.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -153,6 +182,20 @@ public sealed partial class ChatViewModel
         RoomDisclosure.Children => "Children",
         RoomDisclosure.Global => "Global",
         _ => "Members",
+    };
+
+    public static string SensitivityLabel(DataSensitivity s) => s switch
+    {
+        DataSensitivity.Public => "Public",
+        DataSensitivity.Internal => "Internal",
+        _ => "Sensitive",
+    };
+
+    public static string SensitivityHint(DataSensitivity s) => s switch
+    {
+        DataSensitivity.Public => "Only what could be posted anywhere is said here. Any agent may be brought in.",
+        DataSensitivity.Internal => "Ordinary work, not for outside eyes. Agents cleared for internal may be brought in.",
+        _ => "Anything may be said here. Only agents cleared for sensitive may be brought in - or agents already in the room this one was opened from.",
     };
 
     public static string ParleyLabel(RoomParley p) => p switch

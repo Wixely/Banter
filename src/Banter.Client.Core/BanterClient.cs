@@ -422,6 +422,12 @@ public sealed partial class BanterClient : IAsyncDisposable
         string room, RoomDisclosure disclosure, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomDisclosurePayload>(new RoomDisclosurePayload(room, disclosure), cancellationToken);
 
+    /// <summary>Set what may be said in a room, and so which agents may be brought in. Admin only.
+    /// Answers with the sensitivity in force afterwards.</summary>
+    public Task<RoomSensitivityPayload> SetRoomSensitivityAsync(
+        string room, DataSensitivity sensitivity, CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomSensitivityPayload>(new RoomSensitivityPayload(room, sensitivity), cancellationToken);
+
     /// <summary>Set whether a room's delegator answers agents that name it. The room's delegator,
     /// the main delegator, or an admin. Answers with the parley in force afterwards.</summary>
     public Task<RoomParleyPayload> SetRoomParleyAsync(
@@ -588,6 +594,9 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     /// <summary>Raised when a room's parley changes, and on joining one.</summary>
     public event Action<RoomParleyPayload>? RoomParleyChanged;
+
+    /// <summary>Raised when a room you are in has its sensitivity changed.</summary>
+    public event Action<RoomSensitivityPayload>? RoomSensitivityChanged;
 
     /// <summary>Raised when a room's regime changes, and on joining one.</summary>
     public event Action<RoomRegimePayload>? RoomRegimeChanged;
@@ -1374,6 +1383,9 @@ public sealed partial class BanterClient : IAsyncDisposable
                         break;
                     case RoomParleyPayload parley:
                         RoomParleyChanged?.Invoke(parley);
+                        break;
+                    case RoomSensitivityPayload sensitivity:
+                        RoomSensitivityChanged?.Invoke(sensitivity);
                         break;
                     case RoomClosePayload closed:
                         // Out of the rejoin set first: a reconnect that joined it again would
