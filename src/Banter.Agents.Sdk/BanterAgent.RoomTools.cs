@@ -106,7 +106,24 @@ public abstract partial class BanterAgent
             var said = await local.RunAsync(room, parsed.RootElement, cancellationToken).ConfigureAwait(false);
             return new ToolResultPayload(name, said, IsError: false);
         }
-        catch (Exception ex) when (ex is JsonException or BanterClientException or InvalidOperationException)
+        catch (BanterClientException ex)
+        {
+            // The server refused - an agent not cleared for the room, say. Said where the people
+            // are as well as to the model, because whether they otherwise hear of it depends on
+            // the model choosing to mention it, and "scout is in #side now" over an invitation
+            // that was refused is how a room comes to be waiting for an agent that never arrives.
+            try
+            {
+                await SayAsync(room, $"(could not {Describe(name)}: {ex.Message})", cancellationToken).ConfigureAwait(false);
+            }
+            catch (BanterClientException)
+            {
+                // Could not say so either; the model still gets the refusal.
+            }
+
+            return new ToolResultPayload(name, $"could not do that: {ex.Message}", IsError: true);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             // Handed back as a result rather than thrown, exactly as a server tool's refusal is:
             // the model can read it and try something else, and a failed room change must not look
@@ -430,6 +447,17 @@ public abstract partial class BanterAgent
             ? throw new InvalidOperationException("Ask at least one question.")
             : parsed;
     }
+
+    /// <summary>A room tool's name as people read it: "invite_agent" is "invite an agent".</summary>
+    private static string Describe(string tool) => tool switch
+    {
+        "open_side_room" => "open a side room",
+        "invite_agent" => "invite the agent",
+        "move_room" => "move the room",
+        "set_room_disclosure" => "set the room's disclosure",
+        "close_room" => "close the room",
+        _ => tool.Replace('_', ' '),
+    };
 
     private static string? Optional(JsonElement args, string name) =>
         args.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
