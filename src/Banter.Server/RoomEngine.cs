@@ -985,7 +985,8 @@ internal sealed partial class RoomEngine(
             CostTier = identity.CostTier ?? announced.CostTier,
             WantsDelegator = identity.WantsDelegator ?? announced.WantsDelegator,
             WorkMode = identity.WorkMode ?? announced.WorkMode,
-            Persona = identity.Persona.Length > 0 ? identity.Persona : announced.Persona,
+            // An agent on an SDK older than the field announces no persona, which arrives as null.
+            Persona = identity.Persona.Length > 0 ? identity.Persona : announced.Persona ?? "",
         };
     }
 

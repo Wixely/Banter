@@ -269,7 +269,10 @@ public sealed partial class ChatViewModel
         Model.AgentFormRooms = string.Join(", ", identity.Rooms);
         Model.AgentFormSkills = string.Join(", ", identity.Skills);
         Model.AgentFormCost = identity.CostTier?.ToString() ?? "";
-        Model.AgentFormPersona = identity.Persona;
+        // Null from a server older than the field: MessagePack fills a key it did not receive
+        // with default(string), not the record's "". Crashed the Android client on the first tap
+        // of an agent against a 0.14.1 server.
+        Model.AgentFormPersona = identity.Persona ?? "";
         Model.AgentLocalityChoices = LocalityChoices(identity.Locality);
         Model.AgentClearanceChoices = ClearanceChoices(identity.Clearance);
         Model.AgentDelegatorChoices = DelegatorChoices(
@@ -362,7 +365,7 @@ public sealed partial class ChatViewModel
         Model.AgentFormRooms.Trim(),
         Model.AgentFormSkills.Trim(),
         Model.AgentFormCost.Trim(),
-        Model.AgentFormPersona.Trim(),
+        (Model.AgentFormPersona ?? "").Trim(),
         Chosen(Model.AgentLocalityChoices),
         Chosen(Model.AgentClearanceChoices),
         Chosen(Model.AgentDelegatorChoices),
@@ -422,7 +425,7 @@ public sealed partial class ChatViewModel
                 "delegateandwork" => AgentWorkMode.DelegateAndWork,
                 _ => null,
             },
-            Model.AgentFormPersona.Trim());
+            (Model.AgentFormPersona ?? "").Trim());
     }
 
     // ── Users: the list ──────────────────────────────────────────────────────────────────────

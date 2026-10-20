@@ -130,6 +130,22 @@ public sealed class ManagementPageTests(ITestOutputHelper output)
         Assert.DoesNotContain("hidden", editing.Remove, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AnAgentFromAServerWithoutPersonasCanStillBeEdited()
+    {
+        var vm = Room();
+
+        // What a 0.14.1 server's listing deserialises to: the trailing field it never sent is
+        // null, not the record's "". The Android client crashed on the first tap of an agent.
+        vm.SetAgentIdentities([Identity("dagger") with { Persona = null! }]);
+        vm.SelectAdminAgent("dagger");
+
+        Assert.Equal("", vm.Model.AgentFormPersona);
+        Assert.NotNull(vm.ReadAgentForm());
+        vm.RefreshAgentDirty();
+        Assert.Contains("hidden", vm.Model.AgentDirtyClass, StringComparison.Ordinal);
+    }
+
     [Theory]
     [MemberData(nameof(BothPages))]
     public void StartingSomethingNewDropsTheSelection(string page)
