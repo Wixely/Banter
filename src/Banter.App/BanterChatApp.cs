@@ -2335,8 +2335,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .mgmt-dot.on { background: #2f6fd0; border: 1px solid #2f6fd0; }
         .mgmt-choice-text { display: flex; flex-direction: column; flex: 1; min-width: 0;
                             padding-left: 9px; }
-        .mgmt-choice-label { font-size: 12px; font-weight: bold; color: #e6eaf0; }
-        .mgmt-choice-hint { font-size: 10px; color: #808b9c; margin-top: 2px; }
+        /* overflow-wrap, because two cards share a phone's width and a word is as wide as the
+           font makes it: on Linux's wider faces one word of a hint overran the card by 12px
+           and painted into the card beside it (CF0075 on CI, never on Windows). A word that
+           cannot fit breaks; the card clips whatever still would not. */
+        .mgmt-choice { overflow: hidden; }
+        .mgmt-choice-label { font-size: 12px; font-weight: bold; color: #e6eaf0; overflow-wrap: anywhere; }
+        .mgmt-choice-hint { font-size: 10px; color: #808b9c; margin-top: 2px; overflow-wrap: anywhere; }
 
         .mgmt-inline { margin-top: 8px; padding: 7px 14px; font-size: 12px; background: #1b2029;
                        color: #f3f5f7; border: 1px solid #333a46; border-radius: 10px;
