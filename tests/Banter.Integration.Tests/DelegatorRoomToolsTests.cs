@@ -202,6 +202,39 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
         Assert.Contains(main.Messages, m => m.Text.Contains($"local closed {room}: notes are written"));
     }
 
+    /// <summary>
+    /// Reported from a real room, twice: the delegator opened a side room, a person went in, and
+    /// the delegator said nothing there unless named. The room it opened is a room it runs.
+    /// Both ways a Warden can be configured, because a routing delegator takes a different path
+    /// to the same answer.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheDelegatorAnswersAPersonInTheSideRoomItOpened(bool routing)
+    {
+        await using var human = await HumanAsync();
+        var options = routing ? Agent("local") with { Routing = new RoutingOptions() } : Agent("local");
+        await using var boss = new ToolingAgent(options);
+        await boss.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        boss.Plan.Enqueue(("open_side_room", """{"purpose":"cheese names"}"""));
+        await human.SendMessageAsync("#main", "@local open a room for the cheese names");
+        await UntilAsync(() => Task.FromResult(boss.Results.Count == 1), "the room was never opened");
+        await UntilAsync(() => Task.FromResult(!boss.Answering), "the first turn never finished");
+        var room = RoomNameIn(boss.Results[0]);
+
+        // The person follows it in and talks to the room - nobody is named, because there is
+        // nobody else to name.
+        await human.JoinAsync(room);
+        await human.SendMessageAsync(room, "right, what have we got?");
+
+        await UntilAsync(
+            async () => (await human.GetHistoryAsync(room, limit: 50)).Messages.Any(m => m.Sender == "local" && m.Text == "ok"),
+            $"the delegator never answered in {room} (routing: {routing})");
+    }
+
     [Fact]
     public async Task OnlyAnAdminOrTheDelegatorMayCloseARoom()
     {

@@ -151,6 +151,10 @@ public abstract partial class BanterAgent
                 var name = SubRoomName(room, purpose);
                 await Client.CreateSubRoomAsync(name, room, Summarise(purpose), ct).ConfigureAwait(false);
                 await Client.SetRoomModeAsync(name, RoomDispatchMode.Collaborate, ct).ConfigureAwait(false);
+
+                // The server announces no arrival for a room's creator, so nothing else would
+                // read this room's roster until somebody else came in.
+                await RefreshRosterAsync(name, ct).ConfigureAwait(false);
                 return $"Opened {name}. Invite agents into it with invite_agent, then give each one "
                      + "its own instruction.";
             }),

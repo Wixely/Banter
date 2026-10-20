@@ -700,6 +700,10 @@ public abstract partial class BanterAgent : IAsyncDisposable
             await Client.SetRoomModeAsync(name, RoomDispatchMode.Collaborate, _stopping.Token)
                 .ConfigureAwait(false);
 
+            // No arrival is announced for a room's creator, so read the roster rather than wait
+            // for a join that never comes.
+            await RefreshRosterAsync(name, _stopping.Token).ConfigureAwait(false);
+
             foreach (var agent in agents)
             {
                 await Client.MoveAgentAsync(agent, name, "working this together", _stopping.Token)
