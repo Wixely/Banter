@@ -98,6 +98,7 @@ public static class PayloadRegistry
         [BanterMessageType.RoomMove] = typeof(RoomMovePayload),
         [BanterMessageType.RoomDisclosure] = typeof(RoomDisclosurePayload),
         [BanterMessageType.RoomRecall] = typeof(RoomRecallPayload),
+        [BanterMessageType.RoomParley] = typeof(RoomParleyPayload),
         [BanterMessageType.Error] = typeof(ErrorPayload),
         [BanterMessageType.Ok] = typeof(OkPayload),
     };

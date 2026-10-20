@@ -75,6 +75,7 @@ public sealed partial class BanterChatSession : IDisposable
         _client.RoomRegimeChanged += OnRoomRegime;
         _client.RoomMoved += OnRoomMoved;
         _client.RoomDisclosureChanged += OnRoomDisclosure;
+        _client.RoomParleyChanged += OnRoomParley;
         _client.MemberJoined += OnJoined;
         _client.MemberParted += OnParted;
         _client.TopicChanged += OnTopic;
@@ -156,7 +157,7 @@ public sealed partial class BanterChatSession : IDisposable
         {
             var listing = await _client.ListRoomsAsync(cancellationToken).ConfigureAwait(false);
             _vm.Post(() => _vm.SetRoomListing(
-                listing.Rooms.Select(r => (r.Name, r.ParentRoom, r.MemberCount, r.Disclosure))));
+                listing.Rooms.Select(r => (r.Name, r.ParentRoom, r.MemberCount, r.Disclosure, r.Parley))));
         }
         catch (Exception)
         {
@@ -231,6 +232,9 @@ public sealed partial class BanterChatSession : IDisposable
     /// <summary>The tree changed somewhere; the list is re-read rather than patched, because a
     /// move can change the depth of every room beneath the one that moved.</summary>
     private void OnRoomMoved(Protocol.RoomMovePayload p) => _ = RefreshRoomsAsync();
+
+    private void OnRoomParley(Protocol.RoomParleyPayload p) =>
+        _vm.Post(() => _vm.SetRoomParley(p.Room, p.Parley));
 
     private void OnRoomDisclosure(Protocol.RoomDisclosurePayload p) =>
         _vm.Post(() => _vm.SetRoomDisclosure(p.Room, p.Disclosure));
@@ -521,7 +525,24 @@ public sealed partial class BanterChatSession : IDisposable
 
                 break;
             }
+            case "parley" when rest.Length > 0:
+            {
+                var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var target = parts.FirstOrDefault(p => p.StartsWith('#')) ?? room;
+                var wanted = parts.FirstOrDefault(p => !p.StartsWith('#')) ?? "";
+                if (Enum.TryParse<Protocol.RoomParley>(wanted, ignoreCase: true, out var parley))
+                {
+                    await Guard(room, () => _client.SetRoomParleyAsync(target, parley)).ConfigureAwait(false);
+                }
+                else
+                {
+                    _vm.Post(() => _vm.System(room, "usage: /parley pairs|none|open [#room]"));
+                }
+
+                break;
+            }
             case "disclosure":
+            case "parley":
             case "room":
                 _vm.Post(() => _vm.ShowRoomPanel(true));
                 break;
@@ -602,7 +623,7 @@ public sealed partial class BanterChatSession : IDisposable
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
                     "/edit <text> | /delete | " +
-                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /room | /about | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /parley pairs|none|open [#room] | /room | /about | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));
@@ -1086,6 +1107,7 @@ public sealed partial class BanterChatSession : IDisposable
         _client.RoomRegimeChanged -= OnRoomRegime;
         _client.RoomMoved -= OnRoomMoved;
         _client.RoomDisclosureChanged -= OnRoomDisclosure;
+        _client.RoomParleyChanged -= OnRoomParley;
         _client.MemberJoined -= OnJoined;
         _client.MemberParted -= OnParted;
         _client.TopicChanged -= OnTopic;

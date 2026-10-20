@@ -101,9 +101,29 @@ public sealed class RoomTreePanelTests
         using var doc = app.CreateDocument();
 
         Click(doc, "data-disclosure", "isolated");
+        Click(doc, "data-parley", "open");
+        // Last, because moving the room closes the panel.
         Click(doc, "data-room-parent", "");
 
-        Assert.Equal(["#side /disclosure isolated", "#side /move #side top"], commands);
+        Assert.Equal(["#side /disclosure isolated", "#side /parley open", "#side /move #side top"], commands);
+    }
+
+    [Fact]
+    public void TheParleyIsPairsUntilTheServerSaysOtherwise()
+    {
+        var vm = Tree(admin: true);
+        vm.ShowRoomPanel(true);
+        Assert.Contains("selected", vm.Model.ParleyChoices.Single(c => c.Value == "pairs").RowClass);
+
+        vm.SetRoomParley("#side", RoomParley.None);
+        Assert.Contains("selected", vm.Model.ParleyChoices.Single(c => c.Value == "none").RowClass);
+        Assert.DoesNotContain("selected", vm.Model.ParleyChoices.Single(c => c.Value == "pairs").RowClass);
+
+        // And somebody who cannot change it reads it.
+        var reader = Tree(admin: false);
+        reader.SetRoomParley("#side", RoomParley.Open);
+        reader.ShowRoomPanel(true);
+        Assert.Contains("Open", reader.Model.RoomPanelParley, StringComparison.Ordinal);
     }
 
     [Fact]

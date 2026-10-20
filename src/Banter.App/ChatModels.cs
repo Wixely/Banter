@@ -635,6 +635,11 @@ public sealed partial class ChatModel
 
     public List<ChoiceRow> DisclosureChoices { get; set; } = [];
 
+    /// <summary>The parley in words, for somebody who cannot change it.</summary>
+    public string RoomPanelParley { get; set; } = "";
+
+    public List<ChoiceRow> ParleyChoices { get; set; } = [];
+
     /// <summary>Shown while the room is Global.</summary>
     public string DisclosureWarningClass { get; set; } = "room-warning hidden";
 

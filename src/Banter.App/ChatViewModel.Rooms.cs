@@ -11,13 +11,21 @@ public sealed partial class ChatViewModel
     /// <summary>Each room's disclosure, as the server last listed it.</summary>
     private readonly Dictionary<string, RoomDisclosure> _disclosures = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Each room's parley, as the server last said.</summary>
+    private readonly Dictionary<string, RoomParley> _parleys = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The listing with each room's disclosure, which the tree and the panel both need.</summary>
-    public void SetRoomListing(IEnumerable<(string Name, string? Parent, int Members, RoomDisclosure Disclosure)> rooms)
+    public void SetRoomListing(IEnumerable<(string Name, string? Parent, int Members, RoomDisclosure Disclosure)> rooms) =>
+        SetRoomListing(rooms.Select(r => (r.Name, r.Parent, r.Members, r.Disclosure, RoomParley.Pairs)));
+
+    /// <summary>The listing with each room's disclosure and parley.</summary>
+    public void SetRoomListing(IEnumerable<(string Name, string? Parent, int Members, RoomDisclosure Disclosure, RoomParley Parley)> rooms)
     {
         var all = rooms.ToList();
         foreach (var room in all)
         {
             _disclosures[room.Name] = room.Disclosure;
+            _parleys[room.Name] = room.Parley;
         }
 
         SetRoomListing(all.Select(r => (r.Name, r.Parent, r.Members)));
@@ -32,7 +40,16 @@ public sealed partial class ChatViewModel
         RefreshRoomPanel();
     }
 
+    /// <summary>One room's parley changed, or was said on joining.</summary>
+    public void SetRoomParley(string room, RoomParley parley)
+    {
+        _parleys[room] = parley;
+        RefreshRoomPanel();
+    }
+
     public RoomDisclosure DisclosureOf(string room) => _disclosures.GetValueOrDefault(room, RoomDisclosure.Members);
+
+    public RoomParley ParleyOf(string room) => _parleys.GetValueOrDefault(room, RoomParley.Pairs);
 
     /// <summary>How deep a room sits. Bounded, so a tree that is somehow cyclic still draws.</summary>
     private int DepthOf(string room)
@@ -98,12 +115,16 @@ public sealed partial class ChatViewModel
 
         var parent = _roomParents.GetValueOrDefault(room) ?? "";
         var disclosure = DisclosureOf(room);
+        var parley = ParleyOf(room);
 
         Model.RoomPanelTitle = room;
         Model.RoomPanelPlace = parent.Length > 0 ? $"Inside {parent}" : "At the top level";
         Model.RoomPanelEditClass = IsAdmin ? "room-edit" : "room-edit hidden";
         Model.RoomPanelReadClass = IsAdmin ? "room-read hidden" : "room-read";
         Model.RoomPanelDisclosure = DisclosureLabel(disclosure) + " - " + DisclosureHint(disclosure);
+        Model.RoomPanelParley = "Agents: " + ParleyLabel(parley) + " - " + ParleyHint(parley);
+        Model.ParleyChoices = Choices(parley.ToString().ToLowerInvariant(),
+            [.. Enum.GetValues<RoomParley>().Select(p => (p.ToString().ToLowerInvariant(), ParleyLabel(p), ParleyHint(p)))]);
 
         // Anywhere but inside itself.
         var places = _roomParents.Keys.Concat(Model.Rooms.Select(r => r.Name))
@@ -132,6 +153,20 @@ public sealed partial class ChatViewModel
         RoomDisclosure.Children => "Children",
         RoomDisclosure.Global => "Global",
         _ => "Members",
+    };
+
+    public static string ParleyLabel(RoomParley p) => p switch
+    {
+        RoomParley.None => "None",
+        RoomParley.Open => "Open",
+        _ => "Pairs",
+    };
+
+    public static string ParleyHint(RoomParley p) => p switch
+    {
+        RoomParley.None => "The delegator answers people only, never another agent.",
+        RoomParley.Open => "The delegator answers any agent that @-names it, however many agents are here.",
+        _ => "The delegator answers an agent that @-names it while they are the only two agents here.",
     };
 
     public static string DisclosureHint(RoomDisclosure d) => d switch

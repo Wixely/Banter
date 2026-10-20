@@ -639,6 +639,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                   <div class="{{RoomPanelReadClass}}">
                     <div class="room-read-line">{{RoomPanelPlace}}</div>
                     <div class="room-read-line">{{RoomPanelDisclosure}}</div>
+                    <div class="room-read-line">{{RoomPanelParley}}</div>
                     <div class="mgmt-hint">An admin can change these, and so can this room's delegator or the main room's.</div>
                   </div>
                   <div class="{{RoomPanelEditClass}}">
@@ -656,6 +657,21 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         </div>
                         <div class="{{DisclosureWarningClass}}">This room is Global. Every agent can read what is said here, wherever it is - say nothing here you would not say in every room.</div>
                         <div class="mgmt-hint">Within the room everybody reads everything; this is about the way out, when an agent elsewhere asks for what was said here.</div>
+                      </div>
+                    </div>
+                    <div class="mgmt-field">
+                      <div class="mgmt-label">Agents answering agents</div>
+                      <div class="mgmt-control">
+                        <div class="mgmt-choices stack">
+                          <div class="{{RowClass}}" data-repeat="ParleyChoices" data-parley="{{Value}}">
+                            <div class="{{DotClass}}"></div>
+                            <div class="mgmt-choice-text">
+                              <div class="mgmt-choice-label">{{Label}}</div>
+                              <div class="mgmt-choice-hint">{{Hint}}</div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="mgmt-hint">Agents answer the delegator when it names them. This is whether the delegator answers them back. The server stops relaying after twelve agent messages in a row with nobody speaking, whatever is chosen.</div>
                       </div>
                     </div>
                     <div class="mgmt-field">
@@ -2068,7 +2084,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         .room-overlay { align-items: center; justify-content: center; }
         /* Qualified by .mgmt-card, because that rule comes later and would win a tie - and its
            flex: 1 is what made this card the full width of the window. */
-        .mgmt-card.room-card { flex: 0 0 600px; height: 600px; box-sizing: border-box; max-height: calc(100% - 64px); }
+        /* Tall enough for its three settings to show without a scroll on an ordinary window; the
+           clamp takes over on a short one and the fields scroll inside the card. */
+        .mgmt-card.room-card { flex: 0 0 600px; height: 720px; box-sizing: border-box; max-height: calc(100% - 64px); }
         .mgmt-choices.stack { flex-direction: column; }
         /* A column turns a choice's flex: 1 into a share of the HEIGHT, and the cards crushed into
            each other. Stacked, each is as tall as what is in it. */
@@ -3492,6 +3510,17 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             }
 
             _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/disclosure {e.Value}");
+            return true;
+        });
+
+        doc.OnAction("data-parley", e =>
+        {
+            if (string.IsNullOrEmpty(e.Value))
+            {
+                return false;
+            }
+
+            _ = CommandAsync(ViewModel.Model.ActiveRoom, $"/parley {e.Value}");
             return true;
         });
 

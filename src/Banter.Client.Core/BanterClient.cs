@@ -422,6 +422,12 @@ public sealed partial class BanterClient : IAsyncDisposable
         string room, RoomDisclosure disclosure, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomDisclosurePayload>(new RoomDisclosurePayload(room, disclosure), cancellationToken);
 
+    /// <summary>Set whether a room's delegator answers agents that name it. The room's delegator,
+    /// the main delegator, or an admin. Answers with the parley in force afterwards.</summary>
+    public Task<RoomParleyPayload> SetRoomParleyAsync(
+        string room, RoomParley parley, CancellationToken cancellationToken = default) =>
+        RequestAsync<RoomParleyPayload>(new RoomParleyPayload(room, parley), cancellationToken);
+
     /// <summary>Read another room's recent messages while acting in <paramref name="fromRoom"/>,
     /// as far as its disclosure allows. Refused with <c>NOT_DISCLOSED</c> otherwise.</summary>
     public Task<HistoryChunkPayload> RecallRoomAsync(
@@ -579,6 +585,9 @@ public sealed partial class BanterClient : IAsyncDisposable
 
     /// <summary>Raised when a room you are in has its disclosure changed.</summary>
     public event Action<RoomDisclosurePayload>? RoomDisclosureChanged;
+
+    /// <summary>Raised when a room's parley changes, and on joining one.</summary>
+    public event Action<RoomParleyPayload>? RoomParleyChanged;
 
     /// <summary>Raised when a room's regime changes, and on joining one.</summary>
     public event Action<RoomRegimePayload>? RoomRegimeChanged;
@@ -1362,6 +1371,9 @@ public sealed partial class BanterClient : IAsyncDisposable
                         break;
                     case RoomDisclosurePayload disclosure:
                         RoomDisclosureChanged?.Invoke(disclosure);
+                        break;
+                    case RoomParleyPayload parley:
+                        RoomParleyChanged?.Invoke(parley);
                         break;
                     case RoomClosePayload closed:
                         // Out of the rejoin set first: a reconnect that joined it again would

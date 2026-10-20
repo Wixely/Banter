@@ -73,6 +73,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
         _client.Evicted += OnEvicted;
         _client.DelegatorChanged += OnDelegatorChanged;
         _client.RoomModeChanged += OnRoomModeChanged;
+        _client.RoomParleyChanged += OnRoomParleyChanged;
         _client.RoomClosed += OnRoomClosed;
         _client.MemberParted += OnMemberParted;
         _client.MemberJoined += OnMemberJoined;
@@ -309,6 +310,29 @@ public abstract partial class BanterAgent : IAsyncDisposable
         }
     }
 
+    private readonly Dictionary<string, RoomParley> _parleys = new(StringComparer.OrdinalIgnoreCase);
+
+    private void OnRoomParleyChanged(RoomParleyPayload p)
+    {
+        lock (_roomStateLock)
+        {
+            _parleys[p.Room] = p.Parley;
+        }
+    }
+
+    /// <summary>
+    /// Whether this room's delegator answers agents that name it. Defaults to Pairs for a room we
+    /// have not been told about, which is the server's own default - so an agent on a server too
+    /// old to say behaves as a new server would have told it to.
+    /// </summary>
+    protected RoomParley ParleyFor(string room)
+    {
+        lock (_roomStateLock)
+        {
+            return _parleys.GetValueOrDefault(room, RoomParley.Pairs);
+        }
+    }
+
     /// <summary>
     /// A room this agent was in is gone. Its state goes with it - the roster most of all, because
     /// a reconnect rejoins every room it has a roster for, and rejoining a closed room would open
@@ -333,6 +357,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
             _rosters.Remove(room);
             _delegators.Remove(room);
             _modes.Remove(room);
+            _parleys.Remove(room);
         }
     }
 
@@ -582,13 +607,38 @@ public abstract partial class BanterAgent : IAsyncDisposable
             // somebody else by name. "@dev who are you?" is a question for dev, and a delegator
             // that answers it too produces two replies to one question, one of them from an agent
             // that was not asked and cannot speak for the one that was.
-            return IsDelegatorFor(m.Room)
-                ? !IsAgentSender(m) && !NamesAnotherAgentIn(m)
-                : string.Equals(m.Sender, delegatorNick, StringComparison.OrdinalIgnoreCase)
-                  && Addressed(m);           // everyone else waits to be handed work
+            if (IsDelegatorFor(m.Room))
+            {
+                return IsAgentSender(m) ? AnswersAgent(m) : !NamesAnotherAgentIn(m);
+            }
+
+            return string.Equals(m.Sender, delegatorNick, StringComparison.OrdinalIgnoreCase)
+                && Addressed(m);               // everyone else waits to be handed work
         }
 
         return Options.RespondToEveryMessage || Addressed(m);
+    }
+
+    /// <summary>
+    /// Whether this agent, as a delegated room's delegator, answers another agent's message. Only
+    /// one that names it with an @ - an agent's reply to the person who asked is not a question
+    /// for the delegator - and then as the room's parley says: with two agents in the room by
+    /// default, so the pair can settle something between them; never, or always, when the room
+    /// has been told so. The server's loop-breaker bounds whatever this allows.
+    /// </summary>
+    private bool AnswersAgent(MsgPayload m)
+    {
+        if (!Mentioned(m))
+        {
+            return false;
+        }
+
+        return ParleyFor(m.Room) switch
+        {
+            RoomParley.None => false,
+            RoomParley.Open => true,
+            _ => RosterFor(m.Room).Count == 2,
+        };
     }
 
     /// <summary>
@@ -806,6 +856,13 @@ public abstract partial class BanterAgent : IAsyncDisposable
     private async Task<bool> TryRouteAsync(MsgPayload m)
     {
         if (Options.Routing is not { } routing || !IsDelegatorFor(m.Room))
+        {
+            return false;
+        }
+
+        // Another agent naming the delegator wants the delegator, not whoever it would have
+        // chosen for a person's request - routed on, it would go straight back to the asker.
+        if (IsAgentSender(m))
         {
             return false;
         }
@@ -1051,6 +1108,7 @@ public abstract partial class BanterAgent : IAsyncDisposable
             _client.Evicted -= OnEvicted;
             _client.DelegatorChanged -= OnDelegatorChanged;
             _client.RoomModeChanged -= OnRoomModeChanged;
+            _client.RoomParleyChanged -= OnRoomParleyChanged;
             _client.RoomClosed -= OnRoomClosed;
             _client.MemberParted -= OnMemberParted;
             _client.MemberJoined -= OnMemberJoined;

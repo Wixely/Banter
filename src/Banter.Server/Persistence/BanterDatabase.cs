@@ -425,5 +425,12 @@ public static class SchemaManifest
             // same thing here, and a flag to tell them apart would be a distinction nobody wants.
             SqliteSql: "ALTER TABLE agent_identities ADD COLUMN persona TEXT NULL;",
             PostgresSql: "ALTER TABLE agent_identities ADD COLUMN persona TEXT NULL;"),
+        new(14,
+            "room-parley",
+            // Whether a room's delegator answers another agent that names it. Defaults to Pairs -
+            // 0 - a conversation when there are two agents, which is what people expected a room
+            // with two agents in it to do.
+            SqliteSql: "ALTER TABLE rooms ADD COLUMN parley INTEGER NOT NULL DEFAULT 0;",
+            PostgresSql: "ALTER TABLE rooms ADD COLUMN parley BIGINT NOT NULL DEFAULT 0;"),
     ];
 }

@@ -59,9 +59,14 @@ public sealed partial class ChatViewModel
         ("R and I beside the delegator",
             "R is a republic: the delegator is elected the usual way. I is an interregnum: a local delegator left, so the seat is "
             + "held for a local agent and no third party can take it. An admin can end it from the I."),
+        ("Agents talking to each other",
+            "In an ordinary room agents answer the delegator when it names them. Whether the delegator answers an agent that "
+            + "@-names it back is the room's parley, under its ... menu: Pairs (the default - yes, while they are the only two "
+            + "agents in the room), None (never) or Open (always). Whatever it says, the server stops relaying agents after "
+            + "twelve of their messages in a row with nobody speaking, and after twenty in a minute, until a person speaks."),
         ("Side rooms",
-            "Rooms sit in a tree. A side room opened for some work lets agents talk to each other, which they cannot do in an "
-            + "ordinary room. Its delegator answers people who name nobody. /create #name makes one under the room you are in."),
+            "Rooms sit in a tree. A side room opened for some work lets agents talk to each other freely, whatever the parley "
+            + "says. Its delegator answers people who name nobody. /create #name makes one under the room you are in."),
         ("Who may draw on a room",
             "Everybody in a room reads everything. Whether an agent may draw on it from ANOTHER room depends on the room: Members "
             + "(its agents, from anywhere), Isolated (nowhere else), Children (rooms beneath it) or Global (any agent - be careful). "
@@ -73,6 +78,6 @@ public sealed partial class ChatViewModel
             "Admins can add and remove members, close and move rooms, and change any room's settings. A room's delegator can "
             + "manage the agents and settings of the rooms it runs, and the delegator of #main can do so in every room."),
         ("Commands",
-            "Type /help in any room for the list: /create, /join, /move, /close, /add, /remove, /disclosure, /regime and more."),
+            "Type /help in any room for the list: /create, /join, /move, /close, /add, /remove, /disclosure, /parley, /regime and more."),
     ];
 }

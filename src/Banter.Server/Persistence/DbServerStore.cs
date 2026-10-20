@@ -9,7 +9,7 @@ public sealed record HistoryPage(IReadOnlyList<ChatMessage> Messages, string? Ne
 
 /// <summary>A stored room. <paramref name="Disclosure"/> is a <c>RoomDisclosure</c>, held as a
 /// long because that is what SQLite returns and Dapper matches this constructor by type.</summary>
-public sealed record RoomRecord(string Name, string? Topic, string? Parent = null, long Disclosure = 0);
+public sealed record RoomRecord(string Name, string? Topic, string? Parent = null, long Disclosure = 0, long Parley = 0);
 
 /// <summary>Room and message persistence used by the room engine.</summary>
 public interface IServerStore
@@ -34,8 +34,8 @@ public interface IServerStore
     /// <summary>Forgets a closed room, so it is not loaded again at start. Its messages stay.</summary>
     ValueTask DeleteRoomAsync(string name, CancellationToken cancellationToken = default);
 
-    /// <summary>Where a room sits and its disclosure, so the tree survives a restart.</summary>
-    ValueTask SetRoomPlacementAsync(string name, string? parent, int disclosure, CancellationToken cancellationToken = default);
+    /// <summary>Where a room sits, its disclosure and its parley, so all three survive a restart.</summary>
+    ValueTask SetRoomPlacementAsync(string name, string? parent, int disclosure, int parley, CancellationToken cancellationToken = default);
 }
 
 public sealed class DbServerStore(BanterDatabase database) : IServerStore
@@ -178,17 +178,17 @@ public sealed class DbServerStore(BanterDatabase database) : IServerStore
     {
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
         var rooms = await connection.QueryAsync<RoomRecord>(
-            "SELECT name AS Name, topic AS Topic, parent AS Parent, disclosure AS Disclosure FROM rooms").ConfigureAwait(false);
+            "SELECT name AS Name, topic AS Topic, parent AS Parent, disclosure AS Disclosure, parley AS Parley FROM rooms").ConfigureAwait(false);
         return rooms.AsList();
     }
 
     public async ValueTask SetRoomPlacementAsync(
-        string name, string? parent, int disclosure, CancellationToken cancellationToken = default)
+        string name, string? parent, int disclosure, int parley, CancellationToken cancellationToken = default)
     {
         await using var connection = await database.OpenAsync(cancellationToken).ConfigureAwait(false);
         await connection.ExecuteAsync(
-            "UPDATE rooms SET parent = @Parent, disclosure = @Disclosure WHERE name = @Name",
-            new { Name = name, Parent = parent, Disclosure = disclosure }).ConfigureAwait(false);
+            "UPDATE rooms SET parent = @Parent, disclosure = @Disclosure, parley = @Parley WHERE name = @Name",
+            new { Name = name, Parent = parent, Disclosure = disclosure, Parley = parley }).ConfigureAwait(false);
     }
 
     public async ValueTask DeleteRoomAsync(string name, CancellationToken cancellationToken = default)

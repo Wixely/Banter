@@ -88,6 +88,9 @@ internal sealed partial class RoomEngine(
         /// <summary>Who may draw on this room from elsewhere. See <see cref="RoomDisclosure"/>.</summary>
         public RoomDisclosure Disclosure { get; set; } = RoomDisclosure.Members;
 
+        /// <summary>Whether the delegator answers an agent that names it. See <see cref="RoomParley"/>.</summary>
+        public RoomParley Parley { get; set; } = RoomParley.Pairs;
+
         /// <summary>Parent room when this is a sub-room, so the side channel stays traceable
         /// back to the conversation that spawned it.</summary>
         public string? ParentRoom { get; set; }
@@ -112,6 +115,9 @@ internal sealed partial class RoomEngine(
                 Disclosure = Enum.IsDefined((RoomDisclosure)persisted.Disclosure)
                     ? (RoomDisclosure)persisted.Disclosure
                     : RoomDisclosure.Members,
+                Parley = Enum.IsDefined((RoomParley)persisted.Parley)
+                    ? (RoomParley)persisted.Parley
+                    : RoomParley.Pairs,
             };
         }
 
@@ -306,7 +312,8 @@ internal sealed partial class RoomEngine(
                             // Count people, not connections: a user on two devices is one member.
                             r.Members.Select(m => m.Nick).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                             r.ParentRoom,
-                            r.Disclosure))
+                            r.Disclosure,
+                            r.Parley))
                         .ToArray()),
                     replyTo: envelope.MsgId);
                 break;
@@ -333,6 +340,9 @@ internal sealed partial class RoomEngine(
                 break;
             case RoomMovePayload roomMove:
                 await HandleRoomMoveAsync(session, envelope, roomMove).ConfigureAwait(false);
+                break;
+            case RoomParleyPayload parley:
+                await HandleRoomParleyAsync(session, envelope, parley).ConfigureAwait(false);
                 break;
             case RoomDisclosurePayload disclosure:
                 await HandleRoomDisclosureAsync(session, envelope, disclosure).ConfigureAwait(false);
@@ -450,6 +460,7 @@ internal sealed partial class RoomEngine(
         session.Send(new RoomModePayload(room.Name, room.Mode));
         session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
         session.Send(new RoomRegimePayload(room.Name, room.Regime));
+        session.Send(new RoomParleyPayload(room.Name, room.Parley));
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
@@ -512,6 +523,7 @@ internal sealed partial class RoomEngine(
                 admin.Send(new RoomModePayload(room.Name, room.Mode));
                 admin.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
                 admin.Send(new RoomRegimePayload(room.Name, room.Regime));
+                admin.Send(new RoomParleyPayload(room.Name, room.Parley));
             }
         }
     }
@@ -648,7 +660,7 @@ internal sealed partial class RoomEngine(
             room.Sensitivity = parent.Sensitivity;
         }
 
-        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure).ConfigureAwait(false);
+        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
 
         // Everybody, not only the room's members: the tree is in every client's room list.
         var moved = new RoomMovePayload(room.Name, room.ParentRoom, session.Nick);
@@ -690,7 +702,7 @@ internal sealed partial class RoomEngine(
             }
 
             room.Disclosure = request.Disclosure;
-            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure).ConfigureAwait(false);
+            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
             Broadcast(room, new RoomDisclosurePayload(room.Name, room.Disclosure, session.Nick));
             await AnnounceSystemAsync(room, $"{session.Nick} set this room to {room.Disclosure}: " + room.Disclosure switch
             {
@@ -702,6 +714,47 @@ internal sealed partial class RoomEngine(
         }
 
         session.Send(new RoomDisclosurePayload(room.Name, room.Disclosure), replyTo: envelope.MsgId);
+    }
+
+    /// <summary>
+    /// Change whether the room's delegator answers agents that name it. Who may is who may change
+    /// the disclosure: the room's own delegator, the main delegator, or an admin. Asking for the
+    /// parley it already has is a read.
+    /// </summary>
+    private async ValueTask HandleRoomParleyAsync(
+        ClientSession session, BanterEnvelope envelope, RoomParleyPayload request)
+    {
+        if (!_rooms.TryGetValue(request.Room, out var room))
+        {
+            session.Send(new ErrorPayload("NO_SUCH_ROOM", $"There is no room called {request.Room}."), replyTo: envelope.MsgId);
+            return;
+        }
+
+        if (room.Parley != request.Parley)
+        {
+            var may = session.IsAdmin
+                || IsMainDelegator(session)
+                || string.Equals(room.Delegator, session.Nick, StringComparison.OrdinalIgnoreCase);
+            if (!may)
+            {
+                session.Send(
+                    new ErrorPayload("NOT_ALLOWED", $"Only an admin, {room.Name}'s delegator or {MainRoom}'s delegator may change this."),
+                    replyTo: envelope.MsgId);
+                return;
+            }
+
+            room.Parley = request.Parley;
+            await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
+            Broadcast(room, new RoomParleyPayload(room.Name, room.Parley, session.Nick));
+            await AnnounceSystemAsync(room, $"{session.Nick} set this room's parley to {room.Parley}: " + room.Parley switch
+            {
+                RoomParley.None => "the delegator answers people only, never another agent.",
+                RoomParley.Open => "the delegator answers any agent that names it, however many are here.",
+                _ => "the delegator answers an agent that names it while they are the only two agents here.",
+            }).ConfigureAwait(false);
+        }
+
+        session.Send(new RoomParleyPayload(room.Name, room.Parley), replyTo: envelope.MsgId);
     }
 
     /// <summary>
@@ -978,10 +1031,11 @@ internal sealed partial class RoomEngine(
         // A side room keeps its parent's discretion unless it is asked for something else: work
         // moved out of an isolated room into a side room should not become shareable by moving.
         room.Disclosure = request.Disclosure ?? parent?.Disclosure ?? RoomDisclosure.Members;
+        room.Parley = parent?.Parley ?? RoomParley.Pairs;
 
         _rooms[room.Name] = room;
         await store.UpsertRoomAsync(room.Name, room.Topic).ConfigureAwait(false);
-        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure).ConfigureAwait(false);
+        await store.SetRoomPlacementAsync(room.Name, room.ParentRoom, (int)room.Disclosure, (int)room.Parley).ConfigureAwait(false);
 
         // The creator joins immediately: a sub-room nobody is in is not useful, and the
         // delegator needs to be in it to run it.
@@ -1019,6 +1073,7 @@ internal sealed partial class RoomEngine(
         session.Send(new RoomModePayload(room.Name, room.Mode));
         session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
         session.Send(new RoomRegimePayload(room.Name, room.Regime));
+        session.Send(new RoomParleyPayload(room.Name, room.Parley));
         session.Send(new RoomCreatePayload(room.Name, room.ParentRoom, request.Purpose), replyTo: envelope.MsgId);
     }
 
@@ -1072,7 +1127,7 @@ internal sealed partial class RoomEngine(
         foreach (var child in _rooms.Values.Where(r => string.Equals(r.ParentRoom, room.Name, StringComparison.OrdinalIgnoreCase)).ToList())
         {
             child.ParentRoom = room.ParentRoom;
-            await store.SetRoomPlacementAsync(child.Name, child.ParentRoom, (int)child.Disclosure).ConfigureAwait(false);
+            await store.SetRoomPlacementAsync(child.Name, child.ParentRoom, (int)child.Disclosure, (int)child.Parley).ConfigureAwait(false);
         }
 
         // Said where the room came from, so the conversation that opened it also shows it ending.
@@ -1201,6 +1256,7 @@ internal sealed partial class RoomEngine(
                 added.Send(new RoomModePayload(room.Name, room.Mode));
                 added.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
                 added.Send(new RoomRegimePayload(room.Name, room.Regime));
+                added.Send(new RoomParleyPayload(room.Name, room.Parley));
             }
 
             await AnnounceSystemAsync(room, $"{target.Nick} was added by {session.Nick}.").ConfigureAwait(false);
@@ -1229,6 +1285,7 @@ internal sealed partial class RoomEngine(
             moved.Send(new RoomModePayload(room.Name, room.Mode));
             moved.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
             moved.Send(new RoomRegimePayload(room.Name, room.Regime));
+            moved.Send(new RoomParleyPayload(room.Name, room.Parley));
         }
 
         room.Agents[target.Nick] = candidate with { JoinSequence = _joinSequence++ };

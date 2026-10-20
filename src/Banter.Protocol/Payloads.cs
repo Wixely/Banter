@@ -90,7 +90,8 @@ public sealed record RoomSummary(
     [property: Key(1)] string? Topic,
     [property: Key(2)] int MemberCount,
     [property: Key(3)] string? ParentRoom = null,
-    [property: Key(4)] RoomDisclosure Disclosure = RoomDisclosure.Members);
+    [property: Key(4)] RoomDisclosure Disclosure = RoomDisclosure.Members,
+    [property: Key(5)] RoomParley Parley = RoomParley.Pairs);
 
 [MessagePackObject]
 public sealed record RoomMembersPayload(
@@ -726,6 +727,39 @@ public sealed record RoomRecallPayload(
     [property: Key(0)] string Room,
     [property: Key(1)] string FromRoom,
     [property: Key(2)] int Limit = 20);
+
+/// <summary>
+/// Whether a delegated room's delegator answers another agent that names it - the room's parley.
+///
+/// <para>In a delegated room the delegator hands work to agents by name, and they answer it. What
+/// it does with their answers is this. Left to ignore them it is a dispatcher and nothing more;
+/// two agents cannot settle anything between them. Answering every agent that names it, in a room
+/// of many, is a committee that never adjourns. So the default is the middle: a conversation when
+/// the room has two agents in it, and silence towards agents when it has more. Side rooms, where
+/// agents may address each other anyway, are unaffected.</para>
+///
+/// <para>Whatever this says, the server's guardrails hold: so many agent messages in a row without
+/// a person speaking, and the room stops relaying them until one does.</para>
+/// </summary>
+public enum RoomParley
+{
+    /// <summary>The delegator answers an agent that names it when the room has exactly two
+    /// agents - itself and the other. The default.</summary>
+    Pairs = 0,
+
+    /// <summary>The delegator never answers another agent. What a delegated room always was.</summary>
+    None = 1,
+
+    /// <summary>The delegator answers any agent that names it, however many are in the room.</summary>
+    Open = 2,
+}
+
+/// <summary>A room's parley. Sent to set it, and by the server to say what it now is.</summary>
+[MessagePackObject]
+public sealed record RoomParleyPayload(
+    [property: Key(0)] string Room,
+    [property: Key(1)] RoomParley Parley,
+    [property: Key(2)] string? ChangedBy = null);
 
 /// <summary>A room's regime. <see cref="Reason"/> and <see cref="ChangedBy"/> say why and who,
 /// on a change; both are empty on the copy sent to somebody joining.</summary>
