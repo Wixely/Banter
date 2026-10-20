@@ -26,8 +26,12 @@ public sealed class PhoneFitTests(ITestOutputHelper output)
     /// card squeezed below its text, which spills under its neighbour without ever reaching the
     /// edge, so neither of the other two can see it. Zero on every page at every size when it
     /// arrived, and gated so it stays there.</para>
+    ///
+    /// <para><c>CF0076</c> (CupriFace 0.45.0) is the fourth: a positioned box - a drawer, a popup,
+    /// a tooltip - placed or sized so part of it is past the viewport edge, where nothing can
+    /// scroll it into view.</para>
     /// </summary>
-    private static readonly string[] Invisible = ["CF0071", "CF0072", "CF0075"];
+    public static readonly string[] Invisible = ["CF0071", "CF0072", "CF0075", "CF0076"];
 
     [Theory]
     [MemberData(nameof(AppPages.OnSmall), MemberType = typeof(AppPages))]

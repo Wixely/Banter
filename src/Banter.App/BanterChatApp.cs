@@ -2660,6 +2660,10 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
           .pill-text { white-space: nowrap; min-width: 0; overflow: hidden; }
           .header { height: 52px; }
 
+          /* The confirm's card is 440px, which on a 412px phone put its right edge - and half of
+             its "Close room" button - past the screen. The window's width less a margin, here. */
+          .confirm-card { width: auto; flex: 1 1 auto; max-width: 440px; margin: 0 16px; }
+
           /* Says the room name is a button. Drawn rather than set as a glyph, for the reason the
              rail icons are: no face is embedded, so a chevron character is whatever the host
              machine resolves - or tofu. A square with two of its borders coloured, turned 45
