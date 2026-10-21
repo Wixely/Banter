@@ -219,6 +219,128 @@ public sealed class AttachmentToAgentTests : IAsyncLifetime
         Assert.Contains((await human.GetHistoryAsync("#main", limit: 50)).Messages, m => m.Sender == "local" && m.Text == "seen");
     }
 
+    /// <summary>An agent written against BanterAgent directly, as DaggerAgent is: whatever it is
+    /// handed, it records, and answers "ok". With the four-argument form it is handed the file's id
+    /// and fetches the file; on the three-argument form it is at least told what was attached.</summary>
+    private sealed class PlainAgent(BanterAgentOptions options, bool newContract) : BanterAgent(options)
+    {
+        public string? Prompt { get; private set; }
+        public Attachment? Attachment { get; private set; }
+
+        protected override async IAsyncEnumerable<string> RespondAsync(
+            string room, string sender, string prompt, string? fileId,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            if (!newContract)
+            {
+                await foreach (var piece in base.RespondAsync(room, sender, prompt, fileId, cancellationToken).ConfigureAwait(false))
+                {
+                    yield return piece;
+                }
+
+                yield break;
+            }
+
+            Prompt = prompt;
+            Attachment = await FetchAttachmentAsync(fileId, cancellationToken).ConfigureAwait(false);
+            yield return "ok";
+        }
+
+        protected override async IAsyncEnumerable<string> RespondAsync(
+            string room, string sender, string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            Prompt = prompt;
+            await Task.Yield();
+            yield return "ok";
+        }
+    }
+
+    [Fact]
+    public async Task AnAgentWrittenAgainstTheSdkIsHandedTheFile()
+    {
+        // Reported from a real room: a person attached a photo, and the agent - not Banter's own
+        // LlmChatAgent - answered that only the filename had come through and the file was
+        // nowhere in its workspace. The file was on the server; nothing had handed it over.
+        await using var human = await HumanAsync();
+        await using var local = new PlainAgent(Agent("local", AgentLocality.Local), newContract: true);
+        await local.StartAsync(_transport);
+        await DelegatorAsync(human, "local");
+
+        await SayWithFileAsync(human, "what is in this?", "shot.png", Png, "image/png");
+
+        await UntilAsync(() => local.Attachment is not null, "the agent was never handed the file");
+        var file = local.Attachment!;
+        Assert.Equal("shot.png", file.Name);
+        Assert.Equal("image/png", file.MimeType);
+        Assert.Equal(Png.Length, file.Size);
+        Assert.Equal("data:image/png;base64," + Convert.ToBase64String(Png), file.ImageDataUri);
+        Assert.Equal("what is in this?", local.Prompt);
+    }
+
+    [Fact]
+    public async Task AnAgentOnTheOldContractIsAtLeastToldWhatWasAttached()
+    {
+        await using var human = await HumanAsync();
+        await using var local = new PlainAgent(Agent("local", AgentLocality.Local), newContract: false);
+        await local.StartAsync(_transport);
+        await DelegatorAsync(human, "local");
+
+        var info = await human.UploadFileAsync("#main", "shot.png", Png, "image/png", quiet: true);
+        await human.SendMessageAsync("#main", "shot.png", info.FileId, replyTo: null, to: null);
+
+        await UntilAsync(() => local.Prompt is not null, "the agent never answered");
+        Assert.Contains("[Attached: shot.png (image/png, 12 B); file id " + info.FileId, local.Prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>An agent whose model calls whichever tools a test queues up.</summary>
+    private sealed class ToolAgent(BanterAgentOptions options) : BanterAgent(options)
+    {
+        public Queue<(string Tool, string Args)> Plan { get; } = new();
+        public List<string> Results { get; } = [];
+
+        public IReadOnlyList<string> ToolNamesIn(string room) => [.. ToolsFor(room).Select(t => t.Name)];
+
+        protected override async IAsyncEnumerable<string> RespondAsync(
+            string room, string sender, string prompt,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            while (Plan.Count > 0)
+            {
+                var (tool, args) = Plan.Dequeue();
+                var result = await InvokeToolAsync(tool, args, room, cancellationToken).ConfigureAwait(false);
+                lock (Results)
+                {
+                    Results.Add(result.Content);
+                }
+            }
+
+            yield return "ok";
+        }
+    }
+
+    [Fact]
+    public async Task AModelCanAskForARoomsFilesItself()
+    {
+        await using var human = await HumanAsync();
+        await using var local = new ToolAgent(Agent("local", AgentLocality.Local));
+        await local.StartAsync(_transport);
+        await DelegatorAsync(human, "local");
+
+        var notes = await human.UploadFileAsync("#main", "notes.txt", Encoding.UTF8.GetBytes("ship on friday"), "text/plain", quiet: true);
+        await human.SendMessageAsync("#main", "notes.txt", notes.FileId, replyTo: null, to: null);
+
+        // A later message refers to the file without attaching it again; the model goes and looks.
+        await UntilAsync(() => local.ToolNamesIn("#main").Contains("read_file"), "the file tools were not offered");
+        local.Plan.Enqueue(("room_files", "{}"));
+        local.Plan.Enqueue(("read_file", $$"""{"file_id":"{{notes.FileId}}"}"""));
+        await human.SendMessageAsync("#main", "what did the notes say?");
+
+        await UntilAsync(() => local.Results.Count == 2, "the tools never ran");
+        Assert.Contains("notes.txt (text/plain, 14 B) - file id " + notes.FileId, local.Results[0], StringComparison.Ordinal);
+        Assert.Contains("ship on friday", local.Results[1], StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task AFileAndItsWordsAreOneMessage()
     {

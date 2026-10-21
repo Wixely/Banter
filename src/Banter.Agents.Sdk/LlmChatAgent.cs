@@ -97,8 +97,14 @@ public sealed class LlmChatAgent : BanterAgent
         return base.ShouldRespond(m);
     }
 
+    /// <summary>Never reached: the four-argument form below is the one the turn calls, and this
+    /// agent's context already holds the message and its file from <see cref="Observe"/>.</summary>
+    protected override IAsyncEnumerable<string> RespondAsync(
+        string room, string sender, string prompt, CancellationToken cancellationToken) =>
+        RespondAsync(room, sender, prompt, null, cancellationToken);
+
     protected override async IAsyncEnumerable<string> RespondAsync(
-        string room, string sender, string prompt,
+        string room, string sender, string prompt, string? fileId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         List<ChatTurn> messages;
@@ -195,7 +201,9 @@ public sealed class LlmChatAgent : BanterAgent
     /// context, and the model has already looked at those.</summary>
     private const int ImagesInContext = 2;
 
-    private bool SharesAttachments => _llm.ShareAttachments ?? Options.Locality == AgentLocality.Local;
+    /// <summary>This agent's own setting first, for a Warden configured through its model options;
+    /// the base agent's otherwise.</summary>
+    private bool SharesAttachmentsHere => _llm.ShareAttachments ?? SharesAttachments;
 
     private async Task<List<ChatTurn>> WithAttachmentsAsync(List<ChatTurn> messages, CancellationToken cancellationToken)
     {
@@ -242,41 +250,11 @@ public sealed class LlmChatAgent : BanterAgent
             }
         }
 
-        (string Note, string? Image) described;
-        try
-        {
-            var info = await Client.GetFileInfoAsync(fileId, cancellationToken).ConfigureAwait(false);
-            var what = $"{info.Name} ({info.MimeType}, {Size(info.Size)})";
-            var image = info.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
-            var text = IsText(info.MimeType, info.Name);
-
-            if (!SharesAttachments)
-            {
-                described = ($"[A file is attached: {what}. It was not shared with you, because you "
-                             + "are a third-party agent; say so if it matters to the answer.]", null);
-            }
-            else if (image && info.Size <= _llm.MaxAttachmentImageBytes)
-            {
-                var bytes = await Client.DownloadFileAsync(fileId, cancellationToken).ConfigureAwait(false);
-                described = ($"[An image is attached: {what}. It is included with this message.]",
-                             $"data:{info.MimeType};base64,{Convert.ToBase64String(bytes)}");
-            }
-            else if (text && info.Size <= _llm.MaxAttachmentTextBytes)
-            {
-                var bytes = await Client.DownloadFileAsync(fileId, cancellationToken).ConfigureAwait(false);
-                described = ($"[A file is attached: {what}. Its contents:]\n```\n"
-                             + System.Text.Encoding.UTF8.GetString(bytes) + "\n```", null);
-            }
-            else
-            {
-                described = ($"[A file is attached: {what}. You cannot open files of this kind or "
-                             + "size; say so rather than guessing at what is in it.]", null);
-            }
-        }
-        catch (Exception ex) when (ex is Banter.Client.Core.BanterClientException or IOException)
-        {
-            described = ($"[A file was attached, but it could not be fetched: {ex.Message}]", null);
-        }
+        // The base agent's rules, with this agent's own limits.
+        var fetched = await FetchAttachmentAsync(
+            fileId, SharesAttachmentsHere, _llm.MaxAttachmentImageBytes, _llm.MaxAttachmentTextBytes, cancellationToken)
+            .ConfigureAwait(false);
+        (string Note, string? Image) described = (fetched!.Note, fetched.ImageDataUri);
 
         lock (_attachmentsLock)
         {
@@ -285,19 +263,6 @@ public sealed class LlmChatAgent : BanterAgent
 
         return described;
     }
-
-    private static bool IsText(string mime, string name) =>
-        mime.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
-        || mime is "application/json" or "application/xml" or "application/x-yaml" or "application/yaml"
-        || Path.GetExtension(name).ToLowerInvariant() is ".md" or ".txt" or ".csv" or ".json" or ".log"
-            or ".yaml" or ".yml" or ".xml" or ".cs" or ".py" or ".js" or ".ts" or ".sql";
-
-    private static string Size(long bytes) => bytes switch
-    {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:F0} KB",
-        _ => $"{bytes / (1024.0 * 1024):F1} MB",
-    };
 
     /// <summary>
     /// Streams a completion, and when the model refuses a request with an image in it, asks once

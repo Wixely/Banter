@@ -110,6 +110,26 @@ public sealed record BanterAgentOptions
     /// stopped working.
     /// </summary>
     public TimeSpan AskTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
+    // ── Attachments ──────────────────────────────────────────────────────────────────────────
+    // What <see cref="BanterAgent.FetchAttachmentAsync(string?, CancellationToken)"/> and the
+    // read_file tool hand this agent of a file somebody attached. LlmChatAgentOptions carries its
+    // own copies for the model-backed agent; these are for every other one.
+
+    /// <summary>
+    /// Whether a file someone attaches is given to this agent: an image as an image, a small
+    /// text file as its text. Null is the safe default - yes for a local agent, no for a
+    /// third-party one - because an attachment is content like any other, and the keyword check
+    /// that decides what a third party may be sent reads words, not pictures. An agent told no
+    /// still learns that a file was attached, and can say it could not see it.
+    /// </summary>
+    public bool? ShareAttachments { get; init; }
+
+    /// <summary>Largest image handed over whole.</summary>
+    public long MaxAttachmentImageBytes { get; init; } = 5 * 1024 * 1024;
+
+    /// <summary>Largest text file whose contents are handed over.</summary>
+    public long MaxAttachmentTextBytes { get; init; } = 64 * 1024;
 }
 
 public sealed record LlmChatAgentOptions

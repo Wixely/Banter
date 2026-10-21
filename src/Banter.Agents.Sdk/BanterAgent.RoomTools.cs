@@ -47,7 +47,7 @@ public abstract partial class BanterAgent
             return [];
         }
 
-        return IsDelegatorFor(room) ? [.. EveryoneTools, .. RoomTools] : EveryoneTools;
+        return IsDelegatorFor(room) ? [.. EveryoneTools, .. FileTools, .. RoomTools] : [.. EveryoneTools, .. FileTools];
     }
 
     /// <summary>

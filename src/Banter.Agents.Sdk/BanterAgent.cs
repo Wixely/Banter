@@ -1065,7 +1065,9 @@ public abstract partial class BanterAgent : IAsyncDisposable
             await using var stream = await Client.StartMessageStreamAsync(m.Room, _stopping.Token)
                 .ConfigureAwait(false);
 
-            await foreach (var piece in RespondAsync(m.Room, m.Sender, prompt, _stopping.Token)
+            // The four-argument form, which carries the file; an agent that overrides only the
+            // three-argument one gets the file described at the end of its prompt instead.
+            await foreach (var piece in RespondAsync(m.Room, m.Sender, prompt, m.FileId, _stopping.Token)
                 .WithCancellation(_stopping.Token).ConfigureAwait(false))
             {
                 if (piece.Length > 0)
