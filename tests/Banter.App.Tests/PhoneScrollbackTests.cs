@@ -121,12 +121,48 @@ public sealed class PhoneScrollbackTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// Reported as "scroll inertia doesn't work in the chat window". A fling coasts after the finger
+    /// lifts; it did not here, because this app rebuilds its document at 20 Hz and a rebuild handed
+    /// CupriFace's next animation step a tree no layout had reached yet, whose scroller it took for
+    /// "not scrollable" and stopped. Fixed in CupriFace 0.46.0. Measured before: without the
+    /// refresh the timeline coasted 2,397px past the finger; with it, 120px and dead in ten frames.
+    /// </summary>
+    [Fact]
+    public void AFlingCoastsPastTheFingerDespiteTheHostsRefreshCadence()
+    {
+        var phone = InARoomWithHistory(150);
+        var before = phone.Timeline.ScrollY;
+
+        phone.Touch.Fling(200, 300, dy: 400);
+        var lifted = phone.Timeline.ScrollY;
+        var fingerTravel = before - lifted;
+        Assert.True(fingerTravel > 100, $"the finger itself only moved the list {fingerTravel:F0}px");
+        Assert.True(phone.Doc.FlingActive, "the release did not start a fling");
+
+        phone.Run(90);
+        var coasted = lifted - phone.Timeline.ScrollY;
+        output.WriteLine($"finger moved the list {fingerTravel:F0}px; it then coasted {coasted:F0}px on its own");
+
+        // Well past the finger's own travel: a fling that stops within a frame or two of the
+        // release is exactly what was reported, and it coasts a few hundred pixels at least.
+        Assert.True(coasted > fingerTravel, $"the list coasted only {coasted:F0}px after a {fingerTravel:F0}px drag");
+    }
+
     [Fact]
     public void AMessageArrivingWhileYouReadBackDoesNotPullYouDown()
     {
         var phone = InARoomWithHistory(150);
         phone.Touch.Fling(200, 300, dy: 600);
-        phone.Run(60);
+
+        // Until the fling has settled, however long it coasts: "reading" is a list at rest, and a
+        // list still carrying momentum would move on its own and look like the pull this is for.
+        for (var frames = 0; phone.Doc.FlingActive && frames < 600; frames++)
+        {
+            phone.Run(1);
+        }
+
+        Assert.False(phone.Doc.FlingActive, "the fling never settled");
         var before = phone.Timeline;
         var reading = before.ScrollY;
         Assert.True(reading < before.MaxScrollY - 200, "the fling never left the bottom, so this would prove nothing");
