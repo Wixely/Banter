@@ -2404,7 +2404,9 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
            TheCardNeverGrowsPastTheWindow holds all of it. */
         .settings-card { flex: 0 0 720px; height: 620px; box-sizing: border-box;
                          max-height: calc(100% - 64px); }
-        .settings-tabs { display: flex; flex-direction: row; flex-wrap: wrap; padding-top: 12px; }
+        /* row-gap, because the tabs wrap on a phone and margin-right spaces a line, not the lines:
+           the second row sat flush under the first (CF0078, CupriFace 0.46.0). */
+        .settings-tabs { display: flex; flex-direction: row; flex-wrap: wrap; row-gap: 6px; padding-top: 12px; }
         .settings-tab { padding: 5px 12px; margin-right: 6px; font-size: 12px; color: #8d97a6;
                         background: #151920; border: 1px solid #262d38; border-radius: 8px; }
         .settings-tab.on { color: #f3f5f7; background: #1f2530; border-color: #3b4453; }

@@ -30,8 +30,13 @@ public sealed class PhoneFitTests(ITestOutputHelper output)
     /// <para><c>CF0076</c> (CupriFace 0.45.0) is the fourth: a positioned box - a drawer, a popup,
     /// a tooltip - placed or sized so part of it is past the viewport edge, where nothing can
     /// scroll it into view.</para>
+    ///
+    /// <para><c>CF0078</c> (CupriFace 0.46.0) is not about invisibility but about the same
+    /// phone: a wrapping row with nothing between its lines, so the second row sits flush under
+    /// the first. The settings tabs were the first thing it found. Gated with the rest because
+    /// it only ever shows at a narrow width, which is exactly where nobody looks.</para>
     /// </summary>
-    public static readonly string[] Invisible = ["CF0071", "CF0072", "CF0075", "CF0076"];
+    public static readonly string[] Invisible = ["CF0071", "CF0072", "CF0075", "CF0076", "CF0078"];
 
     [Theory]
     [MemberData(nameof(AppPages.OnSmall), MemberType = typeof(AppPages))]
