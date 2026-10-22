@@ -92,6 +92,16 @@ var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = d
 // the room. --mcp and BANTER_MCP_CONFIG mean here what they mean there.
 await using var toolBroker = await ToolHost.StartAsync(database, Arg("--mcp"));
 
+// A wire trace, when asked for: every message in and out, one JSON line each, with the text of
+// what was said and what tools returned - the record a debug bundle is built on. Off unless
+// --trace or BANTER_TRACE names a file, because it is the conversation written to disk.
+var tracePath = Arg("--trace") ?? Environment.GetEnvironmentVariable("BANTER_TRACE");
+await using var wireTrace = tracePath is { Length: > 0 } ? WireTrace.Open(tracePath) : null;
+if (wireTrace is not null)
+{
+    Console.WriteLine($"Tracing every message to {wireTrace.Path} (it contains what is said; keep it where the conversation belongs).");
+}
+
 if (Arg("--tools-for") is { Length: > 0 } inspecting)
 {
     await ToolHost.DescribeToolsForAsync(toolBroker, inspecting);
@@ -219,6 +229,7 @@ await using var server = new BanterServer(
     fileStore,
     tasks: new TaskStore(database),
     tools: toolBroker,
+    trace: wireTrace,
     // The same identity model as the TCP server: this is the mesh's front door, not a different
     // idea of who an agent is.
     identities: new AgentIdentityStore(database),

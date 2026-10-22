@@ -28,6 +28,7 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
     private readonly TcpBanterTransport _transport = new();
     private readonly InMemoryAccountStore _accounts = new InMemoryAccountStore()
         .AddUser("human", "pw", isAgent: false, isAdmin: true)
+        .AddUser("viewer", "pw")
         .AddUser("local", "pw", isAgent: true)
         .AddUser("local-2", "pw", isAgent: true)
         .AddUser("local-3", "pw", isAgent: true);
@@ -234,6 +235,75 @@ public sealed class DelegatorRoomToolsTests(ITestOutputHelper output) : IAsyncLi
             async () => (await human.GetHistoryAsync(room, limit: 50)).Messages.Any(m => m.Sender == "local" && m.Text == "ok"),
             $"the delegator never answered in {room} (routing: {routing})");
     }
+
+    /// <summary>
+    /// Reported from a real room: asked to set up a project with another agent, the delegator
+    /// took ages and produced tool-call markup, and nothing happened. Four chained calls was
+    /// too many for the model. One call does the whole thing: a room named for the project,
+    /// the agent brought in, the plan posted, and the people asked to approve it - and the same
+    /// name a second time finds the same room.
+    /// </summary>
+    [Fact]
+    public async Task StartingAProjectOpensItsRoomBringsTheAgentAndAsksForApproval()
+    {
+        await using var human = await HumanAsync();
+        await using var boss = new ToolingAgent(Agent("local"));
+        await boss.StartAsync(_transport);
+        await using var helper = new ToolingAgent(Agent("local-2"));
+        await helper.StartAsync(_transport);
+        await WaitForDelegatorAsync(human, "local");
+
+        boss.Plan.Enqueue(("start_project",
+            """{"name":"Cheese Names","agents":["local-2","nobody-here"],"plan":"1. local-2 lists ten names.\n2. I pick three.\n3. You choose."}"""));
+        await human.SendMessageAsync("#main", "@local set up a project with local-2 to name the cheese");
+        await UntilAsync(() => Task.FromResult(boss.Results.Count == 1), "start_project never ran");
+        output.WriteLine(boss.Results[0]);
+
+        // The room, named for the project; the agent in it; the one that is not here, said so.
+        Assert.StartsWith("Opened #proj-cheese-names.", boss.Results[0], StringComparison.Ordinal);
+        Assert.Contains("In it: local-2.", boss.Results[0], StringComparison.Ordinal);
+        Assert.Contains("nobody-here", boss.Results[0], StringComparison.Ordinal);
+        await human.JoinAsync("#proj-cheese-names");
+        Assert.Contains((await human.GetMembersAsync("#proj-cheese-names")).Members, m => m.Nick == "local-2");
+
+        // The plan and the question are in the room; and the person who asked, back in #main, is
+        // told where to go - by the tool, not left to the model's reply.
+        var said = (await human.GetHistoryAsync("#proj-cheese-names", limit: 50)).Messages;
+        Assert.Contains(said, m => m.Sender == "local" && m.Text.StartsWith("Plan for Cheese Names:", StringComparison.Ordinal));
+        Assert.Contains(said, m => m.Sender == "local" && m.Text.Contains("@local-2", StringComparison.Ordinal));
+        Assert.Contains(said, m => m.Text.StartsWith("[asking] Approve this plan for Cheese Names?", StringComparison.Ordinal));
+        Assert.Contains((await human.GetHistoryAsync("#main", limit: 50)).Messages,
+            m => m.Sender == "local" && m.Text.StartsWith("Opened #proj-cheese-names for Cheese Names.", StringComparison.Ordinal));
+
+        // The question is a real ask - buttons, not a sentence - and somebody who comes into the
+        // room after it was asked gets the buttons too, not just the line in the history.
+        await using var viewer = await BanterClient.ConnectAsync(_transport, _server.Endpoint, "viewer", "pw");
+        var asked = new TaskCompletionSource<AskPayload>(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewer.AskReceived += a => asked.TrySetResult(a);
+        await viewer.JoinAsync("#proj-cheese-names");
+        var ask = await asked.Task.WaitAsync(Patience);
+        Assert.Equal("#proj-cheese-names", ask.Room);
+        Assert.Equal("local", ask.Asker);
+        Assert.Contains("Approve this plan", Assert.Single(ask.Questions).Text, StringComparison.Ordinal);
+        Assert.Equal(new[] { "approve", "change", "stop" }, ask.Questions[0].Options.Select(o => o.Value).ToArray());
+
+        // Asked again for the same project, it finds the same room rather than opening a second.
+        await UntilAsync(() => Task.FromResult(!boss.Answering), "the first turn never finished");
+        boss.Plan.Enqueue(("start_project", """{"name":"cheese names","agents":["local-2"],"plan":"Revised: five names."}"""));
+        await human.SendMessageAsync("#main", "@local same project again please");
+        await UntilAsync(() => Task.FromResult(boss.Results.Count == 2), "the second start_project never ran");
+        output.WriteLine(boss.Results[1]);
+        Assert.StartsWith("Reused #proj-cheese-names.", boss.Results[1], StringComparison.Ordinal);
+        Assert.Single((await human.ListRoomsAsync()).Rooms, r => r.Name.StartsWith("#proj-cheese", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Cheese Names", "#proj-cheese-names")]
+    [InlineData("  Sciro -- cheese! brainstorm ", "#proj-sciro-cheese-brainstorm")]
+    [InlineData("!!!", "#proj-untitled")]
+    [InlineData("a very long project name that goes on and on and on forever", "#proj-a-very-long-project-name-that-go")]
+    public void AProjectsRoomIsNamedForIt(string name, string room) =>
+        Assert.Equal(room, BanterAgent.ProjectRoomName(name));
 
     [Fact]
     public async Task OnlyAnAdminOrTheDelegatorMayCloseARoom()

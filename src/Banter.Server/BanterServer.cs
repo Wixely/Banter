@@ -25,14 +25,17 @@ public sealed class BanterServer(
     // Last, and optional, because a relic is a capability of one transport rather than of the
     // protocol: without it every file still transfers, over FILE_GET as it always has.
     Files.FileRelics? relics = null,
-    PresenceLimits? presence = null) : IAsyncDisposable
+    PresenceLimits? presence = null,
+    // A wire trace, when the operator asked for one (--trace). Every session records into it,
+    // and the engine folds its tail into a debug bundle.
+    WireTrace? trace = null) : IAsyncDisposable
 {
     private readonly BanterCodec _codec = new();
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
     private readonly PresenceLimits _presence = presence ?? PresenceLimits.Default;
     // The identity store reaches the engine so an announcement can be clamped to what the admin
     // decided: the machine running an agent is not the authority on how much the room trusts it.
-    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits, tools, identities, presence);
+    private readonly RoomEngine _engine = new(store, guardrails, tasks, taskLimits, tools, identities, presence, trace);
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<Task, byte> _sessionTasks = new();
     private IBanterListener? _listener;
@@ -186,7 +189,7 @@ public sealed class BanterServer(
             }
 
             var session = new ClientSession(
-                connection, _codec, accounts, _engine, files, relics, identities, accountAdmin);
+                connection, _codec, accounts, _engine, files, relics, identities, accountAdmin, trace);
             var run = session.RunAsync(_stopping.Token);
             _sessionTasks.TryAdd(run, 0);
             _ = run.ContinueWith(t => _sessionTasks.TryRemove(t, out _), TaskScheduler.Default);

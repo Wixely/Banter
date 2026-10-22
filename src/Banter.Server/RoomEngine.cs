@@ -18,9 +18,11 @@ internal sealed partial class RoomEngine(
     TaskLimits? taskLimits = null,
     Tools.IToolBroker? tools = null,
     IAgentIdentityStore? identities = null,
-    PresenceLimits? presence = null)
+    PresenceLimits? presence = null,
+    WireTrace? trace = null)
 {
     private readonly AgentGuardrails _guardrails = guardrails ?? AgentGuardrails.Default;
+    private readonly DateTimeOffset _startedAt = DateTimeOffset.UtcNow;
     private readonly TaskStore? _tasks = tasks;
     private readonly TaskLimits _taskLimits = taskLimits ?? TaskLimits.Default;
     private readonly PresenceLimits _presence = presence ?? PresenceLimits.Default;
@@ -354,6 +356,9 @@ internal sealed partial class RoomEngine(
             case RoomSensitivityPayload sensitivity:
                 await HandleRoomSensitivityAsync(session, envelope, sensitivity).ConfigureAwait(false);
                 break;
+            case DebugDumpPayload dump:
+                await HandleDebugDumpAsync(session, envelope, dump).ConfigureAwait(false);
+                break;
             case RoomDisclosurePayload disclosure:
                 await HandleRoomDisclosureAsync(session, envelope, disclosure).ConfigureAwait(false);
                 break;
@@ -471,6 +476,15 @@ internal sealed partial class RoomEngine(
         session.Send(new RoomDelegatorPayload(room.Name, room.Delegator));
         session.Send(new RoomRegimePayload(room.Name, room.Regime));
         session.Send(new RoomParleyPayload(room.Name, room.Parley));
+
+        // And the questions still waiting in it. An ask is broadcast when made, so somebody who
+        // comes in afterwards - the person a project room's plan is waiting on, typically - has
+        // the "[asking]" line in the history and nothing to click. The controls go with it.
+        foreach (var pending in _asks.Values.Where(a => string.Equals(a.Room, room.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            session.Send(pending.Ask);
+        }
+
         session.Send(new OkPayload(), replyTo: envelope.MsgId);
     }
 
@@ -1690,18 +1704,23 @@ internal sealed partial class RoomEngine(
             return;
         }
 
-        _commands.Writer.TryWrite(() =>
+        _commands.Writer.TryWrite(async () =>
         {
             if (_rooms.TryGetValue(room, out var target))
             {
-                Broadcast(target, new MsgPayload(
+                var notice = new MsgPayload(
                     target.Name, "server", $"[tool] {line}",
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     null,
-                    Guid.NewGuid().ToString("N")));
-            }
+                    Guid.NewGuid().ToString("N"));
 
-            return ValueTask.CompletedTask;
+                // Kept, not only shown: the timeline is the audit trail, and a tool line that
+                // reached whoever happened to be looking and nobody after - not the history, not
+                // a debug bundle - was an audit trail with the audits missing.
+                await store.AppendMessageAsync(new ChatMessage(
+                    notice.MessageId!, target.Name, notice.Sender, notice.Text, notice.Timestamp, null)).ConfigureAwait(false);
+                Broadcast(target, notice);
+            }
         });
     }
 

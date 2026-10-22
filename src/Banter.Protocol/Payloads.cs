@@ -770,6 +770,21 @@ public sealed record RoomSensitivityPayload(
     [property: Key(1)] DataSensitivity Sensitivity,
     [property: Key(2)] string? ChangedBy = null);
 
+/// <summary>
+/// Admin → server: a debug bundle. The server's own state - version, uptime, the rooms with their
+/// settings, members, agents and recent history, every connected session and what it announced,
+/// identities, tool grants and hubs, and the tail of the wire trace when one is running - as one
+/// JSON document to hand to whoever is working out what happened.
+/// </summary>
+[MessagePackObject]
+public sealed record DebugDumpPayload(
+    [property: Key(0)] int HistoryPerRoom = 100);
+
+/// <summary>Server → admin: the bundle. JSON, so it is readable without Banter.</summary>
+[MessagePackObject]
+public sealed record DebugReportPayload(
+    [property: Key(0)] string Json);
+
 /// <summary>A room's parley. Sent to set it, and by the server to say what it now is.</summary>
 [MessagePackObject]
 public sealed record RoomParleyPayload(

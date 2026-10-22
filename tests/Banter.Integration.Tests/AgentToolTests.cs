@@ -279,6 +279,11 @@ public sealed class AgentToolTests : IAsyncLifetime
         var announcement = await seen.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Contains("dagger", announcement);
         Assert.Contains("gh_list_issues", announcement);
+
+        // And kept: the timeline is the audit trail, and a line only whoever was looking saw was
+        // an audit with the audits missing. A debug bundle reads it from here too.
+        Assert.Contains((await admin.GetHistoryAsync("#work", limit: 20)).Messages,
+            m => m.Sender == "server" && m.Text.StartsWith("[tool] dagger called 'gh_list_issues'", StringComparison.Ordinal));
     }
 
     [Fact]

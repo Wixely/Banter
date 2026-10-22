@@ -184,6 +184,22 @@ public abstract partial class BanterAgent
                 return $"{agent} is in {target} and has been told: {instruction}";
             }),
 
+        new("start_project",
+            "Set up a piece of work with other agents in ONE step: opens a room for it under this one "
+            + "(or reuses the project's room if it already exists), brings the named agents in, posts "
+            + "the plan there, and asks the people in it to approve, change or stop it. Use this whenever "
+            + "somebody asks you to set up, start or plan a project with another agent. It does everything "
+            + "open_side_room and invite_agent would and asks for approval as well - do not also call those. "
+            + "Then wait: the answer arrives in the project room.",
+            """
+            {"type":"object","properties":{
+              "name":{"type":"string","description":"The project, in a few words. Becomes the room's name."},
+              "agents":{"type":"array","items":{"type":"string"},"description":"Nicks of the agents to bring in."},
+              "plan":{"type":"string","description":"The plan to put to the room: what will be done, by whom, in what order. A few lines."}
+            },"required":["name","plan"]}
+            """,
+            async (room, args, ct) => await StartProjectAsync(room, args, ct).ConfigureAwait(false)),
+
         new("move_room",
             "Put a room under another room, or at the top level. Only the main room's delegator "
             + "may do this (or an admin): where a room sits decides what rooms beneath another may "
@@ -452,11 +468,128 @@ public abstract partial class BanterAgent
             : parsed;
     }
 
+    /// <summary>
+    /// The project flow, as one tool. A model asked to "set up a project with merlin" needed to
+    /// open a room, invite, brief, and ask - four calls in a row, each with its own arguments -
+    /// and a small model lost the thread by the second. One call, one room, one answer to wait
+    /// for. The room is named for the project, so asking for the same project twice finds the
+    /// same room rather than opening another beside it.
+    /// </summary>
+    private async Task<string> StartProjectAsync(string room, JsonElement args, CancellationToken ct)
+    {
+        var name = Text(args, "name");
+        var plan = Text(args, "plan");
+        var agents = args.TryGetProperty("agents", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.String).Select(a => a.GetString()!.TrimStart('@'))
+                .Where(a => a.Length > 0 && !string.Equals(a, Nick, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+            : [];
+
+        var project = ProjectRoomName(name);
+        var existing = (await Client.ListRoomsAsync(ct).ConfigureAwait(false)).Rooms
+            .Any(r => string.Equals(r.Name, project, StringComparison.OrdinalIgnoreCase));
+
+        if (existing)
+        {
+            // Back into it if we are not there: a project room outlives the turn that opened it.
+            try
+            {
+                await Client.JoinAsync(project, ct).ConfigureAwait(false);
+            }
+            catch (BanterErrorException)
+            {
+                // Already in it, which is the usual case.
+            }
+        }
+        else
+        {
+            await Client.CreateSubRoomAsync(project, room, Summarise(name), ct).ConfigureAwait(false);
+            await Client.SetRoomModeAsync(project, RoomDispatchMode.Collaborate, ct).ConfigureAwait(false);
+        }
+
+        await RefreshRosterAsync(project, ct).ConfigureAwait(false);
+        var present = RosterFor(project).Select(a => a.Nick).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var brought = new List<string>();
+        var refused = new List<string>();
+        foreach (var agent in agents)
+        {
+            if (present.Contains(agent))
+            {
+                brought.Add(agent);
+                continue;
+            }
+
+            try
+            {
+                await Client.MoveAgentAsync(agent, project, $"working on {name}", ct).ConfigureAwait(false);
+                brought.Add(agent);
+            }
+            catch (BanterErrorException ex)
+            {
+                // Named in the room and the result, not thrown: the project goes ahead with
+                // whoever could come, and the person reading sees exactly who could not and why.
+                refused.Add($"{agent} ({ex.Message})");
+            }
+        }
+
+        await SayAsync(project, $"Plan for {name}:\n{plan}").ConfigureAwait(false);
+        if (brought.Count > 0)
+        {
+            await SayAsync(project, string.Join(" ", brought.Select(a => $"@{a}"))
+                + " - read the plan above, say which part you will take, and ask here for anything you need.").ConfigureAwait(false);
+        }
+
+        await Client.AskAsync(project,
+        [
+            new AskQuestion("plan", "Plan", $"Approve this plan for {name}?",
+            [
+                new AskOption("approve", "Approve", "Go ahead as written."),
+                new AskOption("change", "Change it", "Say what to change, and the plan is revised."),
+                new AskOption("stop", "Stop", "Do not start this."),
+            ]),
+        ], ct).ConfigureAwait(false);
+
+        var who = brought.Count > 0 ? $"In it: {string.Join(", ", brought)}." : "No other agent is in it yet.";
+        var missing = refused.Count > 0 ? $" Could not bring in: {string.Join("; ", refused)}." : "";
+
+        // Said where the request was made, by this code rather than left to the model's reply: the
+        // person who asked is in this room, the plan is waiting in another, and the reply that
+        // should have told them so is the thing that was going wrong.
+        if (!string.Equals(room, project, StringComparison.OrdinalIgnoreCase))
+        {
+            await SayAsync(room, $"{(existing ? "Reopened" : "Opened")} {project} for {name}. {who}{missing} "
+                + $"The plan is posted there and waits for approval - join {project} to approve, change or stop it.").ConfigureAwait(false);
+        }
+
+        return $"{(existing ? "Reused" : "Opened")} {project}. {who}{missing} The plan is posted there and the people in it "
+             + $"have been asked to approve it. Wait for their answer in {project} before starting; do not open another room.";
+    }
+
+    /// <summary>"#proj-" and the project's name as a room name: letters, digits and hyphens, so
+    /// the same name always makes the same room.</summary>
+    public static string ProjectRoomName(string name)
+    {
+        var slug = new string(name.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-').ToArray())
+            .Trim('-');
+        while (slug.Contains("--", StringComparison.Ordinal))
+        {
+            slug = slug.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        if (slug.Length > 32)
+        {
+            slug = slug[..32].TrimEnd('-');
+        }
+
+        return "#proj-" + (slug.Length > 0 ? slug : "untitled");
+    }
+
     /// <summary>A room tool's name as people read it: "invite_agent" is "invite an agent".</summary>
     private static string Describe(string tool) => tool switch
     {
         "open_side_room" => "open a side room",
         "invite_agent" => "invite the agent",
+        "start_project" => "start the project",
         "move_room" => "move the room",
         "set_room_disclosure" => "set the room's disclosure",
         "close_room" => "close the room",

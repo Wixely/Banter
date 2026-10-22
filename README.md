@@ -120,7 +120,8 @@ does not turn into a crash loop.
 
 **Every setting takes either form.** `--endpoint` / `BANTER_ENDPOINT`, `--db` / `BANTER_DB`,
 `--connection` / `BANTER_CONNECTION`, `--admin-password` / `BANTER_ADMIN_PASSWORD`,
-`--seed-users` / `BANTER_SEED_USERS`, `--data` / `BANTER_DATA`, `--mcp` / `BANTER_MCP_CONFIG`.
+`--seed-users` / `BANTER_SEED_USERS`, `--data` / `BANTER_DATA`, `--mcp` / `BANTER_MCP_CONFIG`,
+`--trace` / `BANTER_TRACE`.
 A flag beats its variable where both are given, and the two password-shaped ones also take a
 `_FILE` variant that reads the value from a mounted file.
 
@@ -407,6 +408,19 @@ Leave `PermissionPolicy` at `deny`. `ask` forwards the child's permission reques
 driving the job, and in a chat room nobody is — it would stall until the timeout and deny anyway.
 
 Needs LM Studio on `:1234` and DaggerAgent on `:5090`.
+
+**When a room goes wrong** — a delegator that takes ages and posts tool-call markup, an agent that
+never joins — there are three things to switch on, and one command to gather them:
+
+| What | How | Gives |
+|---|---|---|
+| Wire trace | server `--trace <file>` / `BANTER_TRACE` | Every message in and out, one JSON line each: who said what where, which tool was called, what came back, which delegator was elected when. |
+| Model trace | `Banter.Warden --trace <dir>` (or `LlmChatAgentOptions.TraceDirectory`) | Each request the agent sent its model (`*-request.json`) and the raw response (`*-response.txt`). This is where "garbage xml" shows up as what the model actually wrote. |
+| Debug bundle | `/debug` in the client, as an admin | One JSON file in your downloads: server version and uptime, every room with its mode, parley, sensitivity, delegator, members, agents and recent history, every session with what it announced and which SDK it runs, identities, tool grants and upstreams, and the tail of the wire trace. |
+
+Send the bundle, the model trace and the trace file together; the bundle alone says what state
+things were in, the traces say how they got there. Agents that are not on the SDK (DaggerAgent)
+keep their own model logs.
 
 ### Debugging the web stack
 

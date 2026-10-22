@@ -180,6 +180,14 @@ public sealed record LlmChatAgentOptions
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// A directory to write every request this agent sends its model and every raw response it
+    /// gets back - one pair of files per call, named by time. Off when null. For working out
+    /// why a model did what it did: a reply that was "garbage" in the room is, in here, exactly
+    /// the bytes the model produced, with the prompt and tool schemas that produced them.
+    /// </summary>
+    public string? TraceDirectory { get; init; }
+
+    /// <summary>
     /// How many rounds of tool calls one reply may take. A model that keeps calling the same tool
     /// on a result it does not like would otherwise loop until the room, the upstream, or the
     /// token budget gave out — so the loop is bounded and the model is told when it was cut off.

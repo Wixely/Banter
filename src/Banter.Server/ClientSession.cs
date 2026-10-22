@@ -18,13 +18,21 @@ internal sealed class ClientSession(
     Files.FileStore files,
     Files.FileRelics? relics = null,
     IAgentIdentityStore? identities = null,
-    IAccountAdminStore? accountAdmin = null)
+    IAccountAdminStore? accountAdmin = null,
+    WireTrace? trace = null)
 {
     private readonly Channel<byte[]> _outbox = Channel.CreateUnbounded<byte[]>(
         new UnboundedChannelOptions { SingleReader = true });
 
     public string Nick { get; private set; } = "";
     public bool IsAgent { get; private set; }
+
+    /// <summary>What the peer said it was in HELLO - "Banter.Warden 0.15.1", "Banter.Client
+    /// 0.16.0" - kept for the debug bundle, where which build a peer runs is half the question.</summary>
+    public string Peer { get; private set; } = "";
+
+    /// <summary>When this session authenticated, for the bundle.</summary>
+    public DateTimeOffset? ConnectedAt { get; private set; }
 
     /// <summary>Operator account: added to every room an agent opens (PLAN §8a).</summary>
     public bool IsAdmin { get; private set; }
@@ -58,8 +66,12 @@ internal sealed class ClientSession(
     /// actually leave before it closes the socket underneath it.</summary>
     private Task _sendPump = Task.CompletedTask;
 
-    public void Send<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull =>
-        _outbox.Writer.TryWrite(codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo)));
+    public void Send<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull
+    {
+        var frame = codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo));
+        trace?.Record("out", Nick, payload, frame.Length, replyTo);
+        _outbox.Writer.TryWrite(frame);
+    }
 
     /// <summary>The largest frame this peer's connection will carry.</summary>
     public int MaxFrameBytes => connection.MaxFrameBytes;
@@ -69,8 +81,12 @@ internal sealed class ClientSession(
     /// committing to sending it. Pair with <see cref="SendEncoded"/>: send the bytes that were
     /// measured rather than re-encoding, since each envelope carries a fresh message id.
     /// </summary>
-    public byte[] Encode<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull =>
-        codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo));
+    public byte[] Encode<TPayload>(TPayload payload, string? replyTo = null) where TPayload : notnull
+    {
+        var frame = codec.EncodeEnvelope(codec.CreateEnvelope(payload, replyTo));
+        trace?.Record("out", Nick, payload, frame.Length, replyTo);
+        return frame;
+    }
 
     /// <summary>Queues a frame produced by <see cref="Encode{TPayload}"/>.</summary>
     public void SendEncoded(byte[] frame) => _outbox.Writer.TryWrite(frame);
@@ -117,9 +133,17 @@ internal sealed class ClientSession(
 
             var envelope = codec.DecodeEnvelope(frame);
             var payload = codec.DecodePayload(envelope);
+            if (payload is not null)
+            {
+                // Before authentication too: a HELLO and an AUTH are part of what happened. The
+                // password inside an AUTH is not: AuthPayload carries no readable field above.
+                trace?.Record("in", Nick, payload, frame.Length, envelope.MsgId);
+            }
+
             switch (payload)
             {
                 case HelloPayload hello:
+                    Peer = $"{hello.ClientName} {hello.ClientVersion}".Trim();
                     if (!BanterCatalog.TryNegotiateCore(hello.Ranges, out var negotiated))
                     {
                         Send(new ErrorPayload(
@@ -267,6 +291,7 @@ internal sealed class ClientSession(
         Nick = identity.Nick;
         IsAgent = true;
         IsAdmin = false;
+        ConnectedAt = DateTimeOffset.UtcNow;
         await engine.RegisterAsync(this).ConfigureAwait(false);
         Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent, IsAdmin), replyTo: envelope.MsgId);
     }
@@ -661,6 +686,7 @@ internal sealed class ClientSession(
         Nick = account.Username;
         IsAgent = account.IsAgent;
         IsAdmin = account.IsAdmin;
+        ConnectedAt = DateTimeOffset.UtcNow;
         await engine.RegisterAsync(this).ConfigureAwait(false);
         Send(new AuthOkPayload(Guid.NewGuid().ToString("N"), Nick, IsAgent, IsAdmin), replyTo: envelope.MsgId);
     }

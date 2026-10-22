@@ -103,9 +103,17 @@ public sealed class OpenAiChatClient : IDisposable
         // chunks, and a parallel call set interleaves them.
         var pending = new SortedDictionary<int, PartialCall>();
 
+        // Serialised once, so what is traced is byte-for-byte what was sent.
+        var body = JsonSerializer.Serialize(request, Json);
+        var traceStem = _options.TraceDirectory is { Length: > 0 } dir ? TraceStem(dir) : null;
+        if (traceStem is not null)
+        {
+            await File.WriteAllTextAsync(traceStem + "-request.json", body, cancellationToken).ConfigureAwait(false);
+        }
+
         using var message = new HttpRequestMessage(HttpMethod.Post, Combine(_options.Endpoint, "chat/completions"))
         {
-            Content = JsonContent.Create(request, options: Json),
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
         };
 
         using var response = await _http
@@ -114,16 +122,27 @@ public sealed class OpenAiChatClient : IDisposable
 
         if (!response.IsSuccessStatusCode)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var error = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (traceStem is not null)
+            {
+                await File.WriteAllTextAsync(traceStem + "-response.txt", $"HTTP {(int)response.StatusCode}\n{error}", cancellationToken).ConfigureAwait(false);
+            }
+
             throw new HttpRequestException(
-                $"{(int)response.StatusCode} from {_options.Endpoint}: {Truncate(body, 300)}");
+                $"{(int)response.StatusCode} from {_options.Endpoint}: {Truncate(error, 300)}");
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
+        await using var traceOut = traceStem is not null ? new StreamWriter(traceStem + "-response.txt") : null;
 
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
+            if (traceOut is not null)
+            {
+                await traceOut.WriteLineAsync(line).ConfigureAwait(false);
+            }
+
             if (!line.StartsWith("data:", StringComparison.Ordinal))
             {
                 continue;                                  // blank keep-alive or comment
@@ -153,6 +172,17 @@ public sealed class OpenAiChatClient : IDisposable
                 toolCalls.Add(new ToolCallRequest(call.Id, call.Name, call.Arguments.ToString()));
             }
         }
+    }
+
+    private static int _traceSequence;
+
+    /// <summary>A file stem for one call: the time, and a counter so two calls in one
+    /// millisecond do not share a name.</summary>
+    private static string TraceStem(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var n = Interlocked.Increment(ref _traceSequence);
+        return Path.Combine(directory, $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{n:D4}");
     }
 
     /// <summary>One tool call being assembled from streamed fragments.</summary>

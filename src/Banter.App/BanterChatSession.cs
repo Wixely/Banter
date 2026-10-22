@@ -571,6 +571,21 @@ public sealed partial class BanterChatSession : IDisposable
             case "room":
                 _vm.Post(() => _vm.ShowRoomPanel(true));
                 break;
+            case "debug":
+                // Everything the server knows, as a file to send to whoever is working out what
+                // happened. Admin only; the server refuses everybody else.
+                await Guard(room, async () =>
+                {
+                    var json = await _client.DebugDumpAsync().ConfigureAwait(false);
+                    Directory.CreateDirectory(DownloadDirectory);
+                    var path = Path.Combine(DownloadDirectory, $"banter-debug-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json");
+                    await File.WriteAllTextAsync(path, json).ConfigureAwait(false);
+                    _vm.Post(() => _vm.System(room,
+                        $"Debug bundle saved to {path} ({json.Length / 1024} KB). It holds the server's state, every room's "
+                        + "settings and recent history, and every agent's announcement - send it to the developer with a note "
+                        + "of what you expected to happen."));
+                }).ConfigureAwait(false);
+                break;
             case "add" when rest.Length > 0:
                 // Put somebody in this room. The server decides whether you may: an admin can add
                 // anybody, a delegator only agents into the room it runs.
@@ -648,7 +663,7 @@ public sealed partial class BanterChatSession : IDisposable
                 _vm.Post(() => _vm.System(room,
                     "/upload <path> [description] | /files | /task <title> [-- details] | /tasks | " +
                     "/edit <text> | /delete | " +
-                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /parley pairs|none|open [#room] | /sensitivity public|internal|sensitive [#room] | /room | /about | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
+                    "/join #room | /rooms | /topic <text> | /tools [agent] | /part | /create #room [top] | /move [#room] #parent|top | /disclosure <kind> [#room] | /parley pairs|none|open [#room] | /sensitivity public|internal|sensitive [#room] | /room | /debug | /about | /add <nick> | /remove <nick> [reason] | /close [#room] [reason] | /regime [republic|interregnum] | /help"));
                 break;
             default:
                 _vm.Post(() => _vm.System(room, $"unknown command: /{verb} (try /help)"));

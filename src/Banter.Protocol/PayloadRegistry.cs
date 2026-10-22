@@ -100,6 +100,8 @@ public static class PayloadRegistry
         [BanterMessageType.RoomRecall] = typeof(RoomRecallPayload),
         [BanterMessageType.RoomParley] = typeof(RoomParleyPayload),
         [BanterMessageType.RoomSensitivity] = typeof(RoomSensitivityPayload),
+        [BanterMessageType.DebugDump] = typeof(DebugDumpPayload),
+        [BanterMessageType.DebugReport] = typeof(DebugReportPayload),
         [BanterMessageType.Error] = typeof(ErrorPayload),
         [BanterMessageType.Ok] = typeof(OkPayload),
     };

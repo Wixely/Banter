@@ -134,14 +134,53 @@ public sealed class LlmChatAgent : BanterAgent
             var calls = new List<ToolCallRequest>();
             var said = new System.Text.StringBuilder();
 
+            // Held back while what has arrived could still be a tool call written as text - a
+            // local model's "<tool_call>{…}" - and released the moment it cannot be. Without
+            // this the room received the markup as the reply, and nothing happened.
+            var held = new System.Text.StringBuilder();
+            var holding = specs.Count > 0;
+
             await foreach (var delta in StreamAsync(messages, specs, calls, cancellationToken)
                                .ConfigureAwait(false))
             {
+                said.Append(delta);
+                if (holding)
+                {
+                    held.Append(delta);
+                    if (TextualToolCall.MightBe(held.ToString()))
+                    {
+                        continue;
+                    }
+
+                    holding = false;
+                    var release = held.ToString();
+                    held.Clear();
+                    reply.Append(release);
+                    yield return release;
+                    continue;
+                }
+
                 // Yielded as it arrives even mid-tool-loop: a model that says "let me check" and
                 // then goes quiet for thirty seconds reads as a broken agent, not a busy one.
-                said.Append(delta);
                 reply.Append(delta);
                 yield return delta;
+            }
+
+            if (holding && held.Length > 0)
+            {
+                if (calls.Count == 0 && TextualToolCall.TryParse(held.ToString(), out var writtenName, out var writtenArgs))
+                {
+                    // The whole reply was one call, written out. Run it as the call it was meant
+                    // to be; the markup never reaches the room.
+                    calls.Add(new ToolCallRequest($"text-{round}", writtenName, writtenArgs));
+                    said.Clear();
+                }
+                else
+                {
+                    var release = held.ToString();
+                    reply.Append(release);
+                    yield return release;
+                }
             }
 
             if (calls.Count == 0)

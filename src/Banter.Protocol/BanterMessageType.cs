@@ -227,6 +227,13 @@ public enum BanterMessageType : ushort
     /// Admin → server to change it; server → members to say it changed.</summary>
     RoomSensitivity = 123,
 
+    /// <summary>Admin → server: everything the server knows about itself, its rooms, its agents
+    /// and what just happened in them, for sending to a developer.</summary>
+    DebugDump = 124,
+
+    /// <summary>Server → admin: the dump, as JSON.</summary>
+    DebugReport = 125,
+
     // Both of the above are answered with a HubReport rather than an Ok: the page that asked is
     // showing the state they just changed, and a second round trip to find out what it is now is a
     // window in which the page is wrong.

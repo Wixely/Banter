@@ -50,7 +50,7 @@ catch (ArgumentException ex)
     Console.Error.WriteLine("usage: banter-server [--endpoint tcp://host:port | ws://host:port] [--db sqlite|postgres] [--connection <connection-string>]");
     Console.Error.WriteLine("                     [--admin-password <secret>] [--seed-users name:password,name:password]");
     Console.Error.WriteLine("       every flag also has a BANTER_* environment variable: BANTER_ENDPOINT, BANTER_DB,");
-    Console.Error.WriteLine("       BANTER_CONNECTION, BANTER_ADMIN_PASSWORD, BANTER_SEED_USERS, BANTER_DATA, BANTER_MCP_CONFIG.");
+    Console.Error.WriteLine("       BANTER_CONNECTION, BANTER_ADMIN_PASSWORD, BANTER_SEED_USERS, BANTER_DATA, BANTER_MCP_CONFIG, BANTER_TRACE.");
     return 1;
 }
 
@@ -148,6 +148,16 @@ var fileStore = new FileStore(database, new FileStoreOptions { DataDirectory = d
 // because the mesh server has to do exactly the same thing and did not.
 await using var toolBroker = await ToolHost.StartAsync(database, Arg("--mcp"));
 
+// A wire trace, when asked for: every message in and out, one JSON line each, with the text of
+// what was said and what tools returned - the record a debug bundle is built on. Off unless
+// --trace or BANTER_TRACE names a file, because it is the conversation written to disk.
+var tracePath = Arg("--trace") ?? Environment.GetEnvironmentVariable("BANTER_TRACE");
+await using var wireTrace = tracePath is { Length: > 0 } ? WireTrace.Open(tracePath) : null;
+if (wireTrace is not null)
+{
+    Console.WriteLine($"Tracing every message to {wireTrace.Path} (it contains what is said; keep it where the conversation belongs).");
+}
+
 // "What can this agent actually see?" — answered without starting an agent, a room, or a client.
 // Worth a flag of its own because the answer is no longer only this server's to give.
 if (Arg("--tools-for") is { Length: > 0 } inspecting)
@@ -165,6 +175,7 @@ await using var server = new BanterServer(
     guardrails: null,
     tasks: new TaskStore(database),
     tools: toolBroker,
+    trace: wireTrace,
     // Agent identities: an admin creates one and is handed a single-use enrolment code, the
     // machine that will run it redeems that code for a key it generates itself, and removal takes
     // effect on the next thing the agent tries. The server is the authority, so none of this needs

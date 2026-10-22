@@ -422,6 +422,16 @@ public sealed partial class BanterClient : IAsyncDisposable
         string room, RoomDisclosure disclosure, CancellationToken cancellationToken = default) =>
         RequestAsync<RoomDisclosurePayload>(new RoomDisclosurePayload(room, disclosure), cancellationToken);
 
+    /// <summary>
+    /// Everything the server knows about itself and what just happened, as JSON, for sending to
+    /// a developer: version and uptime, every room with its settings, members, agents and recent
+    /// history, every session and what it announced, identities, tool grants and hubs, and the
+    /// tail of the server's wire trace when one is running. Admin only.
+    /// </summary>
+    public async Task<string> DebugDumpAsync(int historyPerRoom = 100, CancellationToken cancellationToken = default) =>
+        (await RequestAsync<DebugReportPayload>(new DebugDumpPayload(historyPerRoom), cancellationToken)
+            .ConfigureAwait(false)).Json;
+
     /// <summary>Set what may be said in a room, and so which agents may be brought in. Admin only.
     /// Answers with the sensitivity in force afterwards.</summary>
     public Task<RoomSensitivityPayload> SetRoomSensitivityAsync(

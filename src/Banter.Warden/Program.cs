@@ -249,6 +249,8 @@ var llmOptions = new LlmChatAgentOptions
     Endpoint = new Uri(endpoint),
     Model = chatModel,
     ApiKey = apiKey,
+    // --trace <dir>: every request to the model and every raw response, for a developer.
+    TraceDirectory = Arg("--trace"),
 };
 
 if (systemPrompt is { Length: > 0 })
