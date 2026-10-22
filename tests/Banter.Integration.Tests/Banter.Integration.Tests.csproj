@@ -7,6 +7,13 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1" />
+    <!-- A real MCP server over HTTP, for McpUpstreamTests: every other tool test drives a fake
+         broker, so nothing proved the broker talks MCP to anything. Pinned to the version
+         MCPHub.Proxy builds against, so the client and the server under test are one SDK. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Banter.Client.Core/Banter.Client.Core.csproj" />
