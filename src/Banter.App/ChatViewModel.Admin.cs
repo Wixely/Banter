@@ -127,6 +127,9 @@ public sealed partial class ChatViewModel
         RefreshMembership();
         RefreshRoomPanel();
 
+        // Admin-ness usually arrives after the settings page has decided what to show.
+        Model.DebugBundleClass = FieldClass(SettingsSection == "about" && isAdmin);
+
         var shown = isAdmin ? "rail-button" : "rail-button hidden";
         Model.AgentsButtonClass = shown;
         Model.UsersButtonClass = shown;

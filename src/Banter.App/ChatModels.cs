@@ -976,6 +976,15 @@ public sealed partial class ChatModel
     /// <summary>The About tab's fields.</summary>
     public string AboutFieldsClass { get; set; } = "mgmt-field hidden";
 
+    /// <summary>
+    /// The About tab's debug-bundle field: shown to an admin, because the server refuses the
+    /// bundle to everybody else and a button that always ends in NOT_ADMIN is worse than none.
+    /// </summary>
+    public string DebugBundleClass { get; set; } = "mgmt-field hidden";
+
+    /// <summary>What the last bundle did: where it went, or why it did not.</summary>
+    public string DebugBundleStatus { get; set; } = "";
+
     /// <summary>This build of Banter, as people read a version.</summary>
     public string AboutVersion { get; set; } = "";
 

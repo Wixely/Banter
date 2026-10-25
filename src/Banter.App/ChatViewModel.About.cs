@@ -41,6 +41,9 @@ public sealed partial class ChatViewModel
         Model.HelpItems = [.. Help.Select(h => new HelpRow { Title = h.Title, Text = h.Text })];
     }
 
+    /// <summary>What the debug bundle just did, under its button.</summary>
+    public void SetDebugBundleStatus(string status) => Model.DebugBundleStatus = status;
+
     /// <summary>
     /// The rules worth knowing before they surprise you. Short on purpose: each says what happens
     /// and what to do about it, and the room itself says the rest when it matters.

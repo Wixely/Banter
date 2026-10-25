@@ -23,10 +23,18 @@ namespace Banter.App.Android;
 /// for the copy, which is also why the copies go in a directory of their own: two files can
 /// legitimately have the same name, and the cache is cleared per pick rather than accumulating a
 /// gallery inside the app's private storage.</para>
+///
+/// <para><b>Saving is the same picker the other way.</b> A file this app writes into its own
+/// storage is one no file manager, mail client or share sheet can see - which is how a debug
+/// bundle "saved to Downloads" on a phone was a bundle nobody could get off the phone. The system
+/// "create document" picker lets the person choose a folder, Drive, or anything else that takes a
+/// file, and the bytes are written through the resolver to wherever they chose.</para>
 /// </summary>
 public sealed class AndroidFilePicker(MainActivity activity) : IFilePicker
 {
     public bool IsSupported => true;
+
+    public bool CanSave => true;
 
     public Task<string?> PickAsync(string title, CancellationToken cancellationToken = default)
     {
@@ -44,6 +52,17 @@ public sealed class AndroidFilePicker(MainActivity activity) : IFilePicker
         return chooser is null
             ? Task.FromResult<string?>(null)
             : activity.PickFileAsync(chooser, cancellationToken);
+    }
+
+    public Task<string?> SaveAsync(string name, string mimeType, byte[] content, string title, CancellationToken cancellationToken = default)
+    {
+        // The picker opens on the suggested name; the person can change it or the folder. No
+        // chooser around this one: ActionCreateDocument is always the system's own picker.
+        var intent = new Intent(Intent.ActionCreateDocument);
+        intent.AddCategory(Intent.CategoryOpenable);
+        intent.SetType(mimeType.Length > 0 ? mimeType : "application/octet-stream");
+        intent.PutExtra(Intent.ExtraTitle, name);
+        return activity.SaveFileAsync(intent, content, cancellationToken);
     }
 
     /// <summary>
@@ -81,6 +100,25 @@ public sealed class AndroidFilePicker(MainActivity activity) : IFilePicker
         using var destination = File.Create(path);
         source.CopyTo(destination);
         return path;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="content"/> to the document the picker created and answers with its
+    /// name as the person will see it in their file manager. Null when the provider would not
+    /// open it for writing. "wt" - write, truncate - because the document the picker made may
+    /// already exist when the person chose to overwrite one.
+    /// </summary>
+    internal static string? WriteDocument(Context context, Uri uri, byte[] content)
+    {
+        using var destination = context.ContentResolver?.OpenOutputStream(uri, "wt");
+        if (destination is null)
+        {
+            return null;
+        }
+
+        destination.Write(content, 0, content.Length);
+        destination.Flush();
+        return DisplayName(context, uri) ?? uri.LastPathSegment ?? uri.ToString();
     }
 
     /// <summary>

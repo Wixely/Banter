@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Banter.App;
 using Banter.Client.Core;
 using Banter.Core;
 using Banter.Protocol;
@@ -107,6 +108,52 @@ public sealed class DebugDumpTests(ITestOutputHelper output) : IAsyncLifetime
         Assert.Contains(tail, l => l.Contains("\"type\":\"Msg\"", StringComparison.Ordinal)
                                     && l.Contains("set up a project with merlin", StringComparison.Ordinal));
         Assert.Contains(tail, l => l.Contains("\"type\":\"RoomDelegator\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// From the client: through the head's save dialog when it has one, so on a phone the person
+    /// picks a folder they can actually get to; into Downloads when it has none; and backing out
+    /// of the dialog is not a bundle in Downloads either.
+    /// </summary>
+    [Fact]
+    public async Task TheClientPutsTheBundleWhereThePersonChooses()
+    {
+        await using var root = await ConnectAsync("root");
+        await root.JoinAsync("#main");
+        var vm = new ChatViewModel();
+        var picker = new StubFilePicker(null) { SavedAs = "Banter/banter-debug.json" };
+        var session = new BanterChatSession(root, vm)
+        {
+            DownloadDirectory = Path.Combine(_root, "downloads"),
+            SaveAs = BanterChatSession.SaverFrom(picker),
+        };
+
+        var said = await session.DebugBundleAsync().WaitAsync(Patience);
+        Assert.StartsWith("Debug bundle saved to Banter/banter-debug.json", said);
+        var (name, mime, content) = Assert.Single(picker.Saves);
+        Assert.Matches(@"^banter-debug-\d{8}-\d{6}\.json$", name);
+        Assert.Equal("application/json", mime);
+        using (var doc = JsonDocument.Parse(content))
+        {
+            Assert.True(doc.RootElement.TryGetProperty("Rooms", out _));
+        }
+
+        Assert.False(Directory.Exists(Path.Combine(_root, "downloads")));
+
+        // Backed out: nothing written anywhere, and said so.
+        var cancelling = new StubFilePicker(null) { SavedAs = null };
+        session.SaveAs = BanterChatSession.SaverFrom(cancelling);
+        Assert.Equal("The bundle was not saved.", await session.DebugBundleAsync().WaitAsync(Patience));
+        Assert.False(Directory.Exists(Path.Combine(_root, "downloads")));
+
+        // No dialog on this head: Downloads, as before.
+        session.SaveAs = null;
+        said = await session.DebugBundleAsync().WaitAsync(Patience);
+        var file = Assert.Single(Directory.GetFiles(Path.Combine(_root, "downloads")));
+        Assert.Contains(file, said, StringComparison.Ordinal);
+
+        // And a picker that cannot save is no saver at all.
+        Assert.Null(BanterChatSession.SaverFrom(new StubFilePicker(null) { CanSave = false }));
     }
 
     [Fact]

@@ -31,8 +31,10 @@ public sealed class SettingsFitTests
             "local", "en", "dagger", "http://localhost:1234", "localhost:10200",
             [("aiden", "Aiden"), ("bree", "Bree")],
             new Dictionary<string, string>());
-        // Signed in, or the sign-out control is hidden and "reachable" would mean nothing.
+        // Signed in, or the sign-out control is hidden and "reachable" would mean nothing; an
+        // admin, or the debug bundle's button is.
         vm.Connected("tcp://host:7770", "alice");
+        vm.SetIsAdmin(true);
         vm.ShowSettingsPanel(true);
         return (new BanterChatApp(vm), vm);
     }
@@ -60,6 +62,7 @@ public sealed class SettingsFitTests
     [InlineData("listening", "[data-transcribe]")]
     [InlineData("transcripts", "[data-autosubmit]")]
     [InlineData("speaking", "[data-voice-cycle]")]
+    [InlineData("about", ".debug-bundle")]
     public void EveryControlIsReachableInItsSection(string section, string selector)
     {
         var (app, vm) = Ready();

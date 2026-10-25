@@ -373,6 +373,60 @@ public sealed partial class BanterChatSession : IDisposable
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
     /// <summary>
+    /// How to ask the person where a file should go, when the head has a way to ask. Settable
+    /// rather than init-only because on a phone the thing that can ask is the activity, and the
+    /// activity changes while the session does not.
+    /// </summary>
+    public SaveFileAsync? SaveAs { get; set; }
+
+    /// <summary>The save half of a picker as <see cref="SaveAs"/>, for a head that has one.</summary>
+    public static SaveFileAsync? SaverFrom(IFilePicker picker) =>
+        picker.CanSave ? (name, mime, content, title) => picker.SaveAsync(name, mime, content, title) : null;
+
+    /// <summary>
+    /// Whether a download goes through <see cref="SaveAs"/> rather than into
+    /// <see cref="DownloadDirectory"/>. On a phone the directory is inside the app's own storage,
+    /// where no file manager and no share sheet can see it, so a download that landed there was
+    /// a download nobody could open. On a desktop the Downloads folder is the right answer and a
+    /// dialog on every click would not be.
+    /// </summary>
+    public bool SaveAsOnDownload { get; init; }
+
+    /// <summary>
+    /// Everything the server knows, as a file for whoever is working out what happened: through
+    /// <see cref="SaveAs"/> where there is one, else into <see cref="DownloadDirectory"/>. Answers
+    /// with what to tell the person. Admin only; the server refuses everybody else.
+    /// </summary>
+    public async Task<string> DebugBundleAsync()
+    {
+        var json = await _client.DebugDumpAsync().ConfigureAwait(false);
+        var name = $"banter-debug-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var size = $"{Math.Max(1, bytes.Length / 1024)} KB";
+
+        string where;
+        if (SaveAs is { } ask)
+        {
+            var saved = await ask(name, "application/json", bytes, "Save the debug bundle").ConfigureAwait(false);
+            if (saved is null)
+            {
+                return "The bundle was not saved.";
+            }
+
+            where = saved;
+        }
+        else
+        {
+            Directory.CreateDirectory(DownloadDirectory);
+            where = Path.Combine(DownloadDirectory, name);
+            await File.WriteAllBytesAsync(where, bytes).ConfigureAwait(false);
+        }
+
+        return $"Debug bundle saved to {where} ({size}). It holds the server's state, every room's settings and recent "
+             + "history, and every agent's announcement - send it to the developer with a note of what you expected to happen.";
+    }
+
+    /// <summary>
     /// Where image previews are cached. Separate from downloads: these are fetched automatically
     /// rather than asked for, so they do not belong in the user's Downloads folder.
     /// </summary>
@@ -576,14 +630,8 @@ public sealed partial class BanterChatSession : IDisposable
                 // happened. Admin only; the server refuses everybody else.
                 await Guard(room, async () =>
                 {
-                    var json = await _client.DebugDumpAsync().ConfigureAwait(false);
-                    Directory.CreateDirectory(DownloadDirectory);
-                    var path = Path.Combine(DownloadDirectory, $"banter-debug-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json");
-                    await File.WriteAllTextAsync(path, json).ConfigureAwait(false);
-                    _vm.Post(() => _vm.System(room,
-                        $"Debug bundle saved to {path} ({json.Length / 1024} KB). It holds the server's state, every room's "
-                        + "settings and recent history, and every agent's announcement - send it to the developer with a note "
-                        + "of what you expected to happen."));
+                    var said = await DebugBundleAsync().ConfigureAwait(false);
+                    _vm.Post(() => _vm.System(room, said));
                 }).ConfigureAwait(false);
                 break;
             case "add" when rest.Length > 0:
@@ -765,6 +813,14 @@ public sealed partial class BanterChatSession : IDisposable
         {
             var info = await _client.GetFileInfoAsync(fileId).ConfigureAwait(false);
             var bytes = await _client.DownloadFileAsync(fileId).ConfigureAwait(false);
+
+            if (SaveAsOnDownload && SaveAs is { } ask)
+            {
+                var saved = await ask(SafeName(info.Name), info.MimeType is { Length: > 0 } m ? m : "application/octet-stream",
+                    bytes, $"Save {info.Name}").ConfigureAwait(false);
+                _vm.Post(() => _vm.System(room, saved is null ? "not saved" : $"saved {saved}"));
+                return;
+            }
 
             Directory.CreateDirectory(DownloadDirectory);
             var target = UniquePath(Path.Combine(DownloadDirectory, SafeName(info.Name)));

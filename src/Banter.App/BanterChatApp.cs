@@ -181,6 +181,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
     public Func<Task> SignOutAsync { get; init; } = () => Task.CompletedTask;
 
     /// <summary>
+    /// Takes a debug bundle from the server and puts it where the person chooses, answering with
+    /// what to tell them. Behind the About tab's button, which only an admin sees. A head that
+    /// leaves this alone gets a button that says so.
+    /// </summary>
+    public Func<Task<string>> DebugBundleAsync { get; init; } = () => Task.FromResult("Not connected.");
+
+    /// <summary>
     /// Somebody named this user with an explicit <c>@nick</c>. Called on the render thread with
     /// how many arrived since the last frame that looked.
     ///
@@ -740,6 +747,16 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                       <div class="mgmt-hint">On CupriFace {{AboutEngine}}</div>
                       <div class="about-link-row"><a class="about-link" href="{{{ChatViewModel.ProjectUrl}}}">{{{ChatViewModel.ProjectUrl.Replace("https://", "")}}}</a></div>
                       <div class="mgmt-hint">The source, the releases, and where to report a problem.</div>
+                    </div>
+                  </div>
+                  <div class="{{DebugBundleClass}}">
+                    <div class="mgmt-label">When something went wrong</div>
+                    <div class="mgmt-control">
+                      <div class="account-row">
+                        <cupri-button class="mgmt-new debug-bundle">Save a debug bundle</cupri-button>
+                      </div>
+                      <div class="debug-bundle-status">{{DebugBundleStatus}}</div>
+                      <div class="mgmt-hint">One file with everything the server knows: its version, every room's settings and recent messages, every agent's announcement and tool grants, and the tail of its trace. You choose where it goes, so you can share it from there. Send it to the developer with a note of what you expected to happen. It contains what was said in every room.</div>
                     </div>
                   </div>
                   <div class="{{AboutFieldsClass}}">
@@ -2411,6 +2428,7 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
                         background: #151920; border: 1px solid #262d38; border-radius: 8px; }
         .settings-tab.on { color: #f3f5f7; background: #1f2530; border-color: #3b4453; }
         .about-version { font-size: 15px; font-weight: bold; color: #f3f5f7; }
+        .debug-bundle-status { font-size: 11px; color: #cbd5e1; margin-top: 6px; overflow-wrap: anywhere; }
         /* In a row of its own, so it is as wide as its text: a column stretches its children, and the
            engine has no align-self to say otherwise. */
         .about-link-row { display: flex; flex-direction: row; }
@@ -3388,6 +3406,13 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
             return true;
         });
 
+        doc.OnClick(".debug-bundle", _unused =>
+        {
+            ViewModel.SetDebugBundleStatus("Asking the server...");
+            _ = SaveDebugBundleAsync();
+            doc.Refresh();
+        });
+
         // The only setting here that reaches the ENGINE rather than the model: InputProfile is what
         // puts cupri-coarse on the body, and every touch-target rule keys off that class. A head
         // that knows its own pointer (Android, the web) sets this itself and never shows the
@@ -4208,6 +4233,22 @@ public sealed class BanterChatApp(ChatViewModel viewModel) : CupriApp
         }
 
         _ = PickAndSendAsync(room);
+    }
+
+    /// <summary>The About tab's button: the outcome goes under it, whichever way it went.</summary>
+    private async Task SaveDebugBundleAsync()
+    {
+        string said;
+        try
+        {
+            said = await DebugBundleAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            said = $"Could not take a bundle: {ex.Message}";
+        }
+
+        ViewModel.Post(() => ViewModel.SetDebugBundleStatus(said));
     }
 
     /// <summary>Picks a file and puts it on the next message, for the room it was picked in.</summary>

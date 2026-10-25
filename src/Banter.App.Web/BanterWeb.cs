@@ -40,6 +40,10 @@ public static class BanterWeb
             EditAsync = (room, id, text) => _session?.EditAsync(room, id, text) ?? Task.CompletedTask,
             DeleteAsync = (room, id) => _session?.DeleteAsync(room, id) ?? Task.CompletedTask,
             DownloadAsync = id => _session?.DownloadAsync(id) ?? Task.CompletedTask,
+            // Lands in the browser's virtual file system, which nobody can reach: the bundle is
+            // taken from a desktop or a phone. The button says where it went, which is at least
+            // honest about it.
+            DebugBundleAsync = () => _session?.DebugBundleAsync() ?? Task.FromResult("Not connected."),
             JoinRoomAsync = room => _session?.JoinAsync(room, HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = filter => _session?.LoadToolsAsync(filter) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => _session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,

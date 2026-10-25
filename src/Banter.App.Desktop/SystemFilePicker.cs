@@ -23,21 +23,51 @@ public sealed class SystemFilePicker : IFilePicker
     private const int OfnNoChangeDir = 0x00000008;
     private const int OfnExplorer = 0x00080000;
 
+    private const int OfnOverwritePrompt = 0x00000002;
+
     public bool IsSupported => OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && LinuxTool() is not null);
+
+    public bool CanSave => IsSupported;
 
     public Task<string?> PickAsync(string title, CancellationToken cancellationToken = default) =>
         Task.Run(
             () => OperatingSystem.IsWindows() ? PickWindows(title) : PickLinux(title, cancellationToken),
             cancellationToken);
 
-    private static string? PickWindows(string title)
+    public async Task<string?> SaveAsync(string name, string mimeType, byte[] content, string title, CancellationToken cancellationToken = default)
+    {
+        var path = await Task.Run(
+            () => OperatingSystem.IsWindows() ? SaveWindows(title, name) : SaveLinux(title, name),
+            cancellationToken).ConfigureAwait(false);
+        if (path is null)
+        {
+            return null;
+        }
+
+        await File.WriteAllBytesAsync(path, content, cancellationToken).ConfigureAwait(false);
+        return path;
+    }
+
+    private static string? PickWindows(string title) => Dialog(title, initial: "", save: false);
+
+    private static string? SaveWindows(string title, string name) => Dialog(title, initial: name, save: true);
+
+    /// <summary>The common dialog, opening or saving: the same struct, a different entry point,
+    /// and for a save the suggested name in the buffer and a prompt before overwriting.</summary>
+    private static string? Dialog(string title, string initial, bool save)
     {
         var buffer = Marshal.AllocHGlobal(MaxPathChars * sizeof(char));
         try
         {
-            // The buffer doubles as the initial value, so it has to start empty rather than
-            // holding whatever was in that memory.
-            Marshal.WriteInt16(buffer, 0, 0);
+            // The buffer doubles as the initial value, so it has to hold the suggested name - or
+            // nothing - rather than whatever was in that memory.
+            var seed = initial.Length >= MaxPathChars ? "" : initial;
+            for (var i = 0; i < seed.Length; i++)
+            {
+                Marshal.WriteInt16(buffer, i * sizeof(char), seed[i]);
+            }
+
+            Marshal.WriteInt16(buffer, seed.Length * sizeof(char), 0);
 
             var ofn = new OpenFileName
             {
@@ -48,10 +78,13 @@ public sealed class SystemFilePicker : IFilePicker
                 LpstrFile = buffer,
                 NMaxFile = MaxPathChars,
                 LpstrTitle = title,
-                Flags = OfnFileMustExist | OfnPathMustExist | OfnNoChangeDir | OfnExplorer,
+                Flags = save
+                    ? OfnOverwritePrompt | OfnPathMustExist | OfnNoChangeDir | OfnExplorer
+                    : OfnFileMustExist | OfnPathMustExist | OfnNoChangeDir | OfnExplorer,
             };
 
-            if (!GetOpenFileNameW(ref ofn))
+            var chosen = save ? GetSaveFileNameW(ref ofn) : GetOpenFileNameW(ref ofn);
+            if (!chosen)
             {
                 return null;                                // cancelled, which is not a failure
             }
@@ -87,7 +120,14 @@ public sealed class SystemFilePicker : IFilePicker
             }
         });
 
-    private static string? PickLinux(string title, CancellationToken cancellationToken)
+    private static string? PickLinux(string title, CancellationToken cancellationToken) =>
+        LinuxDialog(title, save: null);
+
+    private static string? SaveLinux(string title, string name) => LinuxDialog(title, save: name);
+
+    /// <summary>zenity or kdialog, opening or - with a suggested name - saving. Both confirm an
+    /// overwrite themselves.</summary>
+    private static string? LinuxDialog(string title, string? save)
     {
         if (LinuxTool() is not { } tool)
         {
@@ -101,9 +141,14 @@ public sealed class SystemFilePicker : IFilePicker
             UseShellExecute = false,
         };
 
-        foreach (var argument in tool == "zenity"
-            ? ["--file-selection", $"--title={title}"]
-            : new[] { "--getopenfilename" })
+        string[] arguments = (tool, save) switch
+        {
+            ("zenity", null) => ["--file-selection", $"--title={title}"],
+            ("zenity", _) => ["--file-selection", "--save", $"--title={title}", $"--filename={save}"],
+            (_, null) => ["--getopenfilename"],
+            _ => ["--getsavefilename", save, "", "--title", title],
+        };
+        foreach (var argument in arguments)
         {
             start.ArgumentList.Add(argument);
         }
@@ -161,4 +206,8 @@ public sealed class SystemFilePicker : IFilePicker
     [DllImport("comdlg32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetOpenFileNameW(ref OpenFileName ofn);
+
+    [DllImport("comdlg32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSaveFileNameW(ref OpenFileName ofn);
 }

@@ -204,6 +204,7 @@ public sealed partial class ChatViewModel
         Model.SettingsSections = SectionChoices(section);
         Model.YouFieldsClass = FieldClass(section == "you");
         Model.AboutFieldsClass = FieldClass(section == "about");
+        Model.DebugBundleClass = FieldClass(section == "about" && IsAdmin);
         if (section == "about")
         {
             FillAbout();

@@ -157,6 +157,7 @@ var app = new BanterChatApp(vm)
     EditAsync = (room, id, text) => session?.EditAsync(room, id, text) ?? Task.CompletedTask,
     DeleteAsync = (room, id) => session?.DeleteAsync(room, id) ?? Task.CompletedTask,
     DownloadAsync = fileId => session?.DownloadAsync(fileId) ?? Task.CompletedTask,
+    DebugBundleAsync = () => session?.DebugBundleAsync() ?? Task.FromResult("Not connected."),
     JoinRoomAsync = room => session?.JoinAsync(room, settings.HistoryPageSize) ?? Task.CompletedTask,
     ToolsOpenAsync = agent => session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
     ToolsSaveAsync = (agent, tools) => session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
@@ -344,7 +345,12 @@ async Task SignInAsync(string serverText, string user, string password, bool per
     }
 
     client = connected;
-    session = new BanterChatSession(connected, vm);
+    session = new BanterChatSession(connected, vm)
+    {
+        // Downloads still land in Downloads; this is for the one file the person is about to
+        // send somewhere, where a dialog is the right amount of asking.
+        SaveAs = BanterChatSession.SaverFrom(filePicker),
+    };
 
     vm.Post(() =>
     {

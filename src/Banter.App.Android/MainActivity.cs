@@ -82,8 +82,22 @@ public sealed class MainActivity : CupriActivity
 
     private const int NotifyRequestCode = 4105;
 
+    /// <summary>The save in flight, completed by <see cref="OnActivityResult"/>: the task, and
+    /// the bytes to write wherever the picker answers.</summary>
+    private (TaskCompletionSource<string?> Done, byte[] Content)? _saveRequest;
+
+    private const int SaveRequestCode = 4106;
+
+    /// <summary>
+    /// The activity in front of the user, for the one thing the session needs an activity for:
+    /// opening a picker. The session outlives any activity (<see cref="LiveConnection"/>), so it
+    /// holds this indirection rather than the activity that happened to connect.
+    /// </summary>
+    private static MainActivity? _current;
+
     protected override CupriApp CreateApp()
     {
+        _current = this;
         _settings = BanterSettings.Load(problem: p => global::Android.Util.Log.Warn(LogTag, $"settings: {p}"));
 
         if (LiveConnection.IsLive)
@@ -144,6 +158,7 @@ public sealed class MainActivity : CupriActivity
             CommandAsync = (room, line) => Session?.CommandAsync(room, line) ?? Task.CompletedTask,
             LoadOlderAsync = room => Session?.LoadOlderAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
             DownloadAsync = fileId => Session?.DownloadAsync(fileId) ?? Task.CompletedTask,
+            DebugBundleAsync = () => Session?.DebugBundleAsync() ?? Task.FromResult("Not connected."),
             JoinRoomAsync = room => Session?.JoinAsync(room, _settings.HistoryPageSize) ?? Task.CompletedTask,
             ToolsOpenAsync = agent => Session?.LoadToolsAsync(agent) ?? Task.CompletedTask,
             ToolsSaveAsync = (agent, tools) => Session?.SaveToolsAsync(agent, tools) ?? Task.CompletedTask,
@@ -296,11 +311,67 @@ public sealed class MainActivity : CupriActivity
         return request.Task;
     }
 
+    /// <summary>
+    /// Opens the system's "create document" picker and, once the person has chosen where, writes
+    /// <paramref name="content"/> there. One at a time, as <see cref="PickFileAsync"/>.
+    /// </summary>
+    internal Task<string?> SaveFileAsync(global::Android.Content.Intent create, byte[] content, CancellationToken cancellationToken)
+    {
+        _saveRequest?.Done.TrySetResult(null);
+
+        var request = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _saveRequest = (request, content);
+        cancellationToken.Register(() => request.TrySetResult(null));
+
+        try
+        {
+            StartActivityForResult(create, SaveRequestCode);
+        }
+        catch (global::Android.Content.ActivityNotFoundException)
+        {
+            _saveRequest = null;
+            return Task.FromResult<string?>(null);
+        }
+
+        return request.Task;
+    }
+
     protected override void OnActivityResult(
         int requestCode,
         global::Android.App.Result resultCode,
         global::Android.Content.Intent? data)
     {
+        if (requestCode == SaveRequestCode)
+        {
+            var pending = _saveRequest;
+            _saveRequest = null;
+            if (pending is null)
+            {
+                return;
+            }
+
+            if (resultCode != global::Android.App.Result.Ok || data?.Data is not { } target)
+            {
+                pending.Value.Done.TrySetResult(null);
+                return;
+            }
+
+            string? where = null;
+            try
+            {
+                where = AndroidFilePicker.WriteDocument(this, target, pending.Value.Content);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                           or global::Java.Lang.SecurityException)
+            {
+                global::Android.Util.Log.Warn(LogTag, $"save: {ex.Message}");
+                _viewModel.Post(() => _viewModel.System(_viewModel.Model.ActiveRoom, $"could not write there: {ex.Message}"));
+            }
+
+            pending.Value.Done.TrySetResult(where);
+            return;
+        }
+
         if (requestCode == PickRequestCode)
         {
             var pending = _pickRequest;
@@ -398,7 +469,16 @@ public sealed class MainActivity : CupriActivity
                 .ConnectAsync(transport, uri, user, password)
                 .ConfigureAwait(false);
 
-            var session = new BanterChatSession(client, _viewModel);
+            var session = new BanterChatSession(client, _viewModel)
+            {
+                // Through whichever activity is current when the save happens, not this one: the
+                // session outlives activities, and a picker needs a live one to come back to.
+                SaveAs = (name, mime, content, title) =>
+                    _current is { } activity
+                        ? new AndroidFilePicker(activity).SaveAsync(name, mime, content, title)
+                        : Task.FromResult<string?>(null),
+                SaveAsOnDownload = true,
+            };
 
             // ApplicationContext, not this: what it is adopted into outlives every activity, and a
             // notification posted from a destroyed one is a leak wearing a lie.
@@ -719,6 +799,7 @@ public sealed class MainActivity : CupriActivity
     protected override void OnResume()
     {
         base.OnResume();
+        _current = this;
         LiveConnection.InForeground = true;
     }
 
@@ -744,6 +825,10 @@ public sealed class MainActivity : CupriActivity
     protected override void OnDestroy()
     {
         LiveConnection.InForeground = false;
+        if (ReferenceEquals(_current, this))
+        {
+            _current = null;
+        }
 
         _voice?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _voice = null;

@@ -416,7 +416,7 @@ never joins — there are three things to switch on, and one command to gather t
 |---|---|---|
 | Wire trace | server `--trace <file>` / `BANTER_TRACE` | Every message in and out, one JSON line each: who said what where, which tool was called, what came back, which delegator was elected when. |
 | Model trace | `Banter.Warden --trace <dir>` (or `LlmChatAgentOptions.TraceDirectory`) | Each request the agent sent its model (`*-request.json`) and the raw response (`*-response.txt`). This is where "garbage xml" shows up as what the model actually wrote. |
-| Debug bundle | `/debug` in the client, as an admin | One JSON file in your downloads: server version and uptime, every room with its mode, parley, sensitivity, delegator, members, agents and recent history, every session with what it announced and which SDK it runs, identities, tool grants and upstreams, and the tail of the wire trace. |
+| Debug bundle | Settings → About → **Save a debug bundle** (admins), or `/debug` | One JSON file, saved where you choose - on a phone, through the system picker, so it can be shared from there: server version and uptime, every room with its mode, parley, sensitivity, delegator, members, agents and recent history, every session with what it announced and which SDK it runs, identities, tool grants and upstreams, and the tail of the wire trace. |
 
 Send the bundle, the model trace and the trace file together; the bundle alone says what state
 things were in, the traces say how they got there. Agents that are not on the SDK (DaggerAgent)

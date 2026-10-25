@@ -67,6 +67,71 @@ public sealed class AboutPageTests
         Assert.Equal(["https://github.com/Wixely/Banter"], opened);
     }
 
+    /// <summary>
+    /// The debug bundle has a button, because on a phone the slash command wrote a file into the
+    /// app's own storage where nothing could reach it. It is an admin's button - the server
+    /// refuses the bundle to everybody else - and whichever order admin-ness and the tab arrive in,
+    /// it shows for an admin and not otherwise.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TheDebugBundleButtonIsAnAdminsWhicheverCameFirst(bool adminFirst)
+    {
+        var vm = new ChatViewModel();
+        vm.SetNick("alice");
+        vm.AddRoom("#main");
+        vm.Connected("tcp://host:7770", "alice");
+        vm.ShowSettingsPanel(true);
+        if (adminFirst)
+        {
+            vm.SetIsAdmin(true);
+            vm.ShowSettingsSection("about");
+        }
+        else
+        {
+            vm.ShowSettingsSection("about");
+            vm.SetIsAdmin(true);
+        }
+
+        Assert.Equal("mgmt-field", vm.Model.DebugBundleClass);
+
+        vm.SetIsAdmin(false);
+        Assert.Equal("mgmt-field hidden", vm.Model.DebugBundleClass);
+
+        vm.SetIsAdmin(true);
+        vm.ShowSettingsSection("you");
+        Assert.Equal("mgmt-field hidden", vm.Model.DebugBundleClass);
+    }
+
+    [Fact]
+    public void TheButtonTakesABundleAndSaysWhereItWent()
+    {
+        var vm = OnAbout();
+        vm.SetIsAdmin(true);
+        var asked = 0;
+        var app = new BanterChatApp(vm)
+        {
+            DebugBundleAsync = () =>
+            {
+                asked++;
+                return Task.FromResult("Debug bundle saved to /sdcard/Download/banter-debug.json (41 KB).");
+            },
+        };
+        using var doc = app.CreateDocument();
+        var p = BanterChatApp.Presentation(1280, 800);
+        doc.BuildFrame(p.LogicalWidth, p.LogicalHeight);
+
+        // The button or anything painted inside it: a click lands on the innermost box and the
+        // handler is on the closest .debug-bundle, as a finger's would be.
+        var button = Walk(doc.Root).First(n => n.Node.Element?.Closest(".debug-bundle") is not null && n.Node.Width > 0);
+        doc.DispatchClick(button.X + (button.Node.Width / 2), button.Y + (button.Node.Height / 2));
+        vm.ApplyPending();
+
+        Assert.Equal(1, asked);
+        Assert.StartsWith("Debug bundle saved to /sdcard/Download/banter-debug.json", vm.Model.DebugBundleStatus);
+    }
+
     [Theory]
     [InlineData("0.13.2+cd91672f6088e641a232ff15192134ea4a6383e1", "0.13.2 (cd91672)")]
     [InlineData("0.14.0", "0.14.0")]
