@@ -19,6 +19,7 @@
     <Project Path="src/Banter.Server.Nodestar/Banter.Server.Nodestar.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Banter.Android.Save.Tests/Banter.Android.Save.Tests.csproj" />
     <Project Path="tests/Banter.Protocol.Tests/Banter.Protocol.Tests.csproj" />
     <Project Path="tests/Banter.Server.Tests/Banter.Server.Tests.csproj" />
     <Project Path="tests/Banter.Voice.Tests/Banter.Voice.Tests.csproj" />
