@@ -144,7 +144,7 @@ public sealed class SystemFilePicker : IFilePicker
         string[] arguments = (tool, save) switch
         {
             ("zenity", null) => ["--file-selection", $"--title={title}"],
-            ("zenity", _) => ["--file-selection", "--save", $"--title={title}", $"--filename={save}"],
+            ("zenity", _) => ["--file-selection", "--save", "--confirm-overwrite", $"--title={title}", $"--filename={save}"],
             (_, null) => ["--getopenfilename"],
             _ => ["--getsavefilename", save, "", "--title", title],
         };

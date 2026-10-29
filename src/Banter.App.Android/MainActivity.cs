@@ -82,9 +82,9 @@ public sealed class MainActivity : CupriActivity
 
     private const int NotifyRequestCode = 4105;
 
-    /// <summary>The save in flight, completed by <see cref="OnActivityResult"/>: the task, and
-    /// the bytes to write wherever the picker answers.</summary>
-    private (TaskCompletionSource<string?> Done, byte[] Content)? _saveRequest;
+    /// <summary>Survives activity recreation, just like LiveConnection. Accessed only on the
+    /// main thread; holds bytes and a task, never an activity. Process death ends the save.</summary>
+    private static PendingDocumentSave? _saveRequest;
 
     private const int SaveRequestCode = 4106;
 
@@ -313,27 +313,39 @@ public sealed class MainActivity : CupriActivity
 
     /// <summary>
     /// Opens the system's "create document" picker and, once the person has chosen where, writes
-    /// <paramref name="content"/> there. One at a time, as <see cref="PickFileAsync"/>.
+    /// <paramref name="content"/> there. Reject overlapping requests so a result cannot write
+    /// another request's bytes to the first request's destination.
     /// </summary>
-    internal Task<string?> SaveFileAsync(global::Android.Content.Intent create, byte[] content, CancellationToken cancellationToken)
+    internal async Task<string?> SaveFileAsync(global::Android.Content.Intent create, byte[] content, CancellationToken cancellationToken)
     {
-        _saveRequest?.Done.TrySetResult(null);
-
-        var request = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _saveRequest = (request, content);
-        cancellationToken.Register(() => request.TrySetResult(null));
-
-        try
+        var request = new PendingDocumentSave(content);
+        using var registration = cancellationToken.Register(request.Cancel);
+        RunOnUiThread(() =>
         {
-            StartActivityForResult(create, SaveRequestCode);
-        }
-        catch (global::Android.Content.ActivityNotFoundException)
-        {
-            _saveRequest = null;
-            return Task.FromResult<string?>(null);
-        }
+            if (request.Result.IsCompleted || _saveRequest is not null)
+            {
+                request.Cancel();
+                return;
+            }
 
-        return request.Task;
+            _saveRequest = request;
+            try
+            {
+                StartActivityForResult(create, SaveRequestCode);
+            }
+            catch (global::Android.Content.ActivityNotFoundException)
+            {
+                _saveRequest = null;
+                request.Cancel();
+            }
+            catch (Exception ex)
+            {
+                _saveRequest = null;
+                request.Fail(ex);
+            }
+        });
+
+        return await request.Result.ConfigureAwait(false);
     }
 
     protected override void OnActivityResult(
@@ -352,23 +364,12 @@ public sealed class MainActivity : CupriActivity
 
             if (resultCode != global::Android.App.Result.Ok || data?.Data is not { } target)
             {
-                pending.Value.Done.TrySetResult(null);
+                pending.Cancel();
                 return;
             }
 
-            string? where = null;
-            try
-            {
-                where = AndroidFilePicker.WriteDocument(this, target, pending.Value.Content);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                           or global::Java.Lang.SecurityException)
-            {
-                global::Android.Util.Log.Warn(LogTag, $"save: {ex.Message}");
-                _viewModel.Post(() => _viewModel.System(_viewModel.Model.ActiveRoom, $"could not write there: {ex.Message}"));
-            }
-
-            pending.Value.Done.TrySetResult(where);
+            var context = ApplicationContext!;
+            _ = pending.WriteAsync(bytes => AndroidFilePicker.WriteDocument(context, target, bytes));
             return;
         }
 
@@ -825,6 +826,14 @@ public sealed class MainActivity : CupriActivity
     protected override void OnDestroy()
     {
         LiveConnection.InForeground = false;
+        if (IsFinishing)
+        {
+            // A deliberate exit will not receive a picker result. Recreation must leave the
+            // operation intact for the replacement activity instead.
+            _saveRequest?.Cancel();
+            _saveRequest = null;
+        }
+
         if (ReferenceEquals(_current, this))
         {
             _current = null;
