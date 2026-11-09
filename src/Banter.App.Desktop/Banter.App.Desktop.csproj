@@ -46,6 +46,6 @@
          in a file anything running as this user could read. This is the per-platform half of
          Banter.App's ISecretProtector seam; Linux has no equivalent wired yet and falls back to
          file permissions, which the sign-in screen says out loud. -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
   </ItemGroup>
 </Project>
